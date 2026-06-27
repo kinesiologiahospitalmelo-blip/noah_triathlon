@@ -15,7 +15,14 @@ import {
   BatteryLow, Moon, GlassWater, Brain, ChevronLeft, ChevronRight, Banana, Minus, Check, Scale, LogOut
 } from 'lucide-react'
 
-const API = `http://${window.location.hostname}:5000/api`
+// API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
+// como ya funcionaba. En Vercel (1 sola dirección para front y backend)
+// no hay puerto separado: todo entra por /api en el mismo dominio. El
+// navegador ya sabe en qué dirección está parado — solo se le pregunta.
+const esLocal = window.location.hostname === "localhost" || window.location.hostname.startsWith("192.168.")
+const API = esLocal
+  ? `http://${window.location.hostname}:5000/api`
+  : "/api"
 
 // authFetch — wrapper de fetch que agrega el token de sesión guardado por
 // el login (mismo localStorage que usa App.js) a cada petición. Reemplaza
