@@ -263,7 +263,7 @@ class NOAAnalisis:
         # Calcular HR promedio histórico
         hrs = [s[2] for s in sesiones if s[2] and s[2] > 60]
         if hrs:
-            hr_promedio = np.mean(hrs)
+            hr_promedio = float(np.mean(hrs))
             if_promedio = hr_promedio / lthr
 
             if if_promedio > 0.88:
