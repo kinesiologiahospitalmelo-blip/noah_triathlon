@@ -377,9 +377,9 @@ def calcular_modificador_carga(
     # ── Monotonía (Foster 1998) ───────────────────────────────────────────────
     vals = [v for v in (tss_7d or []) if v > 0]
     if len(vals) >= 4:
-        media = np.mean(vals)
+        media = float(np.mean(vals))
         if media > 0:
-            mono = np.std(vals) / media
+            mono = float(np.std(vals)) / media
             # Monotonía alta = poca variabilidad = riesgo sobreentrenamiento
             if mono < 0.20:
                 f = 0.94   # muy monótono
