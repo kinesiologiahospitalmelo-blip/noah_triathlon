@@ -137,18 +137,20 @@ def calcular_css(largos: list[Largo]) -> dict:
 
     # CSS = percentil 15 de los mejores largos (no el mínimo absoluto)
     css_seg_25 = float(np.percentile(tiempos_arr, 15))
-    css_min_100 = round((css_seg_25 * 4) / 60, 3)
+    css_min_100 = round(float((css_seg_25 * 4) / 60), 3)
 
-    # Estadísticas adicionales
-    pace_promedio = round((np.mean(tiempos_arr) * 4) / 60, 3)
-    pace_maximo   = round((np.max(tiempos_arr) * 4) / 60, 3)
-    pace_minimo   = round((np.min(tiempos_arr) * 4) / 60, 3)
+    # Estadísticas adicionales — float() explícito: np.mean/np.std/np.max/
+    # np.min devuelven numpy.float64, que psycopg2 no serializa bien en
+    # Postgres (mismo bug encontrado y corregido en noa_db.py).
+    pace_promedio = round(float((np.mean(tiempos_arr) * 4) / 60), 3)
+    pace_maximo   = round(float((np.max(tiempos_arr) * 4) / 60), 3)
+    pace_minimo   = round(float((np.min(tiempos_arr) * 4) / 60), 3)
 
     # Variabilidad de pace (consistencia)
-    cv = round(np.std(tiempos_arr) / np.mean(tiempos_arr) * 100, 1)
+    cv = round(float(np.std(tiempos_arr) / np.mean(tiempos_arr) * 100), 1)
 
     return {
-        'css_seg_25':      round(css_seg_25, 2),
+        'css_seg_25':      round(float(css_seg_25), 2),
         'css_min_100':     css_min_100,
         'pace_prom_100':   pace_promedio,
         'pace_min_100':    pace_minimo,
@@ -274,7 +276,7 @@ def analizar_sesion_swim(splits_data: dict, lthr_swim: float = None) -> dict:
     if lthr_swim:
         hrs = [l.hr for l in largos if l.hr]
         if hrs:
-            hr_prom = np.mean(hrs)
+            hr_prom = float(np.mean(hrs))
             dur_min = sum(l.tiempo_seg for l in largos) / 60
             IF = hr_prom / lthr_swim
             tss = round(IF**2 * (dur_min/60) * 100, 1)
