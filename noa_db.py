@@ -272,9 +272,18 @@ class NOADatabase:
                 ctl_d[i] = ctl_d[i-1] * (1 - a_ctl) + t * a_ctl
                 atl_d[i] = atl_d[i-1] * (1 - a_atl) + t * a_atl
 
-        # Mapa fecha → (ctl, atl, tsb)
+        # Mapa fecha → (ctl, atl, tsb) — float() explícito: ctl_d/atl_d son
+        # arrays de NumPy, así que sin esta conversión cada valor queda
+        # como numpy.float64 (no float nativo de Python). SQLite no
+        # distinguía esto y lo aceptaba igual, pero psycopg2 con Postgres
+        # intenta serializar numpy.float64 literalmente como texto
+        # ("np.float64(0.0)") dentro del SQL, rompiendo la consulta.
         ctl_map = {
-            row['fecha']: (round(ctl_d[i], 2), round(atl_d[i], 2), round(ctl_d[i] - atl_d[i], 2))
+            row['fecha']: (
+                round(float(ctl_d[i]), 2),
+                round(float(atl_d[i]), 2),
+                round(float(ctl_d[i] - atl_d[i]), 2),
+            )
             for i, row in tss_diario.iterrows()
         }
 
