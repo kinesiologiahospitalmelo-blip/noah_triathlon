@@ -53,8 +53,8 @@ function authFetch(url, options = {}) {
 // debe salir de este objeto — no se permiten hex sueltos en los componentes.
 const NOAH_C = {
   pageBg:  '#0A0F1E',
-  cardBg:  'rgba(255,255,255,0.05)',
-  cardBg2: 'rgba(255,255,255,0.03)',
+  cardBg:  'transparent',
+  cardBg2: 'transparent',
   headerBg:'rgba(10,15,30,0.92)',
   border:  'rgba(255,255,255,0.08)',
   border2: 'rgba(255,255,255,0.13)',
@@ -1903,7 +1903,7 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
                 border: `1px solid ${isCenter ? b.color+'45' : 'rgba(255,255,255,0.08)'}`,
                 background: isCenter
                   ? `linear-gradient(135deg, ${b.color}22, ${b.color}08)`
-                  : 'rgba(255,255,255,0.03)',
+                  : 'transparent',
                 boxShadow: isCenter
                   ? `0 14px 32px -10px rgba(0,0,0,0.55), 0 0 24px -6px ${b.color}38`
                   : 'none',
@@ -1966,19 +1966,19 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
       {/* Narrativa inteligente */}
       {narrativa.length>0&&(
         <div style={{
-          padding:'12px 16px',borderRadius:10,
+          padding:'18px 20px',borderRadius:14,
           background:isDark?'rgba(99,102,241,0.08)':'#F0F0FF',
           border:`1px solid ${isDark?'rgba(99,102,241,0.2)':'#C7D2FE'}`,
           backdropFilter:'blur(8px)',
         }}>
-          <div style={{fontSize:10,fontWeight:700,color:isDark?'#A5B4FC':'#4F46E5',
-            textTransform:'uppercase',letterSpacing:0.8,marginBottom:8,display:'flex',alignItems:'center',gap:5}}>
-            <Brain size={12}/> Análisis NOAH
+          <div style={{fontSize:13,fontWeight:700,color:isDark?'#A5B4FC':'#4F46E5',
+            textTransform:'uppercase',letterSpacing:0.8,marginBottom:12,display:'flex',alignItems:'center',gap:6}}>
+            <Brain size={16}/> Análisis NOAH
           </div>
-          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
             {narrativa.map((f,i)=>(
-              <div key={i} style={{fontSize:11,color:isDark?'rgba(255,255,255,0.75)':'#374151',
-                lineHeight:1.5,paddingLeft:10,borderLeft:`2px solid ${isDark?'rgba(99,102,241,0.4)':'#818CF8'}`}}>
+              <div key={i} style={{fontSize:14,color:isDark?'rgba(255,255,255,0.85)':'#374151',
+                lineHeight:1.6,paddingLeft:12,borderLeft:`2px solid ${isDark?'rgba(99,102,241,0.4)':'#818CF8'}`}}>
                 {f}
               </div>
             ))}
@@ -2002,10 +2002,8 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
 
       {/* Gráfico */}
       <div style={{
-        background:bg,borderRadius:12,padding:'10px 6px',
-        border:`1px solid ${brdr}`,overflowX:'auto',
-        backdropFilter:isDark?'blur(16px)':'none',
-        boxShadow:isDark?'0 8px 32px rgba(0,0,0,0.4)':'0 2px 8px rgba(0,0,0,0.06)',
+        background:'transparent',padding:'10px 0',
+        overflowX:'auto',
       }}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}
           style={{display:'block',maxWidth:'100%',cursor:'crosshair'}}
@@ -3071,10 +3069,8 @@ function ModeloBanisterAtleta({ atletaId }) {
 
   return (
     <div style={{
-      borderRadius:20, overflow:'hidden',
-      background:'linear-gradient(160deg,rgba(8,9,20,0.99),rgba(12,13,28,0.97))',
-      boxShadow:'0 24px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)',
-      border:'1px solid rgba(255,255,255,0.07)',
+      borderRadius:0, overflow:'visible',
+      background:'transparent',
     }}>
       <style>{`
         @keyframes pmc-pulse { 0%,100%{opacity:1;r:5} 50%{opacity:0.5;r:8} }
@@ -3141,7 +3137,7 @@ function ModeloBanisterAtleta({ atletaId }) {
                 padding:isCenter?'7px 14px':'6px 6px',
                 borderRadius:10,
                 border:`1.5px solid ${isCenter?o.color+'80':'rgba(255,255,255,0.08)'}`,
-                background:isCenter?`${o.color}1E`:'rgba(255,255,255,0.03)',
+                background:isCenter?`${o.color}1E`:'transparent',
                 boxShadow:isCenter?`0 6px 18px -4px ${o.color}40`:'none',
                 opacity:isCenter?1:0.4, filter:isCenter?'none':'blur(0.4px)',
                 transform:isCenter?'scale(1)':'scale(0.82)',
@@ -3662,7 +3658,7 @@ export default function AtletaDashboard({ atletaId }) {
         radial-gradient(circle at 12% -5%, rgba(167,139,250,0.13) 0%, transparent 42%),
         radial-gradient(circle at 88% 8%, rgba(56,189,248,0.10) 0%, transparent 42%),
         radial-gradient(circle at 50% 105%, rgba(52,211,153,0.07) 0%, transparent 50%),
-        linear-gradient(145deg, #0A0F1E 0%, #0D1528 55%, #081520 100%)
+        linear-gradient(145deg, #0F1B35 0%, #132040 55%, #0A1628 100%)
       `, fontFamily:'Inter, system-ui, -apple-system, sans-serif' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -3722,13 +3718,13 @@ export default function AtletaDashboard({ atletaId }) {
             : 'url(https://images.unsplash.com/photo-1502904550040-7534597429ae?w=1400&q=80)',
           backgroundSize: 'cover',
           backgroundPosition: 'center 30%',
-          opacity: 0.45,
-          filter: 'saturate(1.4)',
+          opacity: 0.65,
+          filter: 'saturate(1.3)',
         }}/>
         {/* Overlay gradiente */}
         <div style={{
           position: 'absolute', inset: 0,
-          background: 'linear-gradient(90deg, rgba(10,15,30,0.97) 0%, rgba(10,15,30,0.75) 60%, rgba(10,15,30,0.92) 100%)',
+          background: 'linear-gradient(90deg, rgba(10,15,30,0.82) 0%, rgba(10,15,30,0.50) 60%, rgba(10,15,30,0.75) 100%)',
         }}/>
         {/* Contenido flotante */}
         <div style={{
@@ -3889,8 +3885,10 @@ export default function AtletaDashboard({ atletaId }) {
         </div>
       )}
 
-      {/* STATUS BAR — bloques especiales arriba, métricas en grid fijo de 2 columnas (ordenado en mobile) */}
-      <div style={{ background:'linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015))', backdropFilter:'blur(20px) saturate(150%)', WebkitBackdropFilter:'blur(20px) saturate(150%)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'14px 16px' }}>
+      {/* STATUS BAR — sin bandeja de fondo propia: los botones (HANNA LIFE,
+          Objetivo, CTL/ATL/TSB) flotan directo sobre el fondo general de
+          la pantalla. Cada boton conserva su propio estilo/sombra. */}
+      <div style={{ padding:'14px 16px' }}>
 
         {/* Fila 1 — bloques especiales: HANNA LIFE + objetivo de carrera, lado a lado */}
         <div style={{ display:'flex', gap:10, marginBottom:10 }}>
@@ -3971,8 +3969,8 @@ export default function AtletaDashboard({ atletaId }) {
                   padding: isCenter ? '14px 16px' : '10px 6px',
                   borderRadius: 13,
                   background: isCenter
-                    ? 'linear-gradient(150deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))'
-                    : 'rgba(255,255,255,0.03)',
+                    ? `linear-gradient(135deg, ${m.color}22, ${m.color}08)`
+                    : 'transparent',
                   border: `1px solid ${isCenter ? m.color+'40' : 'rgba(255,255,255,0.08)'}`,
                   boxShadow: isCenter ? `0 8px 24px -6px ${m.color}30` : 'none',
                   opacity: isCenter ? 1 : 0.4,
@@ -4037,14 +4035,17 @@ export default function AtletaDashboard({ atletaId }) {
         })()}
       </div>
 
-      {/* LEYENDA — global, fija arriba del carrusel. Texto simplificado, fondo oscuro coherente */}
-      <div style={{ background:'rgba(255,255,255,0.03)', borderBottom:`1px solid ${NOAH_C.border}`, padding:'7px 16px', display:'flex', gap:14, alignItems:'center', flexWrap:'wrap' }}>
-        {['done','miss','partial','planned'].map(k => {
-          const e = ESTADO[k]
-          const labelCorto = {done:'Hecha', miss:'No hecha', partial:'Editada', planned:'A futuro'}[k]
-          return <span key={k} style={{ fontSize:10, color:e.color, fontWeight:600, display:'flex', alignItems:'center', gap:4 }}><span style={{ width:6,height:6,borderRadius:'50%',background:e.color,display:'inline-block' }} />{labelCorto}</span>
-        })}
-      </div>
+      {/* LEYENDA — solo tiene sentido donde se muestran sesiones individuales
+          (Mi Sesion / Semana). En Metricas, Planificacion, etc. no aplica. */}
+      {(tab === 'hoy' || tab === 'semana') && (
+        <div style={{ background:'rgba(255,255,255,0.03)', borderBottom:`1px solid ${NOAH_C.border}`, padding:'7px 16px', display:'flex', gap:14, alignItems:'center', flexWrap:'wrap' }}>
+          {['done','miss','partial','planned'].map(k => {
+            const e = ESTADO[k]
+            const labelCorto = {done:'Hecha', miss:'No hecha', partial:'Editada', planned:'A futuro'}[k]
+            return <span key={k} style={{ fontSize:10, color:e.color, fontWeight:600, display:'flex', alignItems:'center', gap:4 }}><span style={{ width:6,height:6,borderRadius:'50%',background:e.color,display:'inline-block' }} />{labelCorto}</span>
+          })}
+        </div>
+      )}
 
       {/* TABS — carrusel real 3D: centro grande, laterales chicas/borrosas, navegable por swipe/flecha/tap-lateral/dot */}
       {(() => {
@@ -4084,7 +4085,7 @@ export default function AtletaDashboard({ atletaId }) {
                 border: `1px solid ${isCenter ? NOAH_C.accent+'55' : 'rgba(255,255,255,0.08)'}`,
                 background: isCenter
                   ? `linear-gradient(135deg, ${NOAH_C.accent}2A, ${NOAH_C.accent}0D)`
-                  : 'rgba(255,255,255,0.03)',
+                  : 'transparent',
                 boxShadow: isCenter
                   ? `0 14px 36px -10px rgba(0,0,0,0.6), 0 0 28px -6px ${NOAH_C.accent}40, inset 0 1px 0 rgba(255,255,255,0.10)`
                   : 'none',
