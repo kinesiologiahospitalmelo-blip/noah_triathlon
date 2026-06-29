@@ -1888,158 +1888,41 @@ def get_sesion_real(atleta_id):
 @requiere_login
 def sincronizar_garmin_endpoint(atleta_id):
     """
-    Sincroniza datos de Garmin y recalcula todos los modelos derivados.
-
-    modo='bio'       → baja biomarcadores + recalcula HANNA LIFE
-    modo='actividad' → baja actividades  + recalcula PMC
-    modo='todo'      → bio + actividad   + recalcula todo
+    Encola un pedido de sincronizacion con Garmin. NO ejecuta nada pesado
+    aca (Vercel no soporta procesos largos / subprocess) - solo anota el
+    pedido en sync_log con status='pendiente'. Un GitHub Action separado
+    revisa esta tabla cada pocos minutos y hace el trabajo real llamando
+    a sincronizar_garmin.py.
     """
-    import subprocess, sys
-    from pathlib import Path
-    datos  = request.json or {}
-    modo   = datos.get('modo', 'todo')
-    fecha  = datos.get('fecha', None)  # None = calcular dias pendientes
-    base   = Path(__file__).parent
+    datos = request.json or {}
+    modo  = datos.get('modo', 'todo')
 
-    # Calcular fechas pendientes desde el ultimo dato hasta hoy
-    from datetime import timedelta
-    def _fechas_pendientes(atleta_id, tipo):
-        conn_t = get_conn()
-        try:
-            if tipo == 'bio':
-                row = conn_t.execute(
-                    "SELECT fecha FROM sleep_hrv WHERE atleta_id=%s AND (sleep_h IS NOT NULL OR body_battery IS NOT NULL) ORDER BY fecha DESC LIMIT 1",
-                    (atleta_id,)).fetchone()
-            else:
-                row = conn_t.execute(
-                    "SELECT fecha FROM sesiones WHERE atleta_id=%s AND tss_total>0 AND (fuente IS NULL OR fuente NOT IN ('prescripcion','simulacion','generada')) ORDER BY fecha DESC LIMIT 1",
-                    (atleta_id,)).fetchone()
-        finally:
-            conn_t.close()
-        from datetime import datetime
-        ultima = str(row[0]) if row else str(date.today() - timedelta(days=3))
-        try:
-            d = datetime.strptime(ultima, '%Y-%m-%d').date() + timedelta(days=1)
-        except:
-            d = date.today() - timedelta(days=3)
-        fechas = []
-        while d <= date.today():
-            fechas.append(str(d))
-            d += timedelta(days=1)
-        return fechas if fechas else [str(date.today())]
-    script = base / 'sincronizar_garmin.py'
-    if not script.exists():
-        return error('Script sincronizar_garmin.py no encontrado')
-
-    resp   = {'exito': False, 'modo': modo, 'pasos': []}
-    output_total = []
-
-    def run(args, timeout=90):
-        try:
-            r = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
-            output_total.append((args[-1] if args else '?', r.stdout[-500:]+r.stderr[-200:]))
-            return r.returncode == 0
-        except subprocess.TimeoutExpired:
-            output_total.append(('timeout', str(args)))
-            return False
-        except Exception as e:
-            output_total.append(('error', str(e)))
-            return False
-
-    # ── 1. Bajar datos de Garmin ──────────────────────────────────────────
-    if modo in ('bio', 'todo'):
-        fechas_bio = [fecha] if fecha else _fechas_pendientes(atleta_id, 'bio')
-        ok_garmin = False
-        for f_bio in fechas_bio:
-            if run([sys.executable, str(script),
-                    '--atleta', str(atleta_id), '--modo', 'bio', '--fecha', f_bio]):
-                ok_garmin = True
-        resp['pasos'].append({'paso': 'garmin_bio', 'ok': ok_garmin})
-
-        # ── 2. Recalcular HANNA LIFE ──────────────────────────────────────
-        hl_script = base / 'noah_hanna_life.py'
-        if hl_script.exists() and ok_garmin:
-            ok_hl = run([sys.executable, str(hl_script),
-                         '--atleta', str(atleta_id), '--todo'])
-            resp['pasos'].append({'paso': 'hanna_life', 'ok': ok_hl})
-        elif not hl_script.exists():
-            resp['pasos'].append({'paso': 'hanna_life', 'ok': False, 'msg': 'script no encontrado'})
-
-    if modo in ('actividad', 'todo'):
-        fechas_act = [fecha] if fecha else _fechas_pendientes(atleta_id, 'actividad')
-        ok_act = False
-        for f_act in fechas_act:
-            if run([sys.executable, str(script),
-                    '--atleta', str(atleta_id), '--modo', 'actividad', '--fecha', f_act]):
-                ok_act = True
-        resp['pasos'].append({'paso': 'garmin_actividad', 'ok': ok_act})
-
-        # ── 3. Recalcular PMC (CTL/ATL/TSB) ──────────────────────────────
-        pmc_script = base / 'noah_pmc.py'
-        if pmc_script.exists() and ok_act:
-            ok_pmc = run([sys.executable, str(pmc_script),
-                          '--atleta', str(atleta_id), '--db', 'noa.db'])
-            resp['pasos'].append({'paso': 'pmc', 'ok': ok_pmc})
-
-    resp['exito'] = any(p['ok'] for p in resp['pasos'])
-    resp['output'] = str(output_total)[-1000:]
-
-    # ── 4. Leer datos frescos para devolver al dashboard ─────────────────
-    conn2 = get_conn()
+    conn = get_conn()
     try:
-        if modo in ('bio', 'todo'):
-            row_bio = conn2.execute("""
-                SELECT sleep_h, hr_reposo, body_battery, stress_avg,
-                       hrv_rmssd, hrv_estimado_valor, hrv_flag, hanna_life, hanna_nivel
-                FROM sleep_hrv WHERE atleta_id=%s AND fecha=%s
-                ORDER BY id DESC LIMIT 1
-            """, (atleta_id, fecha)).fetchone()
-            if not row_bio:
-                # Buscar el más reciente si no hay de hoy
-                row_bio = conn2.execute("""
-                    SELECT sleep_h, hr_reposo, body_battery, stress_avg,
-                           hrv_rmssd, hrv_estimado_valor, hrv_flag, hanna_life, hanna_nivel
-                    FROM sleep_hrv WHERE atleta_id=%s
-                    ORDER BY fecha DESC, id DESC LIMIT 1
-                """, (atleta_id,)).fetchone()
-            if row_bio:
-                hrv_real = row_bio[4]
-                hrv_est  = row_bio[5]
-                resp.update({
-                    'sleep_h':      row_bio[0],
-                    'hr_reposo':    row_bio[1],
-                    'body_battery': row_bio[2],
-                    'stress_avg':   row_bio[3],
-                    'hrv_ms':       hrv_real or hrv_est,
-                    'hrv_estimado': hrv_real is None and hrv_est is not None,
-                    'hrv_flag':     row_bio[6],
-                    'hanna_life':   row_bio[7],
-                    'hanna_nivel':  row_bio[8],
-                })
-    finally:
-        conn2.close()
-
-    # ── 5. Log ────────────────────────────────────────────────────────────
-    try:
-        conn3 = get_conn()
-        # SERIAL en vez de INTEGER PRIMARY KEY — el INSERT de abajo no
-        # especifica id, así que la tabla necesita autogenerar el valor
-        # (en SQLite, INTEGER PRIMARY KEY ya autoincrementaba solo; en
-        # Postgres hace falta SERIAL para el mismo comportamiento).
-        conn3.execute("""CREATE TABLE IF NOT EXISTS sync_log
+        conn.execute("""CREATE TABLE IF NOT EXISTS sync_log
             (id SERIAL PRIMARY KEY, atleta_id INTEGER, ts TEXT,
              modo TEXT, status TEXT, detalle TEXT)""")
-        conn3.execute(
-            'INSERT INTO sync_log (atleta_id, ts, modo, status, detalle) VALUES (%s,%s,%s,%s,%s)',
-            (atleta_id, datetime.now().isoformat(), modo,
-             'ok' if resp['exito'] else 'error', str(resp['pasos']))
-        )
-        conn3.commit()
-        conn3.close()
-    except Exception:
-        pass
 
-    return ok(_limpiar_nan(resp))
+        ya_pendiente = conn.execute(
+            "SELECT id FROM sync_log WHERE atleta_id=%s AND status='pendiente' "
+            "ORDER BY id DESC LIMIT 1", (atleta_id,)
+        ).fetchone()
+
+        if ya_pendiente:
+            conn.close()
+            return ok({'exito': True, 'estado': 'ya_pendiente',
+                       'mensaje': 'Ya hay una sincronizacion en curso para este atleta.'})
+
+        conn.execute(
+            'INSERT INTO sync_log (atleta_id, ts, modo, status, detalle) VALUES (%s,%s,%s,%s,%s)',
+            (atleta_id, datetime.now().isoformat(), modo, 'pendiente', '')
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return ok({'exito': True, 'estado': 'pendiente',
+                'mensaje': 'Sincronizacion solicitada. Puede tardar unos minutos.'})
 
 
 def _limpiar_nan(obj):
