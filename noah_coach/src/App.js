@@ -11,6 +11,7 @@ import SeccionRace from './SeccionRace'
 import SeccionTests from './SeccionTests'
 import OnboardingAtleta from './OnboardingAtleta'
 import GraficoActividadStreams from './GraficoActividadStreams'
+import PantallaCarga from './PantallaCarga'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
 // como ya funcionaba. En Vercel (1 sola dirección para front y backend)
@@ -3558,6 +3559,12 @@ function RequireAtleta({ children }) {
 }
 
 export default function App() {
+  const [cargando, setCargando] = useState(true)
+
+  if (cargando) {
+    return <PantallaCarga duracionMs={2000} onTerminar={() => setCargando(false)} />
+  }
+
   return (
     <BrowserRouter>
       <Routes>
