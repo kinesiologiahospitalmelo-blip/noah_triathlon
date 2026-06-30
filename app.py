@@ -437,6 +437,24 @@ def get_atleta(atleta_id):
     return ok(atleta)
 
 
+@app.route('/api/atletas/<int:atleta_id>', methods=['PUT'])
+@requiere_login
+def actualizar_atleta_endpoint(atleta_id):
+    """
+    Actualiza el perfil fisiologico de un atleta existente (LTHR run/bike/
+    swim, FTP, CSS, HR max, peso, etc). Solo pisa los campos que vienen en
+    el body -- el resto del perfil queda igual.
+    """
+    datos = request.json or {}
+    db = NOADatabase(DB_PATH)
+    atleta = db.get_atleta(atleta_id)
+    if not atleta:
+        return error('Atleta no encontrado', 404)
+    db.actualizar_atleta(atleta_id, datos)
+    atleta_actualizado = db.get_atleta(atleta_id)
+    return ok(atleta_actualizado)
+
+
 # ─── ESTADO ACTUAL ────────────────────────────────────────────────────────────
 
 @app.route('/api/atletas/<int:atleta_id>/estado', methods=['GET'])

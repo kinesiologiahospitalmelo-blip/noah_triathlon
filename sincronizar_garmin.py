@@ -529,7 +529,7 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
                 if ses_row:
                     gid = ses_row[1] or str(act.get('activityId', ''))
                     sesion_id_exist = ses_row[0]
-                    if gid and args.relaps:
+                    if gid and False:  # --relaps no se usa en este flujo (bug: 'args' no existia aca)
                         # Borrar laps existentes y re-bajar
                         conn.execute('DELETE FROM laps WHERE atleta_id=%s AND sesion_id=%s',
                                      (atleta_id, sesion_id_exist))
@@ -868,7 +868,86 @@ def descargar_performance(client, fecha_str: str, atleta_id: int,
             print('    [OK] Performance guardado')
         except Exception as e: print(f'    Error performance DB: {e}')
 
-    return resultado
+
+def descargar_umbrales(client, atleta_id: int, conn):
+    """
+    Trae el LTHR/pace de running y FTP de cycling directo de Garmin
+    (cuando el reloj los tiene calculados) y los guarda en columnas
+    separadas (*_garmin) -- nunca pisa directamente lthr_run/ftp_watts,
+    porque esos son el valor final que decide actualizar_umbral_final()
+    combinando esta fuente con el calculo propio de NOAH.
+
+    Garmin no siempre tiene un valor reciente (el reloj solo lo detecta
+    en ciertas sesiones y el usuario debe aceptarlo) -- por eso esto es
+    "best effort": si no hay dato, simplemente no se actualiza nada.
+    """
+    print('  -> Umbrales (Garmin):')
+    lthr_garmin  = None
+    pace_garmin  = None
+    ftp_garmin   = None
+
+    try:
+        lt = client.get_lactate_threshold(latest=True)
+        shr = (lt or {}).get('speed_and_heart_rate') or {}
+        hr    = shr.get('heartRate')
+        speed = shr.get('speed')  # metros/segundo
+        if hr:
+            lthr_garmin = float(hr)
+        if speed and speed > 0:
+            # El campo 'speed' que devuelve este endpoint de Garmin NO esta
+            # en m/s puros -- viene escalado x10 (confirmado empiricamente:
+            # speed=0.336 correspondia a un pace real de 4:58/km, que solo
+            # cuadra multiplicando por 10 antes de convertir). Sin este
+            # factor, el calculo daba paces absurdos (~49 min/km).
+            speed_ms = speed * 10
+            pace_garmin = round(1000 / (speed_ms * 60), 3)
+        if lthr_garmin or pace_garmin:
+            print(f"    LTHR run: {lthr_garmin} bpm | Pace umbral: {pace_garmin} min/km")
+    except Exception as e:
+        print(f'    Lactate threshold: {e}')
+
+    try:
+        ftp_data = client.get_cycling_ftp()
+        if isinstance(ftp_data, list) and ftp_data:
+            ftp_data = ftp_data[0]
+        if isinstance(ftp_data, dict):
+            ftp_garmin = (
+                ftp_data.get('functionalThresholdPower')
+                or ftp_data.get('ftp')
+                or ftp_data.get('value')
+            )
+            if ftp_garmin:
+                ftp_garmin = float(ftp_garmin)
+                print(f"    FTP bike: {ftp_garmin} W")
+    except Exception as e:
+        print(f'    Cycling FTP: {e}')
+
+    if lthr_garmin or pace_garmin or ftp_garmin:
+        try:
+            from db_compat import asegurar_columnas as _aseg
+            _aseg(conn, 'atletas', [
+                ('lthr_run_garmin',        'REAL'),
+                ('pace_umbral_run_garmin', 'REAL'),
+                ('ftp_bike_garmin',        'REAL'),
+                ('fecha_umbral_garmin',    'TEXT'),
+            ])
+            sets, params = [], []
+            if lthr_garmin is not None:
+                sets.append('lthr_run_garmin=%s'); params.append(lthr_garmin)
+            if pace_garmin is not None:
+                sets.append('pace_umbral_run_garmin=%s'); params.append(pace_garmin)
+            if ftp_garmin is not None:
+                sets.append('ftp_bike_garmin=%s'); params.append(ftp_garmin)
+            sets.append('fecha_umbral_garmin=%s')
+            params.append(datetime.now().date().isoformat())
+            params.append(atleta_id)
+            conn.execute(f"UPDATE atletas SET {', '.join(sets)} WHERE id=%s", params)
+            conn.commit()
+            print('    [OK] Umbrales Garmin guardados')
+        except Exception as e:
+            print(f'    Error guardando umbrales: {e}')
+    else:
+        print('    Sin umbrales nuevos de Garmin (normal si el reloj no detecto cambios)')
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -999,6 +1078,20 @@ def main():
                     # Siempre recalcular stress — el día puede haber avanzado
                     calcular_stress_intradiario(conn, atleta_id, fecha_iter)
                 except Exception as e: print(f'  FC intradiaria error: {e}')
+
+        # Umbrales (LTHR run, pace umbral, FTP bike) -- una sola vez por
+        # atleta, no por fecha (Garmin siempre da "el ultimo" valor).
+        if args.modo in ('todo', 'perf'):
+            try: descargar_umbrales(client, atleta_id, conn)
+            except Exception as e: print(f'  Umbrales error: {e}')
+
+            # Calculo propio desde el historial (solo corre si pasaron
+            # 21+ dias desde el ultimo calculo, ver dentro de la funcion)
+            # y resolucion del valor final que usan las zonas.
+            try:
+                db.calcular_umbral_desde_historial(atleta_id)
+                db.actualizar_umbral_final(atleta_id)
+            except Exception as e: print(f'  Umbral historial error: {e}')
 
         # Post-proceso
         for modulo, fn in [

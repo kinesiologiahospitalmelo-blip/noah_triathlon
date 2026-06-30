@@ -130,6 +130,165 @@ class NOADatabase:
             conn.commit()
             return None
 
+    def actualizar_atleta(self, atleta_id: int, datos: dict) -> bool:
+        """
+        Actualiza campos del perfil fisiologico de un atleta YA EXISTENTE
+        (LTHR running/bike/swim, FTP, CSS, HR max, peso, etc). A diferencia
+        de crear_atleta() (que es para el alta inicial), esta funcion solo
+        toca las columnas que vienen en `datos` -- si un campo no se manda,
+        no se pisa el valor que ya estaba guardado.
+        """
+        columnas_permitidas = {
+            'lthr_run', 'lthr_bike', 'lthr_swim', 'ftp_watts', 'hr_max',
+            'peso_kg', 'altura_cm', 'edad', 'sexo', 'deporte_ppal',
+            'css_100m', 'nivel_experiencia', 'horas_semana', 'nombre', 'email',
+        }
+        campos = {k: v for k, v in datos.items() if k in columnas_permitidas and v is not None}
+        if not campos:
+            return False
+
+        sets = ', '.join(f'{k}=%({k})s' for k in campos.keys())
+        campos['atleta_id'] = atleta_id
+
+        with self._conn() as conn:
+            conn.execute(
+                f'UPDATE atletas SET {sets} WHERE id=%(atleta_id)s',
+                campos
+            )
+        return True
+
+    def calcular_umbral_desde_historial(self, atleta_id: int):
+        """
+        Estima LTHR/pace de running y FTP de bike a partir del propio
+        historial de entrenamientos (metodo de campo Joe Friel: la
+        sesion mas exigente y sostenida funciona como proxy de un test
+        real de 30 min, tomando el promedio de los ultimos 20 min).
+
+        Pensado para correr cada 3-4 semanas (no en cada sync), porque
+        es trabajo pesado y el umbral de un atleta no cambia de un dia
+        para el otro. Sirve como respaldo/verificacion del dato que
+        Garmin pueda o no tener actualizado.
+        """
+        from datetime import date, timedelta
+        conn = self._conn()
+
+        atleta = conn.execute(
+            'SELECT fecha_umbral_calculado FROM atletas WHERE id=%s', (atleta_id,)
+        ).fetchone()
+        ultima = atleta[0] if atleta else None
+        if ultima:
+            try:
+                dias = (date.today() - date.fromisoformat(str(ultima)[:10])).days
+                if dias < 21:
+                    conn.close()
+                    return
+            except ValueError:
+                pass
+
+        desde = str(date.today() - timedelta(days=28))
+
+        ses_run = conn.execute(
+            "SELECT hr_avg, pace, duration_min FROM sesiones "
+            "WHERE atleta_id=%s AND sport='running' AND fecha >= %s "
+            "AND duration_min >= 25 AND hr_avg IS NOT NULL "
+            "ORDER BY tss_total DESC LIMIT 1",
+            (atleta_id, desde)
+        ).fetchone()
+
+        lthr_calc = None
+        pace_calc = None
+        if ses_run and ses_run[0]:
+            lthr_calc = round(float(ses_run[0]), 1)
+            if ses_run[1]:
+                pace_calc = round(float(ses_run[1]), 3)
+
+        ses_bike = conn.execute(
+            "SELECT np_watts, duration_min FROM sesiones "
+            "WHERE atleta_id=%s AND sport='cycling' AND fecha >= %s "
+            "AND duration_min >= 20 AND np_watts IS NOT NULL "
+            "ORDER BY tss_total DESC LIMIT 1",
+            (atleta_id, desde)
+        ).fetchone()
+
+        ftp_calc = None
+        if ses_bike and ses_bike[0]:
+            ftp_calc = round(float(ses_bike[0]) * 0.95, 1)
+
+        if lthr_calc or pace_calc or ftp_calc:
+            sets, params = [], {}
+            if lthr_calc is not None:
+                sets.append('lthr_run_calculado=%(lthr)s'); params['lthr'] = lthr_calc
+            if pace_calc is not None:
+                sets.append('pace_umbral_run_calculado=%(pace)s'); params['pace'] = pace_calc
+            if ftp_calc is not None:
+                sets.append('ftp_bike_calculado=%(ftp)s'); params['ftp'] = ftp_calc
+            sets.append('fecha_umbral_calculado=%(hoy)s')
+            params['hoy'] = date.today().isoformat()
+            params['atleta_id'] = atleta_id
+            conn.execute(
+                "UPDATE atletas SET " + ', '.join(sets) + " WHERE id=%(atleta_id)s", params
+            )
+            conn.commit()
+            print('  [NOAH] Umbral calculado: LTHR=' + str(lthr_calc) + ' pace=' + str(pace_calc) + ' FTP=' + str(ftp_calc))
+
+        conn.close()
+
+    def actualizar_umbral_final(self, atleta_id: int):
+        """
+        Decide el valor FINAL de lthr_run/ftp_watts que usan las zonas
+        de entrenamiento, combinando las dos fuentes disponibles:
+
+          1. Garmin (lthr_run_garmin / ftp_bike_garmin) SI tiene menos
+             de 60 dias de antiguedad.
+          2. Si no, el calculado por NOAH desde el historial.
+          3. Si ninguna existe, no se toca nada (queda el default
+             generico que ya maneja el resto del codigo).
+        """
+        from datetime import date
+
+        conn = self._conn()
+        row = conn.execute(
+            "SELECT lthr_run_garmin, pace_umbral_run_garmin, ftp_bike_garmin, fecha_umbral_garmin, "
+            "lthr_run_calculado, pace_umbral_run_calculado, ftp_bike_calculado, fecha_umbral_calculado "
+            "FROM atletas WHERE id=%s",
+            (atleta_id,)
+        ).fetchone()
+
+        if not row:
+            conn.close()
+            return
+
+        (lthr_g, pace_g, ftp_g, fecha_g,
+         lthr_c, pace_c, ftp_c, fecha_c) = row
+
+        def vigente(fecha_str, max_dias=60):
+            if not fecha_str:
+                return False
+            try:
+                return (date.today() - date.fromisoformat(str(fecha_str)[:10])).days <= max_dias
+            except ValueError:
+                return False
+
+        garmin_vigente = vigente(fecha_g)
+
+        lthr_final = lthr_g if (garmin_vigente and lthr_g) else lthr_c
+        pace_final = pace_g if (garmin_vigente and pace_g) else pace_c
+        ftp_final  = ftp_g  if (garmin_vigente and ftp_g)  else ftp_c
+
+        sets, params = [], {'atleta_id': atleta_id}
+        if lthr_final is not None:
+            sets.append('lthr_run=%(lthr)s'); params['lthr'] = lthr_final
+        if ftp_final is not None:
+            sets.append('ftp_watts=%(ftp)s'); params['ftp'] = ftp_final
+        if pace_final is not None:
+            sets.append('pace_umbral_run=%(pace)s'); params['pace'] = pace_final
+
+        if sets:
+            conn.execute("UPDATE atletas SET " + ', '.join(sets) + " WHERE id=%(atleta_id)s", params)
+            conn.commit()
+
+        conn.close()
+
     # ── SESIONES ──────────────────────────────────────────────────────────────
 
     def get_sesiones(self, atleta_id: int,
@@ -272,18 +431,9 @@ class NOADatabase:
                 ctl_d[i] = ctl_d[i-1] * (1 - a_ctl) + t * a_ctl
                 atl_d[i] = atl_d[i-1] * (1 - a_atl) + t * a_atl
 
-        # Mapa fecha → (ctl, atl, tsb) — float() explícito: ctl_d/atl_d son
-        # arrays de NumPy, así que sin esta conversión cada valor queda
-        # como numpy.float64 (no float nativo de Python). SQLite no
-        # distinguía esto y lo aceptaba igual, pero psycopg2 con Postgres
-        # intenta serializar numpy.float64 literalmente como texto
-        # ("np.float64(0.0)") dentro del SQL, rompiendo la consulta.
+        # Mapa fecha → (ctl, atl, tsb)
         ctl_map = {
-            row['fecha']: (
-                round(float(ctl_d[i]), 2),
-                round(float(atl_d[i]), 2),
-                round(float(ctl_d[i] - atl_d[i]), 2),
-            )
+            row['fecha']: (round(ctl_d[i], 2), round(atl_d[i], 2), round(ctl_d[i] - atl_d[i], 2))
             for i, row in tss_diario.iterrows()
         }
 
@@ -294,16 +444,37 @@ class NOADatabase:
             if t < 25:  return 'fresh'
             return 'detraining'
 
-        conn2 = self._conn()
+        # UPDATE masivo en UNA sola query (en vez de un UPDATE por cada
+        # sesion, que con 1000+ sesiones provocaba timeout en Supabase).
+        # Se construye una tabla temporal de valores (id, ctl, atl, tsb,
+        # form_status) con VALUES y se hace un solo UPDATE...FROM contra
+        # esa tabla. Esto es decenas de veces mas rapido porque viaja una
+        # sola vez por la red en lugar de 1 round-trip por sesion.
+        filas_update = []
         for _, row in df.iterrows():
             vals = ctl_map.get(str(row['fecha'])[:10])
             if not vals:
                 continue
-            ctl_v, atl_v, tsb_v = vals
-            conn2.execute('''
-                UPDATE sesiones SET ctl=%s, atl=%s, tsb=%s, form_status=%s
-                WHERE id=%s
-            ''', (ctl_v, atl_v, tsb_v, form_status(tsb_v), int(row['id'])))
+            ctl_v, atl_v, tsb_v = float(vals[0]), float(vals[1]), float(vals[2])
+            filas_update.append((int(row['id']), ctl_v, atl_v, tsb_v, form_status(tsb_v)))
+
+        if not filas_update:
+            return
+
+        conn2 = self._conn()
+        # Insertar en bloques (por si hay miles de sesiones, evitar un
+        # statement gigante de una sola vez) y cada bloque en UNA query.
+        BLOQUE = 500
+        for i in range(0, len(filas_update), BLOQUE):
+            bloque = filas_update[i:i+BLOQUE]
+            placeholders = ','.join(['(%s,%s,%s,%s,%s)'] * len(bloque))
+            params = [v for fila in bloque for v in fila]
+            conn2.execute(f'''
+                UPDATE sesiones AS s
+                SET ctl = v.ctl, atl = v.atl, tsb = v.tsb, form_status = v.form_status
+                FROM (VALUES {placeholders}) AS v(id, ctl, atl, tsb, form_status)
+                WHERE s.id = v.id
+            ''', params)
         conn2.commit()
         conn2.close()
 

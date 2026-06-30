@@ -76,7 +76,10 @@ class ZonasRunning:
     ]
 
     def __init__(self, lthr: float, hr_max: float, pace_z2_real: float = None, peso_kg: float = 75):
-        self.lthr        = lthr
+        # Si no hay LTHR real cargado para el atleta, estimar desde hr_max
+        # (85% de HRmax es una aproximacion estandar de umbral) en vez de
+        # dejar pasar None, que rompe todos los calculos de zona mas abajo.
+        self.lthr        = lthr or (hr_max * 0.85 if hr_max else 160)
         self.hr_max      = hr_max
         self.pace_z2     = pace_z2_real or self._estimar_pace_z2()
         self.peso_kg     = peso_kg
@@ -165,12 +168,15 @@ class ZonasCycling:
 
     def __init__(self, ftp: float, lthr_bike: float = None, hr_max: float = 185,
                  peso_kg: float = 75, w_prime: float = W_PRIME_DEFAULT):
-        self.ftp        = ftp
-        self.lthr_bike  = lthr_bike or (hr_max * 0.85)
+        # Si no hay FTP real cargado, estimar conservador desde LTHR/peso
+        # (mismo criterio que desde_lthr() mas abajo) en vez de dejar None.
+        lthr_bike_efectivo = lthr_bike or (hr_max * 0.85 if hr_max else 150)
+        self.ftp        = ftp or round((lthr_bike_efectivo / (hr_max or 185)) * (peso_kg or 75) * 2.8)
+        self.lthr_bike  = lthr_bike_efectivo
         self.hr_max     = hr_max
         self.peso_kg    = peso_kg
         self.w_prime    = w_prime
-        self.w_kg       = round(ftp / peso_kg, 2) if peso_kg else None
+        self.w_kg       = round(self.ftp / peso_kg, 2) if peso_kg else None
 
     @classmethod
     def desde_lthr(cls, lthr_bike: float, hr_max: float, peso_kg: float = 75) -> 'ZonasCycling':
@@ -332,8 +338,11 @@ class ZonasSwimming:
                   Si no se conoce, estimar desde test 400m y 200m.
         lthr_swim: LTHR en agua (generalmente 5-10 bpm menor que en tierra)
         """
-        self.css      = css_100m   # pace cada 100m en formato decimal (ej: 1.75 = 1:45/100m)
-        self.lthr     = lthr_swim or (hr_max * 0.82)
+        # Si el atleta no tiene CSS cargado (ej: no es nadador / sin test de
+        # natacion), usar un valor de referencia generico en vez de None,
+        # que rompia la division en calcular() con TypeError.
+        self.css      = css_100m or 1.75   # 1:45/100m como referencia generica
+        self.lthr     = lthr_swim or (hr_max * 0.82 if hr_max else 150)
         self.hr_max   = hr_max
 
     @classmethod
