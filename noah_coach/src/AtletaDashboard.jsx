@@ -1172,20 +1172,16 @@ function SesionDelDia({ atletaId, presc }) {
     if (!atletaId) return
     setActs(null)
     setActs7({})
-    const dias = []
-    for (let i = 6; i >= 0; i--)
-      dias.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10))
-    Promise.all(dias.map(d =>
-      authFetch(`${API}/atletas/${atletaId}/actividades_dia?fecha=${d}&exacto=true`)
-        .then(r => r.json())
-        .then(r => ({ dia: d, acts: r.data?.actividades || [] }))
-        .catch(() => ({ dia: d, acts: [] }))
-    )).then(results => {
-      const map = {}
-      results.forEach(({ dia, acts }) => { map[dia] = acts })
-      setActs7(map)
-      setActs(map[fechaSel] ?? map[hoy] ?? [])
-    })
+    const desde = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10)
+    const hasta  = new Date().toISOString().slice(0, 10)
+    authFetch(`${API}/atletas/${atletaId}/actividades_rango?desde=${desde}&hasta=${hasta}`)
+      .then(r => r.json())
+      .then(r => {
+        const map = r.data?.actividades || {}
+        setActs7(map)
+        setActs(map[fechaSel] ?? map[hoy] ?? [])
+      })
+      .catch(() => { setActs7({}); setActs([]) })
   }, [atletaId])
 
   // Cuando el atleta toca otro día del mini-calendario, usar lo que ya
@@ -1515,19 +1511,22 @@ function ZonasCyclingTable({ zonas }) {
               <div style={{fontSize:11,color:NOAH_C.ink3,marginTop:2}}>{z.descripcion||''}</div>
             </div>
             <div style={{textAlign:'right'}}>
-              {z.watts_min && (
+              {(z.w_min != null) && (
                 <div style={{fontSize:12,fontWeight:700,color:zColor}}>
-                  {z.watts_min}–{z.watts_max}W
+                  {z.w_min}–{z.w_max ? z.w_max+'W' : '∞'}
                 </div>
+              )}
+              {z.pct_ftp && (
+                <div style={{fontSize:11,color:NOAH_C.ink3}}>{z.pct_ftp} FTP</div>
               )}
               {z.hr_min && (
                 <div style={{fontSize:11,color:NOAH_C.ink3}}>
                   HR {z.hr_min}–{z.hr_max}
                 </div>
               )}
-              {z.w_kg_min && (
+              {z.wkg_min && (
                 <div style={{fontSize:10,color:NOAH_C.ink4}}>
-                  {z.w_kg_min}–{z.w_kg_max} w/kg
+                  {z.wkg_min}–{z.wkg_max||'∞'} w/kg
                 </div>
               )}
             </div>
@@ -1566,9 +1565,9 @@ function ZonasSwimTable({ zonas }) {
             <td style={{padding:'8px 10px',fontWeight:700,color:NOAH_C.swim}}>{z.zona}</td>
             <td style={{padding:'8px 10px',color:NOAH_C.ink}}>{z.nombre}</td>
             <td style={{padding:'8px 10px',color:NOAH_C.ink3,fontVariantNumeric:'tabular-nums'}}>
-              {z.pace_min}–{z.pace_max}
+              {z.pace_100m_min || z.pace_min || '--'} – {z.pace_100m_max || z.pace_max || '--'}
             </td>
-            <td style={{padding:'8px 10px',color:NOAH_C.ink3}}>{z.hr_min}–{z.hr_max}</td>
+            <td style={{padding:'8px 10px',color:NOAH_C.ink3}}>{z.hr_min||'--'}–{z.hr_max||'--'}</td>
           </tr>
         ))}
       </tbody>
@@ -2673,16 +2672,16 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
   useEffect(() => {
     if (!atletaId) return
     setCargando(true); setActsMes({})
-    const dias = []
-    for (let d = new Date(primerDia); d <= ultimoDia; d.setDate(d.getDate()+1))
-      dias.push(d.toISOString().slice(0,10))
-    Promise.all(dias.map(dia =>
-      authFetch(`${API}/atletas/${atletaId}/actividades_dia?fecha=${dia}&exacto=true`)
-        .then(r=>r.json()).then(r=>({ dia, acts: r.data?.actividades||[] }))
-        .catch(()=>({ dia, acts:[] }))
-    )).then(results => {
-      const map = {}; results.forEach(({dia,acts})=>{ map[dia]=acts }); setActsMes(map); setCargando(false)
-    })
+    const desde = primerDia.toISOString().slice(0, 10)
+    const hasta  = ultimoDia.toISOString().slice(0, 10)
+    authFetch(`${API}/atletas/${atletaId}/actividades_rango?desde=${desde}&hasta=${hasta}`)
+      .then(r => r.json())
+      .then(r => {
+        const map = r.data?.actividades || {}
+        setActsMes(map)
+        setCargando(false)
+      })
+      .catch(() => { setActsMes({}); setCargando(false) })
   }, [atletaId, mesOffset])
 
   const sesiones  = presc?.prescripcion?.sesiones || []
