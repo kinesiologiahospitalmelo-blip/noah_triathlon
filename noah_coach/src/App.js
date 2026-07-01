@@ -494,19 +494,15 @@ function ActividadRecienteCoach({ atletaId, lthr = 162, presc }) {
     setEstado({ acts: null, acts7: {}, fechaSel: null })
 
     let cancelado = false
-    const dias = []
-    for (let i = 6; i >= 0; i--)
-      dias.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10))
+    const desde = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10)
+    const hasta  = new Date().toISOString().slice(0, 10)
 
-    Promise.all(dias.map(d =>
-      authFetch(`${API}/atletas/${atletaId}/actividades_dia?fecha=${d}&exacto=true`)
-        .then(r => r.json())
-        .then(r => ({ dia: d, acts: r.data?.actividades || [] }))
-        .catch(() => ({ dia: d, acts: [] }))
-    )).then(results => {
-      if (cancelado) return
-      const acts7 = {}
-      results.forEach(({ dia, acts }) => { acts7[dia] = acts })
+    authFetch(`${API}/atletas/${atletaId}/actividades_rango?desde=${desde}&hasta=${hasta}`)
+      .then(r => r.json())
+      .then(r => {
+        if (cancelado) return
+        const acts7 = r.data?.actividades || {}
+        const results = Object.entries(acts7).map(([dia, acts]) => ({ dia, acts }))
       const conActs = results.filter(r => r.acts.length > 0).sort((a,b) => b.dia > a.dia ? 1 : -1)
       // Setear todo en un solo setState — cero renders intermedios
       setEstado({
@@ -641,16 +637,16 @@ function CalendarioMensual({ atletaId, presc, dark = false }) {
   useEffect(() => {
     if (!atletaId) return
     setCargando(true); setActsMes({})
-    const dias = []
-    for (let d = new Date(primerDia); d <= ultimoDia; d.setDate(d.getDate()+1))
-      dias.push(d.toISOString().slice(0,10))
-    Promise.all(dias.map(dia =>
-      authFetch(`${API}/atletas/${atletaId}/actividades_dia?fecha=${dia}&exacto=true`)
-        .then(r=>r.json()).then(r=>({ dia, acts: r.data?.actividades||[] }))
-        .catch(()=>({ dia, acts:[] }))
-    )).then(results => {
-      const map = {}; results.forEach(({dia,acts})=>{ map[dia]=acts }); setActsMes(map); setCargando(false)
-    })
+    const desde = primerDia.toISOString().slice(0, 10)
+    const hasta  = ultimoDia.toISOString().slice(0, 10)
+    authFetch(`${API}/atletas/${atletaId}/actividades_rango?desde=${desde}&hasta=${hasta}`)
+      .then(r => r.json())
+      .then(r => {
+        const map = r.data?.actividades || {}
+        setActsMes(map)
+        setCargando(false)
+      })
+      .catch(() => { setActsMes({}); setCargando(false) })
   }, [atletaId, mesOffset])
 
   const sesiones  = presc?.prescripcion?.sesiones || []
@@ -3221,7 +3217,7 @@ function DashboardAtleta({ atletaId, atleta }) {
 
       {tab==='clustering'&&atletaId&&<ClusteringPanel atletaId={atletaId} atleta={atleta} />}
       {tab==='optimizer'&&atletaId&&<OptimizerPanel atletaId={atletaId} atleta={atleta} />}
-      {tab==='perfil'&&atletaId&&<PerfilDisponibilidad atletaId={atletaId} atleta={atleta} />}
+      {tab==='perfil'&&atletaId&&(<><PerfilFisiologico atletaId={atletaId} atleta={atleta} /><PerfilDisponibilidad atletaId={atletaId} atleta={atleta} /></>)}
       {tab==='aprendizaje'&&atletaId&&<AprendizajePanel atletaId={atletaId} atleta={atleta} />}
       {tab==='plan'&&atletaId&&(
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
@@ -3259,16 +3255,22 @@ function DashboardAtleta({ atletaId, atleta }) {
               <SectionTitle>Zonas Running — LTHR {atleta?.lthr_run} bpm</SectionTitle>
               <Card>
                 {Object.entries(zonas.zonas||{}).map(([zona,z])=>(
-                  <div key={zona} style={{ padding:'11px 14px', borderBottom:`1px solid ${C.border}`,
-                    display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div key={zona} style={{
+                    padding:'13px 16px', borderBottom:`1px solid ${C.border}`,
+                    display:'flex', justifyContent:'space-between', alignItems:'center',
+                    borderLeft: `4px solid ${z.color||C.run}`,
+                    background: `${z.color||C.run}12`,
+                  }}>
                     <div>
-                      <span style={{ fontWeight:700, color:C.run, marginRight:8 }}>{zona}</span>
-                      <span style={{ fontWeight:500 }}>{z.nombre}</span>
-                      <div style={{ fontSize:11, color:C.text2, marginTop:2 }}>VO2: {z.vo2_pct} · Lactato: {z.lactato}</div>
+                      <span style={{ fontWeight:800, color:z.color||C.run, marginRight:8, fontSize:14 }}>{zona}</span>
+                      <span style={{ fontWeight:600 }}>{z.nombre}</span>
+                      <div style={{ fontSize:11, color:C.text2, marginTop:3 }}>VO2: {z.vo2_pct} · Lactato: {z.lactato}</div>
                     </div>
                     <div style={{ textAlign:'right' }}>
-                      <div style={{ fontSize:13, fontWeight:700, color:C.run }}>{z.pace_ref && `${z.pace_ref} /km`}</div>
-                      <div style={{ fontSize:11, color:C.text2 }}>HR {z.hr_min}–{z.hr_max} bpm</div>
+                      <div style={{ fontSize:14, fontWeight:700, color:z.color||C.run }}>
+                        {z.pace_rango || (z.pace_min && z.pace_max ? `${z.pace_min} – ${z.pace_max} /km` : z.pace_ref ? fmtPaceStr(z.pace_ref)+' /km' : '--')}
+                      </div>
+                      <div style={{ fontSize:11, color:C.text2 }}>HR {z.hr_min||'--'}–{z.hr_max||'--'} bpm</div>
                     </div>
                   </div>
                 ))}
@@ -3282,16 +3284,20 @@ function DashboardAtleta({ atletaId, atleta }) {
               <SectionTitle>Zonas Ciclismo — FTP {zonasBike?.ftp}W · {zonasBike?.w_kg} W/kg</SectionTitle>
               <Card>
                 {Object.entries(zonasBike.zonas||{}).map(([zona,z])=>(
-                  <div key={zona} style={{ padding:'11px 14px', borderBottom:`1px solid ${C.border}`,
-                    display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div key={zona} style={{
+                    padding:'13px 16px', borderBottom:`1px solid ${C.border}`,
+                    display:'flex', justifyContent:'space-between', alignItems:'center',
+                    borderLeft: `4px solid ${z.color||C.bike}`,
+                    background: `${z.color||C.bike}12`,
+                  }}>
                     <div>
-                      <span style={{ fontWeight:700, color:C.bike, marginRight:8 }}>{zona}</span>
-                      <span style={{ fontWeight:500 }}>{z.nombre}</span>
-                      <div style={{ fontSize:11, color:C.text2, marginTop:2 }}>{z.pct_ftp}</div>
+                      <span style={{ fontWeight:800, color:z.color||C.bike, marginRight:8, fontSize:14 }}>{zona}</span>
+                      <span style={{ fontWeight:600 }}>{z.nombre}</span>
+                      <div style={{ fontSize:11, color:C.text2, marginTop:3 }}>{z.pct_ftp}</div>
                     </div>
                     <div style={{ textAlign:'right' }}>
-                      <div style={{ fontSize:13, fontWeight:700, color:C.bike }}>{z.w_rango}</div>
-                      <div style={{ fontSize:11, color:C.text2 }}>HR {z.hr_min}–{z.hr_max} · {z.wkg_min} W/kg</div>
+                      <div style={{ fontSize:14, fontWeight:700, color:z.color||C.bike }}>{z.w_rango}</div>
+                      <div style={{ fontSize:11, color:C.text2 }}>HR {z.hr_min||'--'}–{z.hr_max||'--'} · {z.wkg_min||'--'} W/kg</div>
                     </div>
                   </div>
                 ))}
@@ -3305,16 +3311,20 @@ function DashboardAtleta({ atletaId, atleta }) {
               <SectionTitle>Zonas Natación — CSS {zonasSwim?.css} min/100m</SectionTitle>
               <Card>
                 {Object.entries(zonasSwim.zonas||{}).map(([zona,z])=>(
-                  <div key={zona} style={{ padding:'11px 14px', borderBottom:`1px solid ${C.border}`,
-                    display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div key={zona} style={{
+                    padding:'13px 16px', borderBottom:`1px solid ${C.border}`,
+                    display:'flex', justifyContent:'space-between', alignItems:'center',
+                    borderLeft: `4px solid ${C.swim}`,
+                    background: `${C.swim}12`,
+                  }}>
                     <div>
-                      <span style={{ fontWeight:700, color:C.swim, marginRight:8 }}>{zona}</span>
-                      <span style={{ fontWeight:500 }}>{z.nombre}</span>
-                      <div style={{ fontSize:11, color:C.text2, marginTop:2 }}>{z.descripcion}</div>
+                      <span style={{ fontWeight:800, color:C.swim, marginRight:8, fontSize:14 }}>{zona}</span>
+                      <span style={{ fontWeight:600 }}>{z.nombre}</span>
+                      <div style={{ fontSize:11, color:C.text2, marginTop:3 }}>{z.descripcion}</div>
                     </div>
                     <div style={{ textAlign:'right' }}>
-                      <div style={{ fontSize:13, fontWeight:700, color:C.swim }}>{z.pace_rango}</div>
-                      <div style={{ fontSize:11, color:C.text2 }}>HR {z.hr_min||'--'}–{z.hr_max} bpm</div>
+                      <div style={{ fontSize:14, fontWeight:700, color:C.swim }}>{z.pace_rango}</div>
+                      <div style={{ fontSize:11, color:C.text2 }}>HR {z.hr_min||'--'}–{z.hr_max||'--'} bpm</div>
                     </div>
                   </div>
                 ))}
@@ -3752,6 +3762,86 @@ function AprendizajePanel({ atletaId, atleta }) {
   )
 }
 
+
+function PerfilFisiologico({ atletaId, atleta }) {
+  const [lthrRun,  setLthrRun]  = useState(atleta?.lthr_run  || '')
+  const [lthrBike, setLthrBike] = useState(atleta?.lthr_bike || '')
+  const [lthrSwim, setLthrSwim] = useState(atleta?.lthr_swim || '')
+  const [ftp,      setFtp]      = useState(atleta?.ftp_watts || '')
+  const [css,      setCss]      = useState(atleta?.css_100m  || '')
+  const [hrMax,    setHrMax]    = useState(atleta?.hr_max    || '')
+  const [pesoKg,   setPesoKg]   = useState(atleta?.peso_kg   || '')
+  const [saving,   setSaving]   = useState(false)
+  const [saved,    setSaved]    = useState(false)
+
+  // Si cambia el atleta seleccionado, recargar los valores mostrados
+  useEffect(() => {
+    setLthrRun(atleta?.lthr_run  || '')
+    setLthrBike(atleta?.lthr_bike || '')
+    setLthrSwim(atleta?.lthr_swim || '')
+    setFtp(atleta?.ftp_watts || '')
+    setCss(atleta?.css_100m  || '')
+    setHrMax(atleta?.hr_max    || '')
+    setPesoKg(atleta?.peso_kg   || '')
+  }, [atletaId])
+
+  const guardar = async () => {
+    setSaving(true)
+    try {
+      const body = {
+        lthr_run:  lthrRun  ? Number(lthrRun)  : null,
+        lthr_bike: lthrBike ? Number(lthrBike) : null,
+        lthr_swim: lthrSwim ? Number(lthrSwim) : null,
+        ftp_watts: ftp      ? Number(ftp)      : null,
+        css_100m:  css      ? Number(css)      : null,
+        hr_max:    hrMax    ? Number(hrMax)    : null,
+        peso_kg:   pesoKg   ? Number(pesoKg)   : null,
+      }
+      await axios.put(`${API}/atletas/${atletaId}`, body, { headers: { 'Content-Type': 'application/json' } })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (e) {
+      alert('Error guardando: ' + (e?.response?.data?.error || e.message))
+    }
+    setSaving(false)
+  }
+
+  const Campo = ({ label, value, setValue, unit, placeholder }) => (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 12, color: C.text2, marginBottom: 4 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input type="number" value={value} placeholder={placeholder}
+          onChange={e => setValue(e.target.value)}
+          style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.border}`,
+            background: C.bg2, color: C.text, fontSize: 14 }} />
+        <span style={{ fontSize: 12, color: C.text2, minWidth: 50 }}>{unit}</span>
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{ marginBottom: 28, paddingBottom: 24, borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Perfil fisiologico</div>
+      <div style={{ fontSize: 12, color: C.text2, marginBottom: 16 }}>
+        Estos valores son la base real de las zonas de entrenamiento de este atleta.
+        Si quedan vacios, NOAH usa un valor generico de referencia (no personalizado).
+      </div>
+      <Campo label="LTHR Running"  value={lthrRun}  setValue={setLthrRun}  unit="bpm" placeholder="ej: 165" />
+      <Campo label="LTHR Ciclismo" value={lthrBike} setValue={setLthrBike} unit="bpm" placeholder="ej: 158" />
+      <Campo label="LTHR Natacion" value={lthrSwim} setValue={setLthrSwim} unit="bpm" placeholder="ej: 150" />
+      <Campo label="FTP (potencia umbral)" value={ftp} setValue={setFtp} unit="W" placeholder="ej: 220" />
+      <Campo label="CSS (ritmo critico natacion)" value={css} setValue={setCss} unit="min/100m" placeholder="ej: 1.75" />
+      <Campo label="FC Maxima" value={hrMax} setValue={setHrMax} unit="bpm" placeholder="ej: 190" />
+      <Campo label="Peso" value={pesoKg} setValue={setPesoKg} unit="kg" placeholder="ej: 72" />
+      <button onClick={guardar} disabled={saving}
+        style={{ padding: '10px 20px', borderRadius: 8, border: 'none',
+          background: saved ? C.success : C.purple, color: '#fff', fontWeight: 700,
+          cursor: saving ? 'wait' : 'pointer', fontSize: 13 }}>
+        {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar perfil fisiologico'}
+      </button>
+    </div>
+  )
+}
 
 function PerfilDisponibilidad({ atletaId, atleta }) {
   const dep = atleta?.deporte_ppal || atleta?.deporte || 'running'
