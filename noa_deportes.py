@@ -75,38 +75,58 @@ class ZonasRunning:
         ('Z6', 'Capacidad anaeróbica',          1.06, 1.30, '>12', '>100%', '>106% LTHR',   'Friel Anaerobic / Coggan',        '#6B21A8'),
     ]
 
-    def __init__(self, lthr: float, hr_max: float, pace_z2_real: float = None, peso_kg: float = 75):
-        # Si no hay LTHR real cargado para el atleta, estimar desde hr_max
-        # (85% de HRmax es una aproximacion estandar de umbral) en vez de
-        # dejar pasar None, que rompe todos los calculos de zona mas abajo.
+    def __init__(self, lthr: float, hr_max: float, pace_z2_real: float = None,
+                 peso_kg: float = 75, pace_umbral: float = None):
+        # Si no hay LTHR real, estimarlo desde hr_max (85% es aprox estandar de umbral)
         self.lthr        = lthr or (hr_max * 0.85 if hr_max else 160)
         self.hr_max      = hr_max
-        self.pace_z2     = pace_z2_real or self._estimar_pace_z2()
         self.peso_kg     = peso_kg
+        # pace_umbral (Z4) es la referencia principal para calcular todas las zonas.
+        # Si no viene, estimar desde el LTHR usando la funcion anterior.
+        # Si viene pace_z2_real pero no pace_umbral, convertir Z2 a umbral
+        # multiplicando por 0.81/1.0 = 0.81 (Z2 center es ~81% LTHR, Z4 es ~97%).
+        if pace_umbral:
+            self.pace_umbral = pace_umbral
+        elif pace_z2_real:
+            # Z2 es aprox 5-7% mas lento que el umbral
+            self.pace_umbral = pace_z2_real * 0.92
+        else:
+            self.pace_umbral = self._estimar_pace_umbral()
+        # Mantener pace_z2 para compatibilidad con codigo existente
+        self.pace_z2 = self.pace_umbral / 0.92
+
+    def _estimar_pace_umbral(self) -> float:
+        """
+        Estima el pace de umbral (Z4) desde el LTHR cuando no hay
+        datos reales de Garmin ni test de campo.
+        Aproximacion empirica: LTHR 160 bpm -> pace umbral ~4:58/km.
+        Cada bpm de diferencia cambia el pace ~0.05 min/km.
+        """
+        return 4.98 + (160 - self.lthr) * 0.05
 
     def _estimar_pace_z2(self) -> float:
-        """Estimación de pace Z2 desde LTHR si no hay datos reales."""
-        # Aproximación empírica: LTHR 160 → ~5:30/km, LTHR 140 → ~6:30/km
-        return 5.5 + (160 - self.lthr) * 0.05
+        # Mantener por compatibilidad; calcula Z2 desde el umbral estimado
+        return self._estimar_pace_umbral() / 0.92
 
     def _pace_para_zona(self, pct_min: float, pct_max: float) -> tuple:
         """
-        Calcula pace mínimo y máximo para una zona.
-        Pace Z2 real como referencia central.
+        Calcula pace minimo y maximo para una zona usando el pace de
+        umbral (Z4) como referencia central.
+
+        El pace varia INVERSAMENTE con la intensidad:
+        - Mas intensidad (mayor % LTHR) = pace mas rapido (numero menor)
+        - La Z4 (umbral, 96.5% LTHR) tiene como referencia el pace_umbral
+
+        Formula: pace_zona = pace_umbral * (z4_center / ref_pct)
+        Donde z4_center = 0.965 (centro de Z4: 93-100% LTHR)
         """
-        # Factor de escala: pace varía inversamente con % LTHR
-        # Z2 center = 0.81 LTHR → pace_z2_real
-        z2_center = 0.81
-        ref_pct = (pct_min + pct_max) / 2
+        z4_center = 0.965  # centro de Z4 (umbral)
+        ref_pct   = (pct_min + pct_max) / 2
+        if ref_pct <= 0:
+            ref_pct = 0.50
 
-        # pace escalado desde Z2
-        if ref_pct > 0:
-            factor = z2_center / ref_pct
-            pace_center = self.pace_z2 * factor
-        else:
-            pace_center = self.pace_z2 * 1.3
-
-        margin = 0.03
+        pace_center = self.pace_umbral * (z4_center / ref_pct)
+        margin = 0.025  # ±2.5% alrededor del centro de cada zona
         return pace_center * (1 + margin), pace_center * (1 - margin)
 
     def _fmt_pace(self, p: float) -> str:

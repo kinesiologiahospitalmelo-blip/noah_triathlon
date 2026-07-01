@@ -1837,7 +1837,11 @@ def get_zonas_deporte(atleta_id, deporte):
             if rp and rp[0]: pace_z2 = round(float(rp[0]), 2)
         except Exception:
             conn.rollback()  # defensivo — la conexión se cierra justo después
-        z = ZonasRunning(lthr=lthr_run, hr_max=hr_max, pace_z2_real=pace_z2, peso_kg=peso)
+        # pace_umbral_run es el dato real calculado/traido de Garmin.
+        # Si no existe aun, ZonasRunning lo estima desde el LTHR.
+        pace_umbral_run = atleta.get('pace_umbral_run')
+        z = ZonasRunning(lthr=lthr_run, hr_max=hr_max, pace_z2_real=pace_z2,
+                         peso_kg=peso, pace_umbral=pace_umbral_run)
         conn.close()
         return ok({'deporte':'running','referencia':lthr_run,
                    'zonas':z.calcular(), 'tsb':tsb, 'ctl':ctl,
