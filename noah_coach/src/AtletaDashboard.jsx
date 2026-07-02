@@ -463,8 +463,8 @@ function WorkoutChart({ sesion, atletaId, mostrarGrafico = true }) {
 
       {/* Referencia de zona del atleta — SOLO watts/pace, nunca HR */}
       {(refZonaStr || sugerenciaPisoTecho) && (
-        <div style={{ fontSize:11, color:NOAH_C.ink3, marginBottom:10, padding:'8px 12px',
-          background:'#F9FAFB', borderRadius:8, border:`1px solid ${NOAH_C.border}` }}>
+        <div style={{ fontSize:11, color:'rgba(255,255,255,0.55)', marginBottom:10, padding:'8px 12px',
+          background:'rgba(255,255,255,0.04)', borderRadius:8, border:`1px solid ${NOAH_C.border}` }}>
           {refZonaStr && <span>Referencia {zonaPrincipal}: <b style={{color:sc.color}}>{refZonaStr}</b></span>}
           {refZonaStr && sugerenciaPisoTecho && <span> · </span>}
           {sugerenciaPisoTecho && <span style={{fontStyle:'italic'}}>{sugerenciaPisoTecho}</span>}
@@ -3590,7 +3590,7 @@ export default function AtletaDashboard({ atletaId }) {
         radial-gradient(circle at 12% -5%, rgba(167,139,250,0.13) 0%, transparent 42%),
         radial-gradient(circle at 88% 8%, rgba(56,189,248,0.10) 0%, transparent 42%),
         radial-gradient(circle at 50% 105%, rgba(52,211,153,0.07) 0%, transparent 50%),
-        linear-gradient(145deg, #0F1B35 0%, #132040 55%, #0A1628 100%)
+        linear-gradient(145deg, #0A0A0F 0%, #0D0D14 55%, #080810 100%)
       `, fontFamily:'Inter, system-ui, -apple-system, sans-serif' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -3632,136 +3632,118 @@ export default function AtletaDashboard({ atletaId }) {
         }
       `}</style>
 
-      {/* HEADER — imagen de fondo + glassmorphism flotante */}
-      <div style={{
-        position: 'relative',
-        overflow: 'hidden',
-        minHeight: 90,
-      }}>
-        {/* Imagen de fondo según deporte */}
+      {/* HEADER estilo Garmin — imagen hero grande (30%), nombre prominente,
+          botones azules, logo arriba. Logica de sync identica. */}
+      <div style={{ position:'relative', overflow:'hidden', minHeight:'85vh' }}>
+        {/* Imagen hero */}
         <div style={{
-          position: 'absolute', inset: 0,
-          backgroundImage: deporte === 'cycling'
-            ? 'url(https://images.unsplash.com/photo-1541625602330-2277a4c46182?w=1400&q=80)'
-            : deporte === 'swimming'
-            ? 'url(https://images.unsplash.com/photo-1560090995-01632a28895b?w=1400&q=80)'
-            : deporte === 'triatlon'
-            ? 'url(https://images.unsplash.com/photo-1452626038306-9aae5e071dd3?w=1400&q=80)'
-            : 'url(https://images.unsplash.com/photo-1502904550040-7534597429ae?w=1400&q=80)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center 30%',
-          opacity: 0.65,
-          filter: 'saturate(1.3)',
+          position:'absolute', inset:0,
+          backgroundImage:'url(/assets/hero_dashboard.png)',
+          backgroundSize:'cover',
+          backgroundPosition:'center 25%',
+          filter:'saturate(1.05)',
         }}/>
-        {/* Overlay gradiente */}
+        {/* Overlay de abajo hacia arriba — negro abajo, transparente arriba */}
         <div style={{
-          position: 'absolute', inset: 0,
-          background: 'linear-gradient(90deg, rgba(10,15,30,0.82) 0%, rgba(10,15,30,0.50) 60%, rgba(10,15,30,0.75) 100%)',
+          position:'absolute', inset:0,
+          background:'linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.30) 30%, transparent 60%)',
         }}/>
-        {/* Contenido flotante */}
-        <div style={{
-          position: 'relative', zIndex: 1,
-          backdropFilter: 'blur(2px)',
-          WebkitBackdropFilter: 'blur(2px)',
-          padding: '14px 16px',
-          display: 'flex', flexDirection:'column', gap:10,
-          borderBottom: '1px solid rgba(255,255,255,0.07)',
-        }}>
-          {/* Fila 1 — logo + nombre/fecha, prolijo y simétrico */}
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
-            <div>
-              <div style={{ display:'flex', alignItems:'baseline', gap:1 }}>
-                {['N','O','A','H'].map((l,i) => (
-                  <span key={i} className="noah-logo-letter" style={{
-                    fontSize: 22, fontWeight: 900, letterSpacing: 5,
-                    color: i%2===1 ? NOAH_C.run : '#fff',
-                    animationDelay: `${i*0.08}s`,
-                  }}>{l}</span>
-                ))}
-              </div>
-              <div style={{ fontSize:8, color:'rgba(255,255,255,0.3)', letterSpacing:2, marginTop:2, textTransform:'uppercase' }}>
-                Never Over, Always Higher
-              </div>
+        {/* Contenido */}
+        <div style={{ position:'relative', zIndex:1, display:'flex', flexDirection:'column', minHeight:'85vh' }}>
+          {/* Logo + logout arriba */}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px' }}>
+            <div style={{ display:'flex', alignItems:'baseline', gap:1 }}>
+              {['N','O','A','H'].map((l,i) => (
+                <span key={i} className="noah-logo-letter" style={{
+                  fontSize:20, fontWeight:900, letterSpacing:4,
+                  color: i%2===1 ? NOAH_C.run : '#fff',
+                  animationDelay:`${i*0.08}s`,
+                }}>{l}</span>
+              ))}
             </div>
-            <div style={{ textAlign:'right', minWidth:0, display:'flex', alignItems:'flex-start', gap:8 }}>
-              <div>
-                <div className="noah-athlete-name" style={{ fontSize:13, fontWeight:700, color:'#fff',
-                  letterSpacing:0.2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:170 }}>
-                  {atleta?.nombre||'...'} — {deporteLabel}
-                </div>
-                <div style={{ fontSize:10, color:'rgba(255,255,255,0.4)', marginTop:2 }}>{hoyStr}</div>
-              </div>
-              <button onClick={() => {
-                try {
-                  const raw = localStorage.getItem('noah_sesion')
-                  const s = raw ? JSON.parse(raw) : null
-                  if (s?.token) authFetch(`${API}/logout`, { method:'POST' }).catch(()=>{})
-                } catch {}
-                localStorage.removeItem('noah_sesion')
-                window.location.href = '/login'
-              }} title="Cerrar sesión" style={{
-                width:24, height:24, borderRadius:'50%', flexShrink:0, marginTop:1,
-                background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)',
-                color:'rgba(255,255,255,0.4)', display:'flex', alignItems:'center', justifyContent:'center',
-                cursor:'pointer',
-              }}>
-                <LogOut size={12}/>
-              </button>
-            </div>
+            <button onClick={() => {
+              try {
+                const raw = localStorage.getItem('noah_sesion')
+                const s = raw ? JSON.parse(raw) : null
+                if (s?.token) authFetch(`${API}/logout`, { method:'POST' }).catch(()=>{})
+              } catch {}
+              localStorage.removeItem('noah_sesion')
+              window.location.href = '/login'
+            }} title="Cerrar sesión" style={{
+              width:28, height:28, borderRadius:'50%', flexShrink:0,
+              background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)',
+              color:'rgba(255,255,255,0.5)', display:'flex', alignItems:'center', justifyContent:'center',
+              cursor:'pointer',
+            }}>
+              <LogOut size={13}/>
+            </button>
           </div>
 
-          {/* Fila 2 — alerta de sync (si hay) en ancho completo, nunca cortada */}
-          {syncStatus?.alerta && (
-            <div style={{ fontSize:10, color:'#FCA5A5', background:'rgba(239,68,68,0.12)',
-              padding:'4px 10px', borderRadius:7, border:'1px solid rgba(239,68,68,0.2)',
-              display:'flex', alignItems:'center', gap:5, width:'fit-content' }}>
-              <AlertTriangle size={11}/> Sin sync hace {syncStatus.dias_sin_sync}d
-            </div>
-          )}
+          {/* Espacio flexible empuja el nombre hacia abajo */}
+          <div style={{ flex:1 }}/>
 
-          {/* Fila 3 — botones de sync, simétricos, mitad y mitad del ancho */}
-          <div style={{display:'flex',gap:8}}>
-            <button className="noah-sync-btn" onClick={async () => {
-              setSyncBioLoad(true); setSyncResult(null)
-              try {
-                const r = await axios.post(`${API}/atletas/${id}/sincronizar`, {modo:'bio'})
-                const bio = r.data.data
-                const detalles = [bio?.body_battery&&`BB:${bio.body_battery}`,bio?.hr_reposo&&`FC:${bio.hr_reposo}`,bio?.sleep_h&&`Sueño:${bio.sleep_h}h`,bio?.hrv_ms&&`HRV:${bio.hrv_ms}ms`].filter(Boolean).join(' · ')
-                setSyncResult({tipo:'bio', ok:bio?.exito, msg: bio?.exito ? `Biomarcadores actualizados${detalles?' — '+detalles:''}` : 'Sin datos nuevos de Garmin'})
-                axios.get(`${API}/atletas/${id}/estado`).then(r2=>setEstado(r2.data.data)).catch(()=>{})
-                axios.get(`${API}/atletas/${id}/sync_status`).then(r2=>setSyncStatus(r2.data.data)).catch(()=>{})
-              } catch { setSyncResult({tipo:'bio', ok:false, msg:'Error al sincronizar'}) }
-              setSyncBioLoad(false)
-            }} disabled={syncBioLoading} style={{
-              flex:1, padding:'7px 12px', borderRadius:9, fontSize:11, fontWeight:700,
-              background:'rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.8)',
-              border:'1px solid rgba(255,255,255,0.18)', cursor:'pointer',
-              display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+          {/* Nombre + fecha + alerta + botones abajo */}
+          <div style={{ padding:'0 16px 16px' }}>
+            <div className="noah-athlete-name" style={{
+              fontSize:24, fontWeight:800, color:'#fff',
+              textShadow:'0 2px 8px rgba(0,0,0,0.7)',
+              marginBottom:2,
             }}>
-              {syncBioLoading ? <RotateCw size={12} className="noah-spin"/> : <Moon size={12}/>} Bio
-            </button>
-            <button className="noah-sync-btn" onClick={async () => {
-              setSyncLoading(true); setSyncResult(null)
-              try {
-                const r = await axios.post(`${API}/atletas/${id}/sincronizar`, {modo:'actividad'})
-                const out = r.data.data?.output || ''
-                const nueva = out.includes('nueva') || out.includes('guardado')
-                setSyncResult({tipo:'actividad', ok:r.data.data?.exito, nueva, msg: nueva ? 'Actividad descargada' : 'Sin actividades nuevas'})
-                if (nueva) {
+              {atleta?.nombre||'...'}
+            </div>
+            <div style={{ fontSize:12, color:'rgba(255,255,255,0.55)', marginBottom:12 }}>
+              {deporteLabel} · {hoyStr}
+            </div>
+            {syncStatus?.alerta && (
+              <div style={{ fontSize:10, color:'#FCA5A5', background:'rgba(239,68,68,0.12)',
+                padding:'4px 10px', borderRadius:7, border:'1px solid rgba(239,68,68,0.2)',
+                display:'flex', alignItems:'center', gap:5, width:'fit-content', marginBottom:10 }}>
+                <AlertTriangle size={11}/> Sin sync hace {syncStatus.dias_sin_sync}d
+              </div>
+            )}
+            <div style={{ display:'flex', gap:10 }}>
+              <button className="noah-sync-btn" onClick={async () => {
+                setSyncBioLoad(true); setSyncResult(null)
+                try {
+                  const r = await axios.post(`${API}/atletas/${id}/sincronizar`, {modo:'bio'})
+                  const bio = r.data.data
+                  const detalles = [bio?.body_battery&&`BB:${bio.body_battery}`,bio?.hr_reposo&&`FC:${bio.hr_reposo}`,bio?.sleep_h&&`Sueño:${bio.sleep_h}h`,bio?.hrv_ms&&`HRV:${bio.hrv_ms}ms`].filter(Boolean).join(' · ')
+                  setSyncResult({tipo:'bio', ok:bio?.exito, msg: bio?.exito ? `Biomarcadores actualizados${detalles?' — '+detalles:''}` : 'Sin datos nuevos de Garmin'})
                   axios.get(`${API}/atletas/${id}/estado`).then(r2=>setEstado(r2.data.data)).catch(()=>{})
-                  axios.get(`${API}/atletas/${id}/ultima_actividad`).then(r2=>setActReal(r2.data.data?.actividad)).catch(()=>{})
                   axios.get(`${API}/atletas/${id}/sync_status`).then(r2=>setSyncStatus(r2.data.data)).catch(()=>{})
-                }
-              } catch { setSyncResult({tipo:'actividad', ok:false, msg:'Error al sincronizar'}) }
-              setSyncLoading(false)
-            }} disabled={syncLoading} style={{
-              flex:1, padding:'7px 12px', borderRadius:9, fontSize:11, fontWeight:700,
-              background:'rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.8)',
-              border:'1px solid rgba(255,255,255,0.18)', cursor:'pointer',
-              display:'flex', alignItems:'center', justifyContent:'center', gap:5,
-            }}>
-              {syncLoading ? <RotateCw size={12} className="noah-spin"/> : <Footprints size={12}/>} Actividad
-            </button>
+                } catch { setSyncResult({tipo:'bio', ok:false, msg:'Error al sincronizar'}) }
+                setSyncBioLoad(false)
+              }} disabled={syncBioLoading} style={{
+                flex:1, padding:'11px 16px', borderRadius:10, fontSize:13, fontWeight:700,
+                background:'#007AFF', color:'#fff', border:'none', cursor:'pointer',
+                display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                boxShadow:'0 4px 14px rgba(0,122,255,0.45)',
+              }}>
+                {syncBioLoading ? <RotateCw size={13} className="noah-spin"/> : <Moon size={13}/>} Sincronizar Bio
+              </button>
+              <button className="noah-sync-btn" onClick={async () => {
+                setSyncLoading(true); setSyncResult(null)
+                try {
+                  const r = await axios.post(`${API}/atletas/${id}/sincronizar`, {modo:'actividad'})
+                  const out = r.data.data?.output || ''
+                  const nueva = out.includes('nueva') || out.includes('guardado')
+                  setSyncResult({tipo:'actividad', ok:r.data.data?.exito, nueva, msg: nueva ? 'Actividad descargada' : 'Sin actividades nuevas'})
+                  if (nueva) {
+                    axios.get(`${API}/atletas/${id}/estado`).then(r2=>setEstado(r2.data.data)).catch(()=>{})
+                    axios.get(`${API}/atletas/${id}/ultima_actividad`).then(r2=>setActReal(r2.data.data?.actividad)).catch(()=>{})
+                    axios.get(`${API}/atletas/${id}/sync_status`).then(r2=>setSyncStatus(r2.data.data)).catch(()=>{})
+                  }
+                } catch { setSyncResult({tipo:'actividad', ok:false, msg:'Error al sincronizar'}) }
+                setSyncLoading(false)
+              }} disabled={syncLoading} style={{
+                flex:1, padding:'11px 16px', borderRadius:10, fontSize:13, fontWeight:700,
+                background:'#007AFF', color:'#fff', border:'none', cursor:'pointer',
+                display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                boxShadow:'0 4px 14px rgba(0,122,255,0.45)',
+              }}>
+                {syncLoading ? <RotateCw size={13} className="noah-spin"/> : <Footprints size={13}/>} Actividad
+              </button>
+            </div>
           </div>
         </div>
       </div>
