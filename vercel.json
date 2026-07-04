@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "cd noa-coach && npm install && npm run build",
+  "outputDirectory": "noa-coach/build",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/app.py" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
