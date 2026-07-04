@@ -486,20 +486,79 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
     if not actividades:
         print(f'    Sin actividades para {fecha_str}'); return []
 
+    # Mapeo completo de typeKey de Garmin -> nombre NOAH
+    # Cubre todos los tipos posibles para no perder ninguna actividad
     TIPO_MAP = {
-        'running': 'Carrera', 'treadmill_running': 'Entrenamiento en cinta',
-        'indoor_cycling': 'Ciclismo en sala', 'cycling': 'Ciclismo',
-        'open_water_swimming': 'Natación en aguas abiertas',
-        'lap_swimming': 'Natación en piscina', 'pool_swimming': 'Natación en piscina',
+        # Running — todas las variantes
+        'running':              'Carrera',
+        'trail_running':        'Carrera',
+        'treadmill_running':    'Entrenamiento en cinta',
+        'indoor_running':       'Entrenamiento en cinta',
+        'track_running':        'Carrera',
+        'ultra_run':            'Carrera',
+        'obstacle_run':         'Carrera',
+        'street_running':       'Carrera',
+        'virtual_run':          'Entrenamiento en cinta',
+        'snow_shoe_ws':         'Carrera',
+        # Cycling — todas las variantes
+        'cycling':              'Ciclismo',
+        'road_biking':          'Ciclismo',
+        'mountain_biking':      'Ciclismo de montaña',
+        'indoor_cycling':       'Ciclismo en sala',
+        'virtual_ride':         'Ciclismo en sala',
+        'virtual_cycling':      'Ciclismo en sala',
+        'gravel_cycling':       'Ciclismo',
+        'bmx':                  'Ciclismo',
+        'cyclocross':           'Ciclismo',
+        'hand_cycling':         'Ciclismo',
+        'recumbent_cycling':    'Ciclismo',
+        'e_bike_mountain':      'Ciclismo de montaña',
+        'e_bike_fitness':       'Ciclismo',
+        # Swimming — todas las variantes
+        'lap_swimming':         'Natación en piscina',
+        'pool_swimming':        'Natación en piscina',
+        'open_water_swimming':  'Natación en aguas abiertas',
+        # Multisport / triathlon
+        'multi_sport':          'Multideporte',
+        'triathlon':            'Triatlón',
+        'duathlon':             'Multideporte',
+        'swimrun':              'Multideporte',
+        # Otros (registrados pero no como sesion principal)
+        'hiking':               'Senderismo',
+        'walking':              'Caminar',
+        'strength_training':    'Entreno de fuerza',
+        'fitness_equipment':    'Entreno de fuerza',
+        'hiit':                 'HIIT',
+        'cardio':               'HIIT',
+        'yoga':                 'Otros',
+        'pilates':              'Otros',
+        'elliptical':           'Otros',
+        'rowing':               'Otros',
+        'paddling':             'Otros',
+        'kayaking':             'Otros',
     }
 
     sesiones_nuevas = []
     for act in actividades:
-        tipo_raw    = act.get('activityType', {}).get('typeKey', '')
-        tipo_garmin = TIPO_MAP.get(tipo_raw, 'Otros')
-        sport       = TIPO_A_SPORT.get(tipo_garmin)
+        tipo_raw = act.get('activityType', {})
+        if isinstance(tipo_raw, dict):
+            tipo_raw = tipo_raw.get('typeKey', '') or tipo_raw.get('typeName', '')
+        tipo_raw = str(tipo_raw).lower().strip()
+
+        tipo_garmin = TIPO_MAP.get(tipo_raw)
+        if not tipo_garmin:
+            # Busqueda parcial para tipos no mapeados
+            for k, v in TIPO_MAP.items():
+                if k in tipo_raw or tipo_raw in k:
+                    tipo_garmin = v; break
+        if not tipo_garmin:
+            tipo_garmin = 'Otros'
+
+        sport = TIPO_A_SPORT.get(tipo_garmin)
         if sport not in DEPORTES_VALIDOS:
-            print(f'    Ignorando: {tipo_raw}'); continue
+            if tipo_raw not in ('walking', 'yoga', 'pilates'):  # no loguear los esperados
+                print(f'    Ignorando: {tipo_raw}')
+            continue
 
         row = {
             'Tipo de actividad':          tipo_garmin,
