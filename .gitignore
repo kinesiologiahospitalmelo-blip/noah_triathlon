@@ -1,0 +1,14 @@
+__pycache__/ 
+*.pyc 
+noah_modelos/ 
+noa.db 
+zip/ 
+fix*.py 
+check_*.py 
+agregar_*.py 
+*_backup* 
+app_backup.py 
+migrar_datos.py 
+onboarding_atleta.py 
+crear_usuario_jimena.py 
+noa-coach/noa.db 
