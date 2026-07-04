@@ -1,7 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd noa-coach && npm install && npm run build",
-  "outputDirectory": "noa-coach/build",
+  "builds": [
+    { "src": "app.py", "use": "@vercel/python" },
+    {
+      "src": "noah_coach/package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "build", "routePrefix": "/" }
+    }
+  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/app.py" },
     { "handle": "filesystem" },
