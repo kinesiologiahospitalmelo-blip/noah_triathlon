@@ -4,15 +4,13 @@ import { BrowserRouter, Routes, Route, useParams, Navigate, useNavigate } from '
 import axios from 'axios'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, BarChart, Bar,
-  ScatterChart, Scatter, ReferenceLine, AreaChart, Area
+  CartesianGrid, BarChart, Bar
 } from 'recharts'
 import AtletaDashboard from './AtletaDashboard'
 import SeccionRace from './SeccionRace'
 import SeccionTests from './SeccionTests'
 import OnboardingAtleta from './OnboardingAtleta'
 import GraficoActividadStreams from './GraficoActividadStreams'
-import PantallaCarga from './PantallaCarga'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
 // como ya funcionaba. En Vercel (1 sola dirección para front y backend)
@@ -495,15 +493,19 @@ function ActividadRecienteCoach({ atletaId, lthr = 162, presc }) {
     setEstado({ acts: null, acts7: {}, fechaSel: null })
 
     let cancelado = false
-    const desde = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10)
-    const hasta  = new Date().toISOString().slice(0, 10)
+    const dias = []
+    for (let i = 6; i >= 0; i--)
+      dias.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10))
 
-    authFetch(`${API}/atletas/${atletaId}/actividades_rango?desde=${desde}&hasta=${hasta}`)
-      .then(r => r.json())
-      .then(r => {
-        if (cancelado) return
-        const acts7 = r.data?.actividades || {}
-        const results = Object.entries(acts7).map(([dia, acts]) => ({ dia, acts }))
+    Promise.all(dias.map(d =>
+      authFetch(`${API}/atletas/${atletaId}/actividades_dia?fecha=${d}&exacto=true`)
+        .then(r => r.json())
+        .then(r => ({ dia: d, acts: r.data?.actividades || [] }))
+        .catch(() => ({ dia: d, acts: [] }))
+    )).then(results => {
+      if (cancelado) return
+      const acts7 = {}
+      results.forEach(({ dia, acts }) => { acts7[dia] = acts })
       const conActs = results.filter(r => r.acts.length > 0).sort((a,b) => b.dia > a.dia ? 1 : -1)
       // Setear todo en un solo setState — cero renders intermedios
       setEstado({
@@ -638,16 +640,16 @@ function CalendarioMensual({ atletaId, presc, dark = false }) {
   useEffect(() => {
     if (!atletaId) return
     setCargando(true); setActsMes({})
-    const desde = primerDia.toISOString().slice(0, 10)
-    const hasta  = ultimoDia.toISOString().slice(0, 10)
-    authFetch(`${API}/atletas/${atletaId}/actividades_rango?desde=${desde}&hasta=${hasta}`)
-      .then(r => r.json())
-      .then(r => {
-        const map = r.data?.actividades || {}
-        setActsMes(map)
-        setCargando(false)
-      })
-      .catch(() => { setActsMes({}); setCargando(false) })
+    const dias = []
+    for (let d = new Date(primerDia); d <= ultimoDia; d.setDate(d.getDate()+1))
+      dias.push(d.toISOString().slice(0,10))
+    Promise.all(dias.map(dia =>
+      authFetch(`${API}/atletas/${atletaId}/actividades_dia?fecha=${dia}&exacto=true`)
+        .then(r=>r.json()).then(r=>({ dia, acts: r.data?.actividades||[] }))
+        .catch(()=>({ dia, acts:[] }))
+    )).then(results => {
+      const map = {}; results.forEach(({dia,acts})=>{ map[dia]=acts }); setActsMes(map); setCargando(false)
+    })
   }, [atletaId, mesOffset])
 
   const sesiones  = presc?.prescripcion?.sesiones || []
@@ -3100,7 +3102,7 @@ function DashboardAtleta({ atletaId, atleta }) {
   const dep = atleta.deporte_ppal||atleta.deporte||'running'
   const s = SPORT[dep]||SPORT.running
 
-  const tabs = [{id:'semana',label:'📅 Semana'},{id:'calendario',label:'🗓 Calendario'},{id:'estado',label:'📊 Estado'},{id:'diagnostico',label:'🔍 Diagnóstico'},{id:'zonas',label:'🎯 Zonas'},{id:'fases',label:'📈 Fases'},{id:'intel',label:'🧠 NOAH Intel'},{id:'race',label:'🏁 Race'},{id:'tests',label:'🔬 Tests'},{id:'clustering',label:'🧬 Clusters'},{id:'optimizer',label:'🎯 Optimizer'},{id:'perfil',label:'⚙ Perfil'},{id:'aprendizaje',label:'📈 Aprendizaje'},{id:'analisis_ciclismo',label:'⚡ Análisis Ciclismo'}]
+  const tabs = [{id:'semana',label:'📅 Semana'},{id:'calendario',label:'🗓 Calendario'},{id:'estado',label:'📊 Estado'},{id:'diagnostico',label:'🔍 Diagnóstico'},{id:'zonas',label:'🎯 Zonas'},{id:'fases',label:'📈 Fases'},{id:'intel',label:'🧠 NOAH Intel'},{id:'race',label:'🏁 Race'},{id:'tests',label:'🔬 Tests'},{id:'clustering',label:'🧬 Clusters'},{id:'optimizer',label:'🎯 Optimizer'},{id:'perfil',label:'⚙ Perfil'},{id:'aprendizaje',label:'📈 Aprendizaje'}]
 
   return (
     <div style={{ flex:1, overflow:'auto', padding:'22px 26px' }}>
@@ -3218,9 +3220,8 @@ function DashboardAtleta({ atletaId, atleta }) {
 
       {tab==='clustering'&&atletaId&&<ClusteringPanel atletaId={atletaId} atleta={atleta} />}
       {tab==='optimizer'&&atletaId&&<OptimizerPanel atletaId={atletaId} atleta={atleta} />}
-      {tab==='perfil'&&atletaId&&(<><PerfilFisiologico atletaId={atletaId} atleta={atleta} /><PerfilDisponibilidad atletaId={atletaId} atleta={atleta} /></>)}
+      {tab==='perfil'&&atletaId&&<PerfilDisponibilidad atletaId={atletaId} atleta={atleta} />}
       {tab==='aprendizaje'&&atletaId&&<AprendizajePanel atletaId={atletaId} atleta={atleta} />}
-      {tab==='analisis_ciclismo'&&atletaId&&<AnalisisCiclismoPanel atletaId={atletaId} atleta={atleta} ftp={atleta?.ftp_watts||200} cadenciaOptima={atleta?.cadencia_optima||85} />}
       {tab==='plan'&&atletaId&&(
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
           <SectionTitle>Planificación — A/T/R/Taper</SectionTitle>
@@ -3257,22 +3258,16 @@ function DashboardAtleta({ atletaId, atleta }) {
               <SectionTitle>Zonas Running — LTHR {atleta?.lthr_run} bpm</SectionTitle>
               <Card>
                 {Object.entries(zonas.zonas||{}).map(([zona,z])=>(
-                  <div key={zona} style={{
-                    padding:'13px 16px', borderBottom:`1px solid ${C.border}`,
-                    display:'flex', justifyContent:'space-between', alignItems:'center',
-                    borderLeft: `4px solid ${z.color||C.run}`,
-                    background: `${z.color||C.run}12`,
-                  }}>
+                  <div key={zona} style={{ padding:'11px 14px', borderBottom:`1px solid ${C.border}`,
+                    display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                     <div>
-                      <span style={{ fontWeight:800, color:z.color||C.run, marginRight:8, fontSize:14 }}>{zona}</span>
-                      <span style={{ fontWeight:600 }}>{z.nombre}</span>
-                      <div style={{ fontSize:11, color:C.text2, marginTop:3 }}>VO2: {z.vo2_pct} · Lactato: {z.lactato}</div>
+                      <span style={{ fontWeight:700, color:C.run, marginRight:8 }}>{zona}</span>
+                      <span style={{ fontWeight:500 }}>{z.nombre}</span>
+                      <div style={{ fontSize:11, color:C.text2, marginTop:2 }}>VO2: {z.vo2_pct} · Lactato: {z.lactato}</div>
                     </div>
                     <div style={{ textAlign:'right' }}>
-                      <div style={{ fontSize:14, fontWeight:700, color:z.color||C.run }}>
-                        {z.pace_rango || (z.pace_min && z.pace_max ? `${z.pace_min} – ${z.pace_max} /km` : z.pace_ref ? fmtPaceStr(z.pace_ref)+' /km' : '--')}
-                      </div>
-                      <div style={{ fontSize:11, color:C.text2 }}>HR {z.hr_min||'--'}–{z.hr_max||'--'} bpm</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:C.run }}>{z.pace_ref && `${z.pace_ref} /km`}</div>
+                      <div style={{ fontSize:11, color:C.text2 }}>HR {z.hr_min}–{z.hr_max} bpm</div>
                     </div>
                   </div>
                 ))}
@@ -3286,20 +3281,16 @@ function DashboardAtleta({ atletaId, atleta }) {
               <SectionTitle>Zonas Ciclismo — FTP {zonasBike?.ftp}W · {zonasBike?.w_kg} W/kg</SectionTitle>
               <Card>
                 {Object.entries(zonasBike.zonas||{}).map(([zona,z])=>(
-                  <div key={zona} style={{
-                    padding:'13px 16px', borderBottom:`1px solid ${C.border}`,
-                    display:'flex', justifyContent:'space-between', alignItems:'center',
-                    borderLeft: `4px solid ${z.color||C.bike}`,
-                    background: `${z.color||C.bike}12`,
-                  }}>
+                  <div key={zona} style={{ padding:'11px 14px', borderBottom:`1px solid ${C.border}`,
+                    display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                     <div>
-                      <span style={{ fontWeight:800, color:z.color||C.bike, marginRight:8, fontSize:14 }}>{zona}</span>
-                      <span style={{ fontWeight:600 }}>{z.nombre}</span>
-                      <div style={{ fontSize:11, color:C.text2, marginTop:3 }}>{z.pct_ftp}</div>
+                      <span style={{ fontWeight:700, color:C.bike, marginRight:8 }}>{zona}</span>
+                      <span style={{ fontWeight:500 }}>{z.nombre}</span>
+                      <div style={{ fontSize:11, color:C.text2, marginTop:2 }}>{z.pct_ftp}</div>
                     </div>
                     <div style={{ textAlign:'right' }}>
-                      <div style={{ fontSize:14, fontWeight:700, color:z.color||C.bike }}>{z.w_rango}</div>
-                      <div style={{ fontSize:11, color:C.text2 }}>HR {z.hr_min||'--'}–{z.hr_max||'--'} · {z.wkg_min||'--'} W/kg</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:C.bike }}>{z.w_rango}</div>
+                      <div style={{ fontSize:11, color:C.text2 }}>HR {z.hr_min}–{z.hr_max} · {z.wkg_min} W/kg</div>
                     </div>
                   </div>
                 ))}
@@ -3313,20 +3304,16 @@ function DashboardAtleta({ atletaId, atleta }) {
               <SectionTitle>Zonas Natación — CSS {zonasSwim?.css} min/100m</SectionTitle>
               <Card>
                 {Object.entries(zonasSwim.zonas||{}).map(([zona,z])=>(
-                  <div key={zona} style={{
-                    padding:'13px 16px', borderBottom:`1px solid ${C.border}`,
-                    display:'flex', justifyContent:'space-between', alignItems:'center',
-                    borderLeft: `4px solid ${C.swim}`,
-                    background: `${C.swim}12`,
-                  }}>
+                  <div key={zona} style={{ padding:'11px 14px', borderBottom:`1px solid ${C.border}`,
+                    display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                     <div>
-                      <span style={{ fontWeight:800, color:C.swim, marginRight:8, fontSize:14 }}>{zona}</span>
-                      <span style={{ fontWeight:600 }}>{z.nombre}</span>
-                      <div style={{ fontSize:11, color:C.text2, marginTop:3 }}>{z.descripcion}</div>
+                      <span style={{ fontWeight:700, color:C.swim, marginRight:8 }}>{zona}</span>
+                      <span style={{ fontWeight:500 }}>{z.nombre}</span>
+                      <div style={{ fontSize:11, color:C.text2, marginTop:2 }}>{z.descripcion}</div>
                     </div>
                     <div style={{ textAlign:'right' }}>
-                      <div style={{ fontSize:14, fontWeight:700, color:C.swim }}>{z.pace_rango}</div>
-                      <div style={{ fontSize:11, color:C.text2 }}>HR {z.hr_min||'--'}–{z.hr_max||'--'} bpm</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:C.swim }}>{z.pace_rango}</div>
+                      <div style={{ fontSize:11, color:C.text2 }}>HR {z.hr_min||'--'}–{z.hr_max} bpm</div>
                     </div>
                   </div>
                 ))}
@@ -3570,269 +3557,7 @@ function RequireAtleta({ children }) {
   return children
 }
 
-// ── Análisis Ciclismo — Torque y W'bal ──────────────────────────────────────
-function AnalisisCiclismoPanel({ atletaId, atleta, ftp = 200, cadenciaOptima = 85 }) {
-  const [fecha,      setFecha]     = useState(new Date().toISOString().slice(0,10))
-  const [sesiones,   setSesiones]  = useState([])
-  const [sesionId,   setSesionId]  = useState(null)
-  const [data,       setData]      = useState(null)
-  const [cargando,   setCargando]  = useState(false)
-  const [vista,      setVista]     = useState(null) // 'torque' | 'wbal'
-  const [loadingAnal,setLoadingAnal] = useState(false)
-
-  // Cargar sesiones de ciclismo del atleta al cambiar fecha
-  useEffect(() => {
-    if (!atletaId) return
-    setSesiones([]); setSesionId(null); setData(null); setVista(null)
-    authFetch(`${API}/atletas/${atletaId}/sesiones?limit=30`)
-      .then(r => r.json())
-      .then(r => {
-        const ses = (r.data || r || []).filter(s =>
-          s.sport === 'cycling' && s.fecha?.slice(0,10) === fecha
-        )
-        setSesiones(ses)
-        if (ses.length === 1) setSesionId(ses[0].id)
-      })
-      .catch(() => {})
-  }, [atletaId, fecha])
-
-  // Buscar sesiones de ciclismo en un rango si no hay en fecha exacta
-  useEffect(() => {
-    if (!atletaId) return
-    setSesiones([]); setSesionId(null); setData(null); setVista(null)
-    // Buscar en los últimos 90 días para el selector
-    authFetch(`${API}/atletas/${atletaId}/sesiones?limit=100`)
-      .then(r => r.json())
-      .then(r => {
-        const ses = (r.data || r || []).filter(s => s.sport === 'cycling')
-        setSesiones(ses)
-      })
-      .catch(() => {})
-  }, [atletaId])
-
-  const analizar = async () => {
-    if (!sesionId) return
-    setLoadingAnal(true); setData(null)
-    try {
-      const r = await authFetch(`${API}/atletas/${atletaId}/sesiones/${sesionId}/torque_wbal`)
-      const d = await r.json()
-      setData(d.data || d)
-    } catch {}
-    setLoadingAnal(false)
-  }
-
-  const Q_COLOR = { Q1:'#F97316', Q2:'#EF4444', Q3:'#22C55E', Q4:'#3B82F6' }
-  const Q_DESC  = {
-    Q1:'Explosivo (fuerza alta + cadencia alta)',
-    Q2:'⚠ Veneno triatlón (fuerza alta + cadencia baja)',
-    Q3:'Recuperación aeróbica',
-    Q4:'Eficiencia cardiovascular',
-  }
-
-  const torque_umbral = ftp > 0 && cadenciaOptima > 0
-    ? Math.round((9.549 * ftp) / cadenciaOptima) : 30
-
-  const { samples=[], cuadrantes={}, metricas={} } = data || {}
-
-  // Datos para scatter (max 1500 pts)
-  const step1 = Math.max(1, Math.floor(samples.length / 1500))
-  const scatterData = samples
-    .filter((_,i) => i % step1 === 0 && samples[i].cadence > 0)
-    .map(s => ({ x: s.cadence, y: s.torque, w: s.wbal_pct }))
-
-  // Datos para W'bal temporal (max 400 pts)
-  const step2 = Math.max(1, Math.floor(samples.length / 400))
-  const lineData = samples
-    .filter((_,i) => i % step2 === 0)
-    .map(s => ({ t: Math.round(s.ts_s / 60), wbal: s.wbal_pct, torque: s.torque }))
-
-  return (
-    <div style={{ display:'flex', flexDirection:'column', gap:16, padding:'4px 0' }}>
-      <SectionTitle>Análisis de Ciclismo — Torque & W'bal</SectionTitle>
-
-      {/* Selector */}
-      <Card>
-        <div style={{ display:'flex', gap:10, alignItems:'flex-end', flexWrap:'wrap' }}>
-          <div style={{ flex:1, minWidth:160 }}>
-            <div style={{ fontSize:11, color:C.text2, marginBottom:4 }}>Sesión de ciclismo</div>
-            <select value={sesionId||''} onChange={e => { setSesionId(Number(e.target.value)); setData(null); setVista(null) }}
-              style={{ width:'100%', padding:'8px 10px', borderRadius:8, fontSize:13,
-                background:C.bg, color:C.text, border:`1px solid ${C.border}` }}>
-              <option value="">— Elegí una sesión —</option>
-              {sesiones.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.fecha?.slice(0,10)} · {Math.round(s.duration||0)}min · {s.tss ? `TSS ${Math.round(s.tss)}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button onClick={analizar} disabled={!sesionId || loadingAnal} style={{
-            padding:'9px 20px', borderRadius:9, fontSize:13, fontWeight:700,
-            background: sesionId ? '#007AFF' : C.bg2,
-            color: sesionId ? '#fff' : C.text2,
-            border:'none', cursor: sesionId ? 'pointer' : 'default',
-            boxShadow: sesionId ? '0 4px 12px rgba(0,122,255,0.35)' : 'none',
-            display:'flex', alignItems:'center', gap:6,
-          }}>
-            {loadingAnal ? '⏳ Calculando...' : '⚡ Analizar'}
-          </button>
-        </div>
-        {sesiones.length === 0 && (
-          <div style={{ fontSize:12, color:C.text2, marginTop:8 }}>
-            Sin sesiones de ciclismo encontradas para este atleta.
-          </div>
-        )}
-      </Card>
-
-      {/* Resultado */}
-      {data && (
-        <>
-          {/* Tarjetas métricas */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
-            {[
-              { label:'% tiempo Q2', value:`${cuadrantes?.Q2??'--'}%`, color:'#EF4444', icon:'⚠', desc:'Veneno triatlón' },
-              { label:"W'bal final",  value:`${metricas?.wbal_final_pct??'--'}%`, color:'#22C55E', icon:'🔋', desc:'Batería anaeróbica restante' },
-              { label:'Vaciados críticos', value:metricas?.vaciados_criticos??'--', color:'#F97316', icon:'⚡', desc:"Veces bajo 30% W'" },
-              { label:'NME', value:metricas?.nme?metricas.nme.toFixed(1):'--', color:'#3B82F6', icon:'⚙', desc:'Eficiencia neuromuscular' },
-            ].map(({ label, value, color, icon, desc }) => (
-              <div key={label} style={{
-                background:`${color}12`, borderRadius:10, padding:'12px 14px',
-                border:`1px solid ${color}30`,
-              }}>
-                <div style={{ fontSize:11, color:C.text2, marginBottom:4 }}>{icon} {label}</div>
-                <div style={{ fontSize:22, fontWeight:800, color }}>{value}</div>
-                <div style={{ fontSize:10, color:C.text2, marginTop:2 }}>{desc}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Botones torque / wbal */}
-          <div style={{ display:'flex', gap:10 }}>
-            {[['torque','⚙ Torque vs Cadencia'],['wbal',"🔋 W'bal Temporal"]].map(([v, label]) => (
-              <button key={v} onClick={() => setVista(vista===v ? null : v)} style={{
-                flex:1, padding:'11px 16px', borderRadius:10, fontSize:13, fontWeight:700,
-                background: vista===v ? '#007AFF' : C.bg,
-                color: vista===v ? '#fff' : C.text2,
-                border:`1px solid ${vista===v ? '#007AFF' : C.border}`,
-                cursor:'pointer',
-                boxShadow: vista===v ? '0 4px 12px rgba(0,122,255,0.35)' : 'none',
-              }}>{label}</button>
-            ))}
-          </div>
-
-          {/* Gráfico de cuadrantes */}
-          {vista === 'torque' && scatterData.length > 0 && (
-            <Card>
-              <div style={{ fontSize:12, color:C.text2, marginBottom:8 }}>
-                Cada punto = 1 seg · Eje X = Cadencia (RPM) · Eje Y = Torque (N·m)
-                · Líneas = FTP ({metricas.ftp_usado}W) / Cadencia óptima ({metricas.cadencia_optima}rpm)
-              </div>
-              <ScatterChart width={Math.min(window.innerWidth - 80, 600)} height={260}>
-                <CartesianGrid stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="x" type="number" domain={[40,130]} name="Cadencia"
-                  tick={{ fill:C.text2, fontSize:10 }}
-                  label={{ value:'RPM', position:'insideBottom', offset:-2, fill:C.text2, fontSize:10 }}/>
-                <YAxis dataKey="y" type="number" name="Torque"
-                  tick={{ fill:C.text2, fontSize:10 }}
-                  label={{ value:'N·m', angle:-90, position:'insideLeft', fill:C.text2, fontSize:10 }}/>
-                <Tooltip contentStyle={{ background:'#1C1C1E', border:`1px solid ${C.border}`, borderRadius:8, fontSize:11 }}
-                  formatter={(v,n) => [v, n==='x'?'Cadencia (RPM)':'Torque (N·m)']} />
-                <ReferenceLine x={cadenciaOptima} stroke="rgba(255,255,255,0.2)" strokeDasharray="4 4"
-                  label={{ value:`${cadenciaOptima}rpm`, fill:'rgba(255,255,255,0.3)', fontSize:9 }}/>
-                <ReferenceLine y={torque_umbral} stroke="rgba(255,255,255,0.2)" strokeDasharray="4 4"
-                  label={{ value:`${torque_umbral}N·m`, fill:'rgba(255,255,255,0.3)', fontSize:9 }}/>
-                <Scatter data={scatterData} shape={(p) => {
-                  const { cx, cy, payload } = p
-                  const q = payload.y > torque_umbral && payload.x >= cadenciaOptima ? 'Q1'
-                          : payload.y > torque_umbral && payload.x < cadenciaOptima  ? 'Q2'
-                          : payload.y <= torque_umbral && payload.x < cadenciaOptima  ? 'Q3' : 'Q4'
-                  return <circle cx={cx} cy={cy} r={2.5} fill={Q_COLOR[q]} fillOpacity={0.65}/>
-                }}/>
-              </ScatterChart>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:6, marginTop:8 }}>
-                {Object.entries(Q_DESC).map(([q,desc]) => (
-                  <div key={q} style={{ display:'flex', alignItems:'center', gap:6, fontSize:10, color:C.text2 }}>
-                    <div style={{ width:8,height:8,borderRadius:'50%',background:Q_COLOR[q],flexShrink:0 }}/>
-                    <span><b style={{color:Q_COLOR[q]}}>{q} {cuadrantes?.[q]}%</b> — {desc}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {vista === 'torque' && scatterData.length === 0 && (
-            <div style={{ padding:'16px', borderRadius:10,
-              background:'rgba(248,81,73,0.08)', border:'1px solid rgba(248,81,73,0.25)',
-              fontSize:13, color:'#FCA5A5', textAlign:'center', lineHeight:1.6 }}>
-              ⚠ Sin datos de cadencia para esta actividad.<br/>
-              El medidor de potencia no transmite RPM a Garmin — sin cadencia no se puede calcular Torque (N·m = P / RPM).<br/>
-              <span style={{ fontSize:11, color:'rgba(252,165,165,0.6)' }}>
-                Verificá en Garmin Connect si la actividad tiene cadencia de ciclismo.
-              </span>
-            </div>
-          )}
-
-          {/* Gráfico W'bal */}
-          {vista === 'wbal' && lineData.length > 0 && (
-            <Card>
-              <div style={{ fontSize:12, color:C.text2, marginBottom:8 }}>
-                Verde = W'bal (batería anaeróbica) · Rojo = Torque · Línea punteada = límite crítico 30%
-              </div>
-              <AreaChart width={Math.min(window.innerWidth - 80, 600)} height={240} data={lineData}>
-                <defs>
-                  <linearGradient id="wG" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#22C55E" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#22C55E" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="tG" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#EF4444" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#EF4444" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="rgba(255,255,255,0.06)"/>
-                <XAxis dataKey="t" tick={{ fill:C.text2, fontSize:10 }}
-                  label={{ value:'min', position:'insideBottom', offset:-2, fill:C.text2, fontSize:10 }}/>
-                <YAxis yAxisId="w" domain={[0,100]} tick={{ fill:'#22C55E', fontSize:10 }}/>
-                <YAxis yAxisId="t" orientation="right" tick={{ fill:'#EF4444', fontSize:10 }}/>
-                <Tooltip contentStyle={{ background:'#1C1C1E', border:`1px solid ${C.border}`, borderRadius:8, fontSize:11 }}
-                  formatter={(v,n) => [n==='wbal' ? `${v?.toFixed(0)}%` : `${v?.toFixed(0)} N·m`, n==='wbal'?"W'bal":'Torque']}/>
-                <ReferenceLine yAxisId="w" y={30} stroke="#EF4444" strokeOpacity={0.5} strokeDasharray="4 4"
-                  label={{ value:'Crítico 30%', fill:'#EF4444', fontSize:9 }}/>
-                <Area yAxisId="w" type="monotone" dataKey="wbal" stroke="#22C55E" strokeWidth={2} fill="url(#wG)" dot={false}/>
-                <Area yAxisId="t" type="monotone" dataKey="torque" stroke="#EF4444" strokeWidth={1.5} fill="url(#tG)" dot={false} opacity={0.8}/>
-              </AreaChart>
-              {metricas?.vaciados_criticos > 0 && (
-                <div style={{ marginTop:8, padding:'10px 14px', borderRadius:8,
-                  background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.25)',
-                  fontSize:12, color:'#FCA5A5' }}>
-                  ⚡ {metricas.vaciados_criticos} vaciado{metricas.vaciados_criticos>1?'s':''} crítico{metricas.vaciados_criticos>1?'s':''} — 
-                  W' bajó del 30% en {metricas.vaciados_criticos} ocasión{metricas.vaciados_criticos>1?'es':''}.
-                  {cuadrantes?.Q2 > 15 && ` Pasó ${cuadrantes.Q2}% en Q2 — recomendar elevar cadencia.`}
-                </div>
-              )}
-              {metricas?.vaciados_criticos === 0 && (
-                <div style={{ marginTop:8, padding:'10px 14px', borderRadius:8,
-                  background:'rgba(34,197,94,0.08)', border:'1px solid rgba(34,197,94,0.2)',
-                  fontSize:12, color:'#86EFAC' }}>
-                  ✓ Excelente gestión energética — W' siempre sobre el límite crítico.
-                </div>
-              )}
-            </Card>
-          )}
-        </>
-      )}
-    </div>
-  )
-}
-
-
 export default function App() {
-  const [cargando, setCargando] = useState(true)
-
-  if (cargando) {
-    return <PantallaCarga duracionMs={2000} onTerminar={() => setCargando(false)} />
-  }
-
   return (
     <BrowserRouter>
       <Routes>
@@ -4020,86 +3745,6 @@ function AprendizajePanel({ atletaId, atleta }) {
   )
 }
 
-
-function PerfilFisiologico({ atletaId, atleta }) {
-  const [lthrRun,  setLthrRun]  = useState(atleta?.lthr_run  || '')
-  const [lthrBike, setLthrBike] = useState(atleta?.lthr_bike || '')
-  const [lthrSwim, setLthrSwim] = useState(atleta?.lthr_swim || '')
-  const [ftp,      setFtp]      = useState(atleta?.ftp_watts || '')
-  const [css,      setCss]      = useState(atleta?.css_100m  || '')
-  const [hrMax,    setHrMax]    = useState(atleta?.hr_max    || '')
-  const [pesoKg,   setPesoKg]   = useState(atleta?.peso_kg   || '')
-  const [saving,   setSaving]   = useState(false)
-  const [saved,    setSaved]    = useState(false)
-
-  // Si cambia el atleta seleccionado, recargar los valores mostrados
-  useEffect(() => {
-    setLthrRun(atleta?.lthr_run  || '')
-    setLthrBike(atleta?.lthr_bike || '')
-    setLthrSwim(atleta?.lthr_swim || '')
-    setFtp(atleta?.ftp_watts || '')
-    setCss(atleta?.css_100m  || '')
-    setHrMax(atleta?.hr_max    || '')
-    setPesoKg(atleta?.peso_kg   || '')
-  }, [atletaId])
-
-  const guardar = async () => {
-    setSaving(true)
-    try {
-      const body = {
-        lthr_run:  lthrRun  ? Number(lthrRun)  : null,
-        lthr_bike: lthrBike ? Number(lthrBike) : null,
-        lthr_swim: lthrSwim ? Number(lthrSwim) : null,
-        ftp_watts: ftp      ? Number(ftp)      : null,
-        css_100m:  css      ? Number(css)      : null,
-        hr_max:    hrMax    ? Number(hrMax)    : null,
-        peso_kg:   pesoKg   ? Number(pesoKg)   : null,
-      }
-      await axios.put(`${API}/atletas/${atletaId}`, body, { headers: { 'Content-Type': 'application/json' } })
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
-    } catch (e) {
-      alert('Error guardando: ' + (e?.response?.data?.error || e.message))
-    }
-    setSaving(false)
-  }
-
-  const Campo = ({ label, value, setValue, unit, placeholder }) => (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 12, color: C.text2, marginBottom: 4 }}>{label}</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <input type="number" value={value} placeholder={placeholder}
-          onChange={e => setValue(e.target.value)}
-          style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.border}`,
-            background: C.bg2, color: C.text, fontSize: 14 }} />
-        <span style={{ fontSize: 12, color: C.text2, minWidth: 50 }}>{unit}</span>
-      </div>
-    </div>
-  )
-
-  return (
-    <div style={{ marginBottom: 28, paddingBottom: 24, borderBottom: `1px solid ${C.border}` }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Perfil fisiologico</div>
-      <div style={{ fontSize: 12, color: C.text2, marginBottom: 16 }}>
-        Estos valores son la base real de las zonas de entrenamiento de este atleta.
-        Si quedan vacios, NOAH usa un valor generico de referencia (no personalizado).
-      </div>
-      <Campo label="LTHR Running"  value={lthrRun}  setValue={setLthrRun}  unit="bpm" placeholder="ej: 165" />
-      <Campo label="LTHR Ciclismo" value={lthrBike} setValue={setLthrBike} unit="bpm" placeholder="ej: 158" />
-      <Campo label="LTHR Natacion" value={lthrSwim} setValue={setLthrSwim} unit="bpm" placeholder="ej: 150" />
-      <Campo label="FTP (potencia umbral)" value={ftp} setValue={setFtp} unit="W" placeholder="ej: 220" />
-      <Campo label="CSS (ritmo critico natacion)" value={css} setValue={setCss} unit="min/100m" placeholder="ej: 1.75" />
-      <Campo label="FC Maxima" value={hrMax} setValue={setHrMax} unit="bpm" placeholder="ej: 190" />
-      <Campo label="Peso" value={pesoKg} setValue={setPesoKg} unit="kg" placeholder="ej: 72" />
-      <button onClick={guardar} disabled={saving}
-        style={{ padding: '10px 20px', borderRadius: 8, border: 'none',
-          background: saved ? C.success : C.purple, color: '#fff', fontWeight: 700,
-          cursor: saving ? 'wait' : 'pointer', fontSize: 13 }}>
-        {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar perfil fisiologico'}
-      </button>
-    </div>
-  )
-}
 
 function PerfilDisponibilidad({ atletaId, atleta }) {
   const dep = atleta?.deporte_ppal || atleta?.deporte || 'running'
@@ -4444,45 +4089,30 @@ function ClusteringPanel({ atletaId, atleta }) {
 
 // ── OptimizerPanel ────────────────────────────────────────────────────────────
 function OptimizerPanel({ atletaId, atleta }) {
-  const [data, setData]           = useState(null)
-  const [intelData, setIntelData] = useState(null)
-  const [loading, setLoading]     = useState(true)
-  const [aplicando, setApl]       = useState(false)
-  const [msg, setMsg]             = useState(null)
-  const [escSel, setEscSel]       = useState(null) // escenario seleccionado por el coach
+  const [data, setData]       = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [aplicando, setApl]   = useState(false)
+  const [msg, setMsg]         = useState(null)
 
   const cargar = (forzar=false) => {
     setLoading(true)
     authFetch(`${API}/atletas/${atletaId}/optimizer${forzar?'?forzar=true':''}`)
-      .then(r=>r.json())
-      .then(opt => {
-        setData(opt.data)
-        if (opt.data?.escenarios_coach?.escenarios?.length > 0) {
-          setIntelData(opt.data.escenarios_coach)
-          setEscSel(2) // default: Mantenimiento (index 2)
-        }
-        setLoading(false)
-      }).catch(()=>setLoading(false))
+      .then(r=>r.json()).then(r=>{ setData(r.data); setLoading(false) })
+      .catch(()=>setLoading(false))
   }
 
   useEffect(()=>{ if(atletaId) cargar() }, [atletaId])
 
-  const aplicar = (receta, tss_override=null, escenario_nombre=null) => {
+  const aplicar = (receta) => {
     setApl(true)
     authFetch(`${API}/atletas/${atletaId}/optimizer/aplicar`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({receta, tss_override, escenario_nombre})
+      body: JSON.stringify({receta})
     }).then(r=>r.json()).then(r=>{
       setMsg(r.data?.msg || 'Receta aplicada')
       setApl(false)
-      setTimeout(()=>setMsg(null), 5000)
+      setTimeout(()=>setMsg(null), 4000)
     }).catch(()=>setApl(false))
-  }
-
-  const aplicarEscenario = () => {
-    if (escSel === null || !intelData?.escenarios) return
-    const esc = intelData.escenarios[escSel]
-    aplicar('coach_escenario', esc.tss_semana, esc.nombre)
   }
 
   if (loading) return (
@@ -4553,88 +4183,6 @@ function OptimizerPanel({ atletaId, atleta }) {
         </div>
       )}
 
-      {/* ── 5 Escenarios del Coach (PMC + Banister + ML) ── */}
-      {intelData && intelData.escenarios && (
-        <div style={{background:C.bg3, borderRadius:12, padding:'16px 18px',
-          border:`1px solid ${C.purple}33`}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.text2,
-            textTransform:'uppercase',letterSpacing:1,marginBottom:4}}>
-            Escenarios de Carga — Elegí el que vas a aplicar
-          </div>
-          {intelData.rango && (
-            <div style={{fontSize:10,color:C.text3,marginBottom:12}}>
-              Micro 4sem: <b style={{color:C.text}}>{intelData.rango.micro_4sem}</b> TSS ·
-              Macro 12sem: <b style={{color:C.text}}>{intelData.rango.macro_12sem}</b> TSS ·
-              Contexto: <b style={{color:C.purple}}>{intelData.rango.contexto?.replace(/_/g,' ')}</b>
-              {intelData.rango.n_semanas_atipicas > 0 && (
-                <span style={{color:C.amber}}> · ⚠ {intelData.rango.n_semanas_atipicas} sem atípica/s</span>
-              )}
-            </div>
-          )}
-          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
-            {intelData.escenarios.map((esc, i) => {
-              const sel = escSel === i
-              const sem = esc.semaforo || 'amarillo'
-              const semCol = sem==='verde'?'#10B981':sem==='rojo'?'#EF4444':'#F59E0B'
-              const recML = esc.recomendado_ml
-              const recBase = esc.recomendado_base
-              return (
-                <div key={i} onClick={()=>setEscSel(i)} style={{
-                  flex:1, minWidth:120, padding:'10px 12px', borderRadius:10,
-                  cursor:'pointer', transition:'all 0.15s',
-                  background: sel ? `${C.purple}18` : C.bg2,
-                  border: sel ? `2px solid ${C.purple}` : `1px solid ${C.border}`,
-                  position:'relative',
-                }}>
-                  {(recML || recBase) && (
-                    <div style={{position:'absolute',top:-8,right:6,
-                      fontSize:8,fontWeight:800,padding:'2px 6px',borderRadius:99,
-                      background: recML ? '#10B981' : C.purple,
-                      color:'white'}}>
-                      {recML ? 'ML ★' : 'BASE'}
-                    </div>
-                  )}
-                  <div style={{fontSize:10,fontWeight:700,color:sel?C.purple:C.text2,
-                    marginBottom:6}}>{esc.nombre}</div>
-                  <div style={{fontSize:18,fontWeight:800,color:C.text,marginBottom:2}}>
-                    {esc.tss_semana} <span style={{fontSize:10,color:C.text3}}>TSS</span>
-                  </div>
-                  <div style={{fontSize:11,color:esc.delta_ctl>=0?'#2DE3A7':'#FF5C7A',
-                    fontWeight:700,marginBottom:4}}>
-                    CTL {esc.delta_ctl>=0?'+':''}{esc.delta_ctl?.toFixed(1)} en 4 sem
-                  </div>
-                  <div style={{display:'flex',alignItems:'center',gap:4}}>
-                    <div style={{width:8,height:8,borderRadius:'50%',
-                      background:semCol}}/>
-                    <span style={{fontSize:10,color:C.text3}}>
-                      {esc.prob_absorcion != null
-                        ? `Abs ${(esc.prob_absorcion*100).toFixed(0)}%`
-                        : sem}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          <div style={{display:'flex',alignItems:'center',gap:12}}>
-            <button onClick={aplicarEscenario} disabled={aplicando||escSel===null} style={{
-              padding:'9px 22px',borderRadius:8,border:'none',cursor:'pointer',
-              background:C.purple,color:'white',fontWeight:700,fontSize:13,
-              opacity:aplicando?0.6:1,
-            }}>
-              {aplicando ? 'Aplicando...' : `✓ Aplicar: ${intelData.escenarios[escSel]?.nombre||''}`}
-            </button>
-            {escSel !== null && (
-              <span style={{fontSize:11,color:C.text3}}>
-                {intelData.escenarios[escSel]?.tss_semana} TSS/sem · 
-                CTL {intelData.escenarios[escSel]?.delta_ctl>=0?'+':''}
-                {intelData.escenarios[escSel]?.delta_ctl?.toFixed(1)} en 4 sem
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Estado + Receta */}
       <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
 
@@ -4702,7 +4250,42 @@ function OptimizerPanel({ atletaId, atleta }) {
         </div>
       </div>
 
-{/* Comparativa vieja eliminada — reemplazada por Escenarios PMC+ML arriba */}
+      {/* Comparativa de recetas */}
+      {receta.opciones_simuladas && (
+        <div>
+          <div style={{fontSize:11,fontWeight:700,color:C.text2,
+            textTransform:'uppercase',letterSpacing:1,marginBottom:8}}>
+            Comparativa — simulación 4 semanas
+          </div>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            {Object.entries(receta.opciones_simuladas).map(([tipo, s])=>{
+              const col = RECETA_COL[tipo] || '#888'
+              const esRec = tipo === rec
+              return (
+                <div key={tipo} onClick={()=>aplicar(tipo)} style={{
+                  flex:1,minWidth:120,padding:'10px 12px',borderRadius:10,cursor:'pointer',
+                  background:esRec?`${col}15`:C.bg3,
+                  border:`1px solid ${esRec?col:C.border}`,
+                }}>
+                  <div style={{fontSize:10,fontWeight:700,color:col,
+                    textTransform:'uppercase',marginBottom:4}}>
+                    {tipo.replace(/_/g,' ')}{esRec&&' ★'}
+                  </div>
+                  <div style={{fontSize:14,fontWeight:800,color:'#7C6CFF'}}>
+                    CTL {s.ctl_final_pred?.toFixed(1)}
+                  </div>
+                  <div style={{fontSize:11,color:'#2DE3A7'}}>
+                    Δ{s.delta_ctl_pred>0?'+':''}{s.delta_ctl_pred?.toFixed(1)}
+                  </div>
+                  <div style={{fontSize:10,color:C.text2,marginTop:3}}>
+                    {(s.prob_completar*100)?.toFixed(0)}% completar
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* PCA + Clusters */}
       <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>

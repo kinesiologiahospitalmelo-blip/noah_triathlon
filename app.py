@@ -380,12 +380,17 @@ def listar_atletas():
     result = []
     for _, a in atletas.iterrows():
         estado = db.get_estado_actual(int(a['id']))
+        def _clean(v):
+            import math
+            if v is None: return None
+            if isinstance(v, float) and math.isnan(v): return None
+            return v
         result.append({
             'id'          : int(a['id']),
-            'nombre'      : a['nombre'],
-            'email'       : a['email'],
-            'deporte'     : a['deporte_ppal'],
-            'lthr_run'    : a['lthr_run'],
+            'nombre'      : _clean(a['nombre']),
+            'email'       : _clean(a['email']),
+            'deporte'     : _clean(a['deporte_ppal']),
+            'lthr_run'    : _clean(a['lthr_run']),
             'ctl'         : estado.get('ctl'),
             'tsb'         : estado.get('tsb'),
             'hrv_flag'    : estado.get('hrv_flag'),
@@ -2065,8 +2070,28 @@ def get_noah_intel(atleta_id):
             return ok({'error': 'Modelo no entrenado — usar /entrenar primero',
                        'entrenado': False})
 
+        # Refrescar conexion — la cacheada puede estar vencida
+        mind.conn = conn
+
         analisis = mind.analisis_completo(estado)
         tss_rec  = mind.tss_recomendado(estado)
+
+        # Fase y semanas hasta carrera desde perfil macro
+        try:
+            perfil_row = conn.execute(
+                'SELECT datos_json FROM perfiles_macro WHERE atleta_id=%s AND activo=1',
+                (atleta_id,)).fetchone()
+            perfil_datos = json.loads(perfil_row[0]) if (perfil_row and perfil_row[0]) else {}
+            fase_actual  = perfil_datos.get('fase_actual', 'A')
+            sem_carrera  = perfil_datos.get('semanas_hasta_carrera_a')
+        except Exception:
+            fase_actual, sem_carrera = 'A', None
+
+        # 5 escenarios de carga para el coach (PMC + Banister + ML)
+        try:
+            escenarios_coach = mind.generar_escenarios_coach(estado, fase_actual, sem_carrera)
+        except Exception as e:
+            escenarios_coach = {'error': str(e), 'rango': {}, 'escenarios': []}
 
         # Evaluación de impacto para el TSS planificado hoy
         tss_hoy = request.args.get('tss', None)
@@ -2086,6 +2111,7 @@ def get_noah_intel(atleta_id):
             'respuesta_carga':    analisis.get('respuesta_carga', {}),
             'impacto_respuesta':  analisis.get('impacto_respuesta', {}),
             'evaluacion_carga':   evaluacion_carga,
+            'escenarios_coach':   escenarios_coach,
         })
         return ok(resultado)
     except ImportError:
@@ -3485,14 +3511,40 @@ def get_optimizer(atleta_id):
         forzar = request.args.get('forzar', 'false').lower() == 'true'
 
         # Intentar desde cache primero
+        # Si el cache no tiene escenarios_coach, forzar recalculo
         if not forzar:
             cached = cargar_optimizador(conn, atleta_id)
-            if cached and not cached.get('necesita_recalculo'):
+            if cached and not cached.get('necesita_recalculo') and cached.get('escenarios_coach'):
                 conn.close()
                 return ok(_limpiar_nan(cached))
 
         # Recalcular
         resultado = analizar_atleta(conn, atleta_id, forzar=True)
+
+        # Agregar escenarios PMC + ML (generados desde modelo entrenado)
+        try:
+            from noah_ml import NOAHMind
+            mind = _get_mind(conn, atleta_id)
+            if mind:
+                mind.conn = conn  # refrescar conexion
+                from noa_db import NOADatabase
+                db2    = NOADatabase()
+                estado = db2.get_estado_actual(atleta_id)
+                # Fase desde perfil macro
+                try:
+                    prow = conn.execute(
+                        'SELECT datos_json FROM perfiles_macro WHERE atleta_id=%s AND activo=1',
+                        (atleta_id,)).fetchone()
+                    pd2 = json.loads(prow[0]) if (prow and prow[0]) else {}
+                    fase_actual = pd2.get('fase_actual', 'A')
+                    sem_carrera = pd2.get('semanas_hasta_carrera_a')
+                except Exception:
+                    fase_actual, sem_carrera = 'A', None
+                resultado['escenarios_coach'] = mind.generar_escenarios_coach(
+                    estado, fase_actual, sem_carrera)
+        except Exception as e:
+            resultado['escenarios_coach'] = {'rango': {}, 'escenarios': [], 'error': str(e)}
+
         conn.close()
         return ok(_limpiar_nan(resultado))
 
@@ -3520,35 +3572,46 @@ def aplicar_receta_optimizer(atleta_id):
     conn = get_conn()
     try:
         d = request.json or {}
-        receta = d.get('receta', 'mixta')
-        recetas_validas = ['volumen', 'calidad', 'mixta', 'recuperacion',
-                           'recuperacion_activa', 'aumentar_carga', 'reducir_carga', 'mantener']
-        if receta not in recetas_validas:
-            return error(f'Receta inválida: {receta}')
+        receta          = d.get('receta', 'mixta')
+        tss_override    = d.get('tss_override')       # TSS semanal elegido por el coach
+        escenario_nombre= d.get('escenario_nombre')   # Nombre del escenario elegido
 
-        # Guardar en perfil macro como override de receta
+        recetas_validas = ['volumen', 'calidad', 'mixta', 'recuperacion',
+                           'recuperacion_activa', 'aumentar_carga', 'reducir_carga', 'mantener',
+                           'coach_escenario']
+        if receta not in recetas_validas:
+            receta = 'mixta'
+
+        # Guardar en perfil macro como override de receta + TSS elegido
         row = conn.execute(
             'SELECT datos_json FROM perfiles_macro WHERE atleta_id=%s AND activo=1',
             (atleta_id,)
         ).fetchone()
 
+        perfil = json.loads(row[0]) if row else {}
+        perfil['receta_optimizer']  = receta
+        perfil['receta_fecha']      = str(date.today())
+        if tss_override:
+            perfil['tss_override']      = int(tss_override)
+            perfil['tss_override_fecha']= str(date.today())
+        if escenario_nombre:
+            perfil['escenario_elegido'] = escenario_nombre
+
         if row:
-            perfil = json.loads(row[0])
-            perfil['receta_optimizer'] = receta
-            perfil['receta_fecha'] = str(date.today())
             conn.execute(
                 'UPDATE perfiles_macro SET datos_json=%s WHERE atleta_id=%s AND activo=1',
-                (json.dumps(perfil), atleta_id)
-            )
+                (json.dumps(perfil), atleta_id))
         else:
             conn.execute(
                 'INSERT INTO perfiles_macro (atleta_id, fecha_generado, datos_json, activo) VALUES (%s,%s,%s,1)',
-                (atleta_id, str(date.today()), json.dumps({'receta_optimizer': receta}))
-            )
+                (atleta_id, str(date.today()), json.dumps(perfil)))
         conn.commit()
         conn.close()
-        return ok({'aplicado': True, 'receta': receta,
-                   'msg': f'Receta "{receta}" aplicada. Se usará en la próxima prescripción semanal.'})
+        msg = f'Escenario "{escenario_nombre or receta}" aplicado'
+        if tss_override:
+            msg += f' — TSS semanal objetivo: {tss_override}'
+        msg += '. Se usará en la próxima prescripción semanal.'
+        return ok({'aplicado': True, 'receta': receta, 'tss_override': tss_override, 'msg': msg})
 
     except Exception as e:
         conn.close()

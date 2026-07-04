@@ -2173,6 +2173,125 @@ class NOAHMind:
             print(f'  [GRU] Sin Foundation — entrenando GRU desde cero')
             return self.predictor_lstm.entrenar(self.df)
 
+    def calcular_carga_optima_pmc(self, estado, fase='A', semanas_carrera=None):
+        from datetime import timedelta
+        ctl = float(estado.get('ctl') or 30)
+        atl = float(estado.get('atl') or 30)
+        tsb = float(estado.get('tsb') or 0)
+        hrv_tend = float(estado.get('hrv_tendencia_7d') or 0)
+        desde = str(date.today() - timedelta(weeks=13))
+        try:
+            df_h = _read_sql(
+                "SELECT fecha, tss_total, tss_z12, tss_z34, tss_z56 FROM sesiones "
+                "WHERE atleta_id=%s AND fecha >= %s AND tss_total > 0 "
+                "AND (fuente IS NULL OR fuente NOT IN "
+                "('prescripcion','simulacion','generada')) ORDER BY fecha",
+                self.conn, params=[self.atleta_id, desde])
+            if not df_h.empty:
+                df_h['fecha'] = pd.to_datetime(df_h['fecha'])
+                df_h['semana'] = df_h['fecha'].dt.strftime('%G-%V')
+                df_h['tss_pond'] = (df_h['tss_z12'].fillna(0)*1.0 +
+                                    df_h['tss_z34'].fillna(0)*1.5 +
+                                    df_h['tss_z56'].fillna(0)*2.5)
+                mask = df_h['tss_pond'] < df_h['tss_total'] * 0.3
+                df_h.loc[mask, 'tss_pond'] = df_h.loc[mask, 'tss_total']
+                tss_sem  = df_h.groupby('semana')['tss_total'].sum().sort_index()
+                pond_sem = df_h.groupby('semana')['tss_pond'].sum().sort_index()
+                micro_real = float(tss_sem.tail(4).mean()) if len(tss_sem) >= 3 else ctl*7
+                macro_real = float(tss_sem.tail(12).mean()) if len(tss_sem) >= 6 else ctl*7
+                micro_pond = float(pond_sem.tail(4).mean()) if len(pond_sem) >= 3 else micro_real
+                sem_atipicas = []
+                n_bajas = 0
+                for sem, tss_v in tss_sem.tail(4).items():
+                    if macro_real > 0:
+                        r = tss_v / macro_real
+                        if r < 0.55:
+                            sem_atipicas.append({'semana': sem, 'tipo': 'bajo', 'pct': round(r*100)})
+                            n_bajas += 1
+                        elif r > 1.45:
+                            sem_atipicas.append({'semana': sem, 'tipo': 'alto', 'pct': round(r*100)})
+            else:
+                micro_real = macro_real = micro_pond = ctl*7
+                sem_atipicas = []; n_bajas = 0
+        except Exception:
+            micro_real = macro_real = micro_pond = ctl*7
+            sem_atipicas = []; n_bajas = 0
+        ratio_mm = micro_real/macro_real if macro_real > 0 else 1.0
+        if fase == 'R':                          ramp_min, ramp_max = 0.55, 0.75
+        elif fase == 'T' and semanas_carrera and semanas_carrera <= 3:
+                                                 ramp_min, ramp_max = 0.45, 0.65
+        elif fase == 'T':                        ramp_min, ramp_max = 0.90, 1.05
+        elif semanas_carrera and semanas_carrera <= 8:
+                                                 ramp_min, ramp_max = 0.95, 1.10
+        else:                                    ramp_min, ramp_max = 1.00, 1.10
+        if n_bajas >= 3:
+            tss_base = round(micro_real*1.15); tss_min = round(micro_real*0.95)
+            tss_max  = round(micro_real*1.30); contexto = 'retorno_gradual'
+        elif n_bajas == 2:
+            bp = macro_real*0.5 + micro_real*0.5
+            tss_base = round(bp*((ramp_min+ramp_max)/2))
+            tss_min  = round(bp*ramp_min); tss_max = round(bp*ramp_max)
+            contexto = 'ajuste_conservador'
+        else:
+            tss_base = round(macro_real*((ramp_min+ramp_max)/2))
+            tss_min  = round(macro_real*ramp_min)
+            tss_max  = round(macro_real*ramp_max)
+            contexto = 'semana_atipica_aislada' if n_bajas == 1 else 'normal'
+        if micro_real > 0 and micro_pond/micro_real > 1.3:
+            tss_max = round(tss_max*0.90)
+        atl_proy = atl*(1-1/7) + (tss_max/7)*(1/7)
+        if ctl > 0 and atl_proy > ctl*1.5: tss_max = round(ctl*1.5*7*0.75)
+        if tsb < -25: tss_max = min(tss_max, round(macro_real*0.85))
+        if hrv_tend < -0.5: tss_max = min(tss_max, tss_base)
+        try:
+            sobre = self.detector_sobre.analizar(self.conn, self.atleta_id, ctl, atl, tsb)
+            if sobre.get('nivel') == 'alto': tss_max = tss_base = round(ctl*4)
+            elif sobre.get('nivel') == 'moderado': tss_max = round(tss_max*0.85)
+        except Exception: pass
+        tss_min = max(tss_min, round(ctl*3.5))
+        return {
+            'tss_min': tss_min, 'tss_base': tss_base, 'tss_max': tss_max,
+            'micro_4sem': round(micro_real,1), 'macro_12sem': round(macro_real,1),
+            'micro_pond_4sem': round(micro_pond,1), 'ratio_micro_macro': round(ratio_mm,2),
+            'n_semanas_atipicas': len(sem_atipicas), 'semanas_atipicas': sem_atipicas,
+            'contexto': contexto, 'fase': fase, 'ramp_min': ramp_min, 'ramp_max': ramp_max,
+        }
+
+    def generar_escenarios_coach(self, estado, fase='A', semanas_carrera=None):
+        rango    = self.calcular_carga_optima_pmc(estado, fase, semanas_carrera)
+        tss_min  = rango['tss_min']; tss_base = rango['tss_base']; tss_max = rango['tss_max']
+        valores  = [tss_min, round(tss_min+(tss_max-tss_min)*0.25), tss_base,
+                    round(tss_base+(tss_max-tss_base)*0.5), tss_max]
+        nombres  = ['Recuperacion activa','Consolidacion','Mantenimiento',
+                    'Construccion','Carga maxima']
+        ctl = float(estado.get('ctl') or 30)
+        atl = float(estado.get('atl') or 30)
+        escenarios = []; rec_ml_ok = False
+        for i, (tss, nombre) in enumerate(zip(valores, nombres)):
+            ctl_p, atl_p = ctl, atl; td = tss/7.0
+            for _ in range(28):
+                ctl_p = ctl_p + (td-ctl_p)/42
+                atl_p = atl_p + (td-atl_p)/7
+            pred = {'disponible': False}
+            if self.predictor_respuesta.entrenado:
+                try: pred = self.predictor_respuesta.predecir({**estado,'tss_7d':tss}, tss_plan=tss)
+                except Exception: pass
+            rec_ml = False
+            if pred.get('disponible') and pred.get('semaforo')=='verde' and not rec_ml_ok:
+                rec_ml = True; rec_ml_ok = True
+            escenarios.append({
+                'nombre': nombre, 'tss_semana': tss,
+                'ctl_actual': round(ctl,1), 'ctl_4sem': round(ctl_p,1),
+                'delta_ctl': round(ctl_p-ctl,1), 'atl_max': round(atl_p,1),
+                'tsb_final': round(ctl_p-atl_p,1),
+                'prob_absorcion': pred.get('prob_absorcion'),
+                'prob_riesgo': pred.get('prob_riesgo_sobrecarga'),
+                'semaforo': pred.get('semaforo','amarillo'),
+                'interpretacion': pred.get('interpretacion',''),
+                'recomendado_base': i==2, 'recomendado_ml': rec_ml,
+            })
+        return {'rango': rango, 'escenarios': escenarios}
+
     def tss_recomendado(self, estado: dict) -> dict:
         """
         Recomienda el TSS semanal basado en el estado actual y el historial.
