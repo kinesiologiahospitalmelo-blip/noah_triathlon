@@ -1,0 +1,36 @@
+# requirements.txt — NOAH backend (Flask + Postgres/Supabase)
+# ==============================================================
+# Generado a partir de un escaneo real de imports en los 27 archivos
+# .py del proyecto (app.py + módulos), no de memoria — cada paquete
+# listado aquí corresponde a un import real encontrado en el código.
+# Versiones verificadas contra PyPI al momento de escribir esto.
+#
+# psycopg2-binary (no psycopg2 a secas): la versión "binary" no requiere
+# compilar contra libpq en el servidor de build — más simple y rápido
+# para desplegar en Vercel. Es la recomendación oficial para empezar
+# rápido (ver psycopg.org/docs/install.html).
+#
+# Se usan mínimos con ">=" en lugar de versiones exactas fijas para
+# numpy/pandas/scikit-learn: estos 3 paquetes tuvieron problemas reales
+# de incompatibilidad de ABI entre numpy 1.x y 2.x documentados por los
+# propios mantenedores (pandas-dev/pandas#55519, #59023). Fijar mínimos
+# en vez de versiones exactas permite que pip resuelva automáticamente
+# una combinación mutuamente compatible en el momento de instalar, en
+# vez de arriesgar una combinación incompatible congelada a mano.
+
+# ── Framework web ────────────────────────────────────────────────────────────
+Flask>=3.1.0
+Flask-Cors>=5.0.0
+
+# ── Base de datos (Postgres/Supabase) ───────────────────────────────────────
+psycopg2-binary>=2.9.12
+
+# ── Datos y cálculo numérico ─────────────────────────────────────────────────
+pandas>=2.2.2
+numpy>=1.26.4
+
+# ── Machine learning (noah_ml.py, noah_clustering.py) ───────────────────────
+scikit-learn>=1.5.2
+
+# ── Integración Garmin (sincronizar_garmin.py, noah_streams.py, swim_processor.py) ─
+garminconnect>=0.3.6
