@@ -1,0 +1,1 @@
+{"fecha": "2026-07-02", "atleta_id": 3, "modelos": {"respuesta_carga": true, "predictor_respuesta": true, "scores_predictor": {"delta_ctl": {"r2": 0.071, "n": 1487}, "delta_tsb": {"r2": 0.104, "n": 1487}, "absorcion_ok": {"f1": 0.518, "n": 40, "pct_pos": 27.5}, "riesgo_sobre": {"f1": 0.672, "n": 1488, "pct_pos": 51.2}}}}
