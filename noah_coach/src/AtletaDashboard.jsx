@@ -3845,14 +3845,9 @@ export default function AtletaDashboard({ atletaId }) {
         <div style={{ position:'relative', zIndex:1, display:'flex', flexDirection:'column', minHeight:'85vh' }}>
           {/* Logo + logout arriba */}
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px' }}>
-            <div style={{ display:'flex', alignItems:'baseline', gap:1 }}>
-              {['N','O','A','H'].map((l,i) => (
-                <span key={i} className="noah-logo-letter" style={{
-                  fontSize:20, fontWeight:900, letterSpacing:4,
-                  color: i%2===1 ? NOAH_C.run : '#fff',
-                  animationDelay:`${i*0.08}s`,
-                }}>{l}</span>
-              ))}
+            <div style={{ display:'flex', alignItems:'center' }}>
+              <img src="/assets/noah_logo_texto.png" alt="noah"
+                style={{ height:120, width:'auto', objectFit:'contain' }}/>
             </div>
             <button onClick={() => {
               try {
@@ -3863,12 +3858,12 @@ export default function AtletaDashboard({ atletaId }) {
               localStorage.removeItem('noah_sesion')
               window.location.href = '/login'
             }} title="Cerrar sesión" style={{
-              width:28, height:28, borderRadius:'50%', flexShrink:0,
-              background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)',
-              color:'rgba(255,255,255,0.5)', display:'flex', alignItems:'center', justifyContent:'center',
+              width:32, height:32, borderRadius:'50%', flexShrink:0,
+              background:'rgba(6,182,212,0.15)', border:'1px solid rgba(6,182,212,0.4)',
+              color:'#06B6D4', display:'flex', alignItems:'center', justifyContent:'center',
               cursor:'pointer',
             }}>
-              <LogOut size={13}/>
+              <LogOut size={14}/>
             </button>
           </div>
 
