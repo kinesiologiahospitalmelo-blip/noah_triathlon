@@ -3844,7 +3844,7 @@ export default function AtletaDashboard({ atletaId }) {
         {/* Contenido */}
         <div style={{ position:'relative', zIndex:1, display:'flex', flexDirection:'column', minHeight:'85vh' }}>
           {/* Logo + logout arriba */}
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 16px' }}>
+          <div style={{ display:'flex', flexDirection:'row-reverse', justifyContent:'space-between', alignItems:'center', padding:'12px 16px' }}>
             <div style={{ display:'flex', alignItems:'center' }}>
               <img src="/assets/noah_logo_texto.png" alt="noah"
                 style={{ height:120, width:'auto', objectFit:'contain' }}/>
