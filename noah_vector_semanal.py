@@ -33,6 +33,26 @@ from datetime import date, timedelta
 from typing import Optional
 
 
+# ─── Helper pd.read_sql → _read_sql (pandas 2.x no soporta DBAPI2 directo) ────
+
+def _read_sql(sql, conn, params=None):
+    import pandas as pd
+    try:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+    except Exception:
+        # Transaccion abortada por error previo — hacer rollback y reintentar
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        cur = conn.cursor()
+        cur.execute(sql, params)
+    cols = [d[0] for d in cur.description]
+    rows = cur.fetchall()
+    return pd.DataFrame(rows, columns=cols)
+
+
 # ── Constantes de Banister estándar (punto de partida) ───────────────────────
 TAU_CTL_STD = 42
 TAU_ATL_STD = 7
@@ -55,7 +75,7 @@ def estimar_k1_k2(conn, atleta_id: int,
 
     Confianza baja si hay menos de 8 semanas de datos consistentes.
     """
-    df = pd.read_sql("""
+    df = _read_sql("""
         SELECT fecha, ctl, atl, tss_total
         FROM sesiones
         WHERE atleta_id=%s AND ctl IS NOT NULL AND tss_total > 0
@@ -158,7 +178,7 @@ def extraer_vector_semana(
     fecha_sig_dom = fecha_lunes + timedelta(days=13)
 
     # ── Cargar biomarcadores de la semana ─────────────────────────────────────
-    df_bio = pd.read_sql("""
+    df_bio = _read_sql("""
         SELECT fecha, hrv_rmssd, hrv_estimado_valor, hrv_estimado,
                fc_nocturna as hr_reposo,
                sleep_h, deep_h, rem_h, stress_avg, sleep_stress_avg,
@@ -177,7 +197,7 @@ def extraer_vector_semana(
     df_bio['hrv_real'] = df_bio['hrv_rmssd'].notna()
 
     # ── Cargar sesiones de la semana ──────────────────────────────────────────
-    df_ses = pd.read_sql("""
+    df_ses = _read_sql("""
         SELECT id, fecha, sport, ctl, atl, tss_total,
                tss_z12, tss_z34, tss_z56,
                tipo_sesion, session_type, duration_min, distance_km,
@@ -192,7 +212,7 @@ def extraer_vector_semana(
     """, conn, params=[atleta_id, str(fecha_lunes), str(fecha_dom)])
 
     # ── Cargar laps para calcular duración continua ───────────────────────────
-    df_laps = pd.read_sql("""
+    df_laps = _read_sql("""
         SELECT l.sesion_id, l.duration_min, l.hr_avg, l.avg_power,
                s.fecha, s.sport
         FROM laps l
@@ -202,7 +222,7 @@ def extraer_vector_semana(
     """, conn, params=[atleta_id, str(fecha_lunes), str(fecha_dom)])
 
     # ── Cargar FC intradiaria ─────────────────────────────────────────────────
-    df_intra = pd.read_sql("""
+    df_intra = _read_sql("""
         SELECT fecha, AVG(hr_bpm) as fc_intra_media
         FROM fc_intradiaria
         WHERE atleta_id=%s AND fecha BETWEEN %s AND %s
@@ -210,13 +230,13 @@ def extraer_vector_semana(
     """, conn, params=[atleta_id, str(fecha_lunes), str(fecha_dom)])
 
     # ── Cargar semana siguiente (etiqueta natural) ────────────────────────────
-    df_bio_sig = pd.read_sql("""
+    df_bio_sig = _read_sql("""
         SELECT hrv_rmssd, hrv_estimado_valor, hanna_life
         FROM sleep_hrv
         WHERE atleta_id=%s AND fecha BETWEEN %s AND %s
     """, conn, params=[atleta_id, str(fecha_sig_lun), str(fecha_sig_dom)])
 
-    df_ses_sig = pd.read_sql("""
+    df_ses_sig = _read_sql("""
         SELECT MAX(ctl) as ctl_fin FROM sesiones
         WHERE atleta_id=%s AND fecha BETWEEN %s AND %s
     """, conn, params=[atleta_id, str(fecha_sig_lun), str(fecha_sig_dom)])
@@ -289,7 +309,7 @@ def extraer_vector_semana(
     # Slope HRV 28 días (desde 3 semanas antes)
     slope_hrv_28d = None
     fecha_28 = fecha_lunes - timedelta(days=21)
-    df_hrv_28 = pd.read_sql("""
+    df_hrv_28 = _read_sql("""
         SELECT hrv_rmssd, hrv_estimado_valor FROM sleep_hrv
         WHERE atleta_id=%s AND fecha BETWEEN %s AND %s
         ORDER BY fecha
