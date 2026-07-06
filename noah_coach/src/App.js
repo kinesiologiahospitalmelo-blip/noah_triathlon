@@ -844,20 +844,26 @@ function CalendarioMensual({ atletaId, presc, dark = false }) {
             {acts.map((a,i)=>{
               const c=SC[a.sport]||'#94A3B8'
               const dk=(a.distance_km>500?a.distance_km/1000:a.distance_km)?.toFixed(2)
-              return <div key={i} style={{padding:'7px 10px',borderRadius:7,marginBottom:5,
-                background:dark?'rgba(255,255,255,0.04)':'#FFFFFF',
-                border:`1px solid ${c}30`,display:'flex',gap:8,alignItems:'center'}}>
-                <span style={{fontSize:13}}>{a.sport==='running'?'🏃':a.sport==='cycling'?'🚴':'🏊'}</span>
-                <div>
-                  <div style={{fontSize:11,fontWeight:600,color:c}}>
-                    {a.sport} · {dk}km · {Math.round(a.duration_min)}min
+              return (
+                <div key={i} style={{marginBottom:8}}>
+                  <div style={{padding:'7px 10px',borderRadius:7,marginBottom:5,
+                    background:dark?'rgba(255,255,255,0.04)':'#FFFFFF',
+                    border:`1px solid ${c}30`,display:'flex',gap:8,alignItems:'center'}}>
+                    <span style={{fontSize:13}}>{a.sport==='running'?'🏃':a.sport==='cycling'?'🚴':'🏊'}</span>
+                    <div>
+                      <div style={{fontSize:11,fontWeight:600,color:c}}>
+                        {a.sport} · {dk}km · {Math.round(a.duration_min)}min
+                      </div>
+                      <div style={{fontSize:10,color:T.dim}}>
+                        HR {a.hr_avg?Math.round(a.hr_avg):'--'} · TSS {a.tss_total?.toFixed(0)||'--'}
+                        {a.pace?` · ${Math.floor(a.pace)}:${String(Math.round((a.pace%1)*60)).padStart(2,'0')}/km`:''}
+                      </div>
+                    </div>
                   </div>
-                  <div style={{fontSize:10,color:T.dim}}>
-                    HR {a.hr_avg?Math.round(a.hr_avg):'--'} · TSS {a.tss_total?.toFixed(0)||'--'}
-                    {a.pace?` · ${Math.floor(a.pace)}:${String(Math.round((a.pace%1)*60)).padStart(2,'0')}/km`:''}
-                  </div>
+                  <GraficoActividad act={a} laps={a.laps||[]} sport={a.sport} lthr={162}
+                    sesionId={a.sesion_id || a.id} atletaId={atletaId}/>
                 </div>
-              </div>
+              )
             })}
           </div>
         )
