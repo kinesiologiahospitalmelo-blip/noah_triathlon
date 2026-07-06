@@ -136,6 +136,9 @@ export default function GraficoActividadStreams({
   const [loading, setLoading]         = useState(false)
   const [fuente, setFuente]           = useState(_initCache ? 'cache' : null)
   const [hover, setHover]             = useState(null)
+  // Colapsar/expandir el grafico principal para ahorrar espacio -- abierto
+  // por defecto, el usuario lo puede cerrar tocando el chevron del header.
+  const [chartOpen, setChartOpen]     = useState(true)
   const defaultCanales = sport === 'cycling'
     ? { hr: false, power: true, pace: false, cadence: false, alt: false, temp: false, vert_osc: false, gct: false, stride: false, resp: false }
     : { hr: true,  power: true, pace: true,  cadence: false, alt: false, temp: false, vert_osc: false, gct: false, stride: false, resp: false }
@@ -430,6 +433,13 @@ export default function GraficoActividadStreams({
                 {laps.length} LAPS
               </div>
             )}
+            {series.length >= 1 && (
+              <button onClick={() => setChartOpen(o => !o)} title={chartOpen ? 'Ocultar gráfico' : 'Mostrar gráfico'} style={{
+                background:'transparent', border:`1px solid ${D.border}`, borderRadius:7,
+                padding:'3px 9px', cursor:'pointer', fontSize:11, color:D.text3,
+                transition:'transform 0.2s', transform: chartOpen ? 'none' : 'rotate(180deg)',
+              }}>▾</button>
+            )}
           </div>
         </div>
         {hS && (
@@ -487,7 +497,7 @@ export default function GraficoActividadStreams({
       </div>
 
       {/* SELECTOR CANALES */}
-      {series.length >= 1 && CANALES.length > 1 && (
+      {chartOpen && series.length >= 1 && CANALES.length > 1 && (
         <div style={{
           padding:'8px 16px 8px', display:'flex', gap:6, alignItems:'center',
           borderBottom:`1px solid ${D.border}`, flexWrap:'wrap',
@@ -509,10 +519,13 @@ export default function GraficoActividadStreams({
         </div>
       )}
 
-      {/* SVG */}
-      {series.length >= 1 ? (
+      {/* SVG -- width:'100%' + height:'auto' (en vez de solo maxWidth:'100%')
+          es el fix real: sin height:'auto' el navegador mantenia la altura
+          fija en mobile y el grafico quedaba "encajonado" sin usar el ancho
+          completo (letterboxing por el viewBox). */}
+      {chartOpen && series.length >= 1 ? (
         <svg ref={svgRef} width={W} height={H} viewBox={`0 0 ${W} ${H}`}
-          style={{ display:'block', maxWidth:'100%', cursor:'crosshair' }}
+          style={{ display:'block', width:'100%', height:'auto', cursor:'crosshair' }}
           onMouseMove={handleMouse} onMouseLeave={() => setHover(null)}>
           <defs>
             <linearGradient id={`gHR_${sesionId}`} x1="0" y1="0" x2="0" y2="1">
@@ -803,7 +816,7 @@ export default function GraficoActividadStreams({
               : `${series.length} puntos GPS · tiempo (mm:ss) · pasá el mouse para ver detalle`}
           </text>
         </svg>
-      ) : (
+      ) : (!chartOpen && series.length >= 1) ? null : (
         <SinGrafico act={act} distKm={distKm} sport={sport} loading={loading}
           streamZonas={streamZonas} lthr={actLthr} sesionId={sesionId}/>
       )}

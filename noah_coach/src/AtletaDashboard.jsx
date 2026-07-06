@@ -552,7 +552,13 @@ function SemanaCompleta({ presc, atletaId, sesionExpandida, setSesionExpandida }
       .then(r=>r.json()).then(r=>setActsSemana(r.data?.actividades||{})).catch(()=>{})
   }, [atletaId, desdeStr])
 
-  const sesiones = presc?.prescripcion?.sesiones || []
+  // Filtrar sesiones al rango de la semana actual -- antes se tomaban
+  // TODAS las sesiones de la prescripcion activa (si abarcaba varias
+  // semanas / mesociclo, se acumulaban semanas viejas en este tab).
+  const sesiones = (presc?.prescripcion?.sesiones || []).filter(s => {
+    const fk = getDiaKey(s.fecha)
+    return fk && fk >= desdeStr && fk <= hastaStr
+  })
   const porDia = {}
   sesiones.forEach(s => { const fk = getDiaKey(s.fecha)||'sin-fecha'; if(!porDia[fk])porDia[fk]=[]; porDia[fk].push(s) })
 
@@ -1029,7 +1035,7 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
       </div>
 
       {/* Gráfico premium */}
-      <div style={{padding:'12px 18px',borderBottom:`1px solid ${NOAH_C.border}`}}>
+      <div style={{padding:'12px 4px',borderBottom:`1px solid ${NOAH_C.border}`}}>
         <GraficoActividad act={act} laps={laps} sport={sport} lthr={LTHR}
           sesionId={act.sesion_id || act.id} atletaId={atletaId}/>
       </div>
@@ -3515,7 +3521,7 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
     .map(s => ({ t: Math.round(s.ts_s / 60), wbal: s.wbal_pct, torque: s.torque }))
 
   return (
-    <div style={{ padding:'12px 16px', borderBottom:`1px solid ${NOAH_C.border}` }}>
+    <div style={{ padding:'12px 6px', borderBottom:`1px solid ${NOAH_C.border}` }}>
       {/* Botones azules */}
       <div style={{ display:'flex', gap:10, marginBottom: vista ? 14 : 0 }}>
         {[['torque','⚙ Torque'],['wbal',"🔋 W'bal"]].map(([v, label]) => (
@@ -3546,6 +3552,8 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
                 {[
                   { label:'Q2 (veneno)', value:`${cuadrantes?.Q2??'--'}%`, color:'#EF4444' },
                   { label:'NME', value:metricas?.nme?metricas.nme.toFixed(1):'--', color:'#3B82F6' },
+                  { label:'CP (potencia crítica)', value:metricas?.cp_usado?`${Math.round(metricas.cp_usado)}W`:'--', color:'#F97316' },
+                  { label:"W' (capacidad anaeróbica)", value:metricas?.w_prime_usado?`${Math.round(metricas.w_prime_usado/1000)}kJ`:'--', color:'#A855F7' },
                 ].map(({ label, value, color }) => (
                   <div key={label} style={{ flex:1, background:`${color}12`, borderRadius:8,
                     padding:'8px 12px', border:`1px solid ${color}25` }}>
