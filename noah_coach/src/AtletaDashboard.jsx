@@ -3308,23 +3308,9 @@ function ModeloBanisterAtleta({ atletaId }) {
           {proy.length>1 && <path d={mkSmooth(proy,'ctl',hist.length)} fill="none"
             stroke={P.ctl} strokeWidth="2" opacity="0.55" strokeDasharray="8,4"/>}
 
-          {/* Modo comparación — CTL de cada deporte superpuesto (sin ATL/TSB individual para no saturar) */}
-          {/* Cada serie se alinea por fecha: el último punto histórico de TODOS los
-              deportes corresponde a "hoy", así que se escala con su propio largo
-              en vez del índice de la serie base — evita desalinear curvas de
-              deportes con menos días de histórico. */}
-          {esTodos && seriesPorDeporte.map(s => {
-            const sTotal = s.hist.length + s.proy.length
-            const sXs = i => PL + (i/Math.max(sTotal-1,1)) * iW
-            return (
-              <g key={s.dep}>
-                {s.hist.length>1 && <path d={mkSmooth(s.hist,'ctl',0,sXs)} fill="none"
-                  stroke={s.color} strokeWidth="2.2" opacity="0.85"/>}
-                {s.proy.length>1 && <path d={mkSmooth(s.proy,'ctl',s.hist.length,sXs)} fill="none"
-                  stroke={s.color} strokeWidth="1.6" opacity="0.45" strokeDasharray="6,4"/>}
-              </g>
-            )
-          })}
+          {/* Nota: la comparacion de CTL por deporte se saco de aca (eran 6
+              lineas extra encima de las 6 ya existentes -- demasiado saturado).
+              Esa vista ahora vive en el panel de Proyeccion Multideporte. */}
 
           {/* Curvas TSB — la más fina (línea secundaria), trazo sólido */}
           {hist.length>1 && <path d={mkSmooth(hist,'tsb')} fill="none"
@@ -3543,6 +3529,12 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
           {!data && cargando && (
             <div style={{ textAlign:'center', padding:20, color:NOAH_C.ink3, fontSize:12 }}>
               Calculando Torque...
+            </div>
+          )}
+          {data && scatterData.length === 0 && (
+            <div style={{ textAlign:'center', padding:20, color:NOAH_C?.ink3 || 'rgba(255,255,255,0.4)', fontSize:12 }}>
+              📡 Sin datos de cadencia para esta sesión — el sensor de cadencia
+              no registró datos, así que no se puede calcular el análisis por cuadrantes.
             </div>
           )}
           {data && scatterData.length > 0 && (
@@ -4287,9 +4279,11 @@ export default function AtletaDashboard({ atletaId }) {
             <div style={{ fontSize:13, color:NOAH_C.ink3 }}>
               Tu curva de CTL proyectada hacia la carrera.
             </div>
-            <div style={{ background:NOAH_C.cardBg, borderRadius:12, padding:20, border:`1px solid ${NOAH_C.border}` }}>
+            <div style={{ background:NOAH_C.cardBg, borderRadius:12, padding:'20px 4px' }}>
               <ModeloBanisterAtleta atletaId={id} />
             </div>
+
+            <ProyeccionMultideporte atletaId={id} />
           </div>
         )}
 
@@ -4299,6 +4293,10 @@ export default function AtletaDashboard({ atletaId }) {
               <HannaLifeGrafico atletaId={id} modo="dark" />
 
             </div>
+
+            <ResumenCumplimiento atletaId={id} />
+
+            <CtlPorDeporteAtleta atletaId={id} />
 
             <div style={{ background:NOAH_C.cardBg, borderRadius:12, padding:20, border:`1px solid ${NOAH_C.border}`, boxShadow:'0 1px 3px rgba(0,0,0,0.04)' }}>
               <div style={{ fontSize:11, fontWeight:600, color:NOAH_C.ink3, letterSpacing:0.8, textTransform:'uppercase', marginBottom:14 }}>Forma atlética — 42 días</div>
@@ -4392,6 +4390,212 @@ export default function AtletaDashboard({ atletaId }) {
             {subTabZonas==='swimming' && <div style={{ background:NOAH_C.cardBg, borderRadius:12, padding:20, border:`1px solid ${NOAH_C.border}` }}><div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}><div style={{ display:'flex', alignItems:'center', gap:8 }}><IconSwim size={18} color={NOAH_C.swim} /><span style={{ fontSize:16, fontWeight:700, color:NOAH_C.ink }}>Zonas Natación</span></div><div style={{ fontSize:13, color:NOAH_C.ink3 }}>CSS <b style={{ color:NOAH_C.swim }}>{zonasSwim?.css}</b> min/100m</div></div><ZonasSwimTable zonas={zonasSwim} /></div>}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+
+function ResumenCumplimiento({ atletaId }) {
+  const [data, setData]       = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [dias, setDias]       = useState(30)
+
+  useEffect(() => {
+    if (!atletaId) return
+    setLoading(true)
+    authFetch(`${API}/atletas/${atletaId}/resumen_cumplimiento?dias=${dias}`)
+      .then(r => r.json())
+      .then(r => { setData(r.data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [atletaId, dias])
+
+  if (loading) return (
+    <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,border:`1px solid ${NOAH_C.border}`,
+      textAlign:'center',color:NOAH_C.ink3,fontSize:12}}>Cargando resumen...</div>
+  )
+  if (!data) return null
+
+  const pct = data.pct_horas
+  const pctColor = pct == null ? NOAH_C.ink3 : pct >= 90 ? NOAH_C.done : pct >= 70 ? NOAH_C.amber : NOAH_C.miss
+
+  return (
+    <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,border:`1px solid ${NOAH_C.border}`}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:600,color:NOAH_C.ink3,letterSpacing:0.8,textTransform:'uppercase'}}>
+          Cumplimiento — {data.periodo_dias} días
+        </div>
+        <select value={dias} onChange={e=>setDias(Number(e.target.value))} style={{
+          padding:'4px 8px', borderRadius:6, border:`1px solid ${NOAH_C.border}`,
+          background:NOAH_C.cardBg2, color:NOAH_C.ink, fontSize:11,
+        }}>
+          <option value={7}>7 días</option>
+          <option value={30}>30 días</option>
+          <option value={90}>90 días</option>
+        </select>
+      </div>
+
+      <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:4}}>
+        <span style={{fontSize:28,fontWeight:800,color:pctColor}}>{pct != null ? `${pct}%` : '--'}</span>
+        <span style={{fontSize:12,color:NOAH_C.ink3}}>de las horas prescriptas</span>
+      </div>
+      <div style={{fontSize:11,color:NOAH_C.ink4,marginBottom:16}}>
+        {data.horas_realizadas}h realizadas de {data.horas_prescriptas}h planificadas
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+        {[
+          {label:'Completadas', value:data.sesiones_completadas, color:NOAH_C.done},
+          {label:'No realizadas', value:data.sesiones_no_realizadas, color:NOAH_C.miss},
+          {label:'Extra (no planificadas)', value:data.sesiones_extra, color:NOAH_C.amber},
+        ].map(({label,value,color}) => (
+          <div key={label} style={{background:NOAH_C.cardBg2,borderRadius:8,padding:'10px 12px',
+            border:`1px solid ${NOAH_C.border}`,textAlign:'center'}}>
+            <div style={{fontSize:20,fontWeight:800,color}}>{value}</div>
+            <div style={{fontSize:9,color:NOAH_C.ink4,marginTop:2,lineHeight:1.3}}>{label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+
+function CtlPorDeporteAtleta({ atletaId }) {
+  const [data, setData]       = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!atletaId) return
+    setLoading(true)
+    authFetch(`${API}/atletas/${atletaId}/ctl_por_deporte`)
+      .then(r => r.json())
+      .then(r => { setData(r.data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [atletaId])
+
+  if (loading) return (
+    <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,border:`1px solid ${NOAH_C.border}`,
+      textAlign:'center',color:NOAH_C.ink3,fontSize:12}}>Cargando...</div>
+  )
+  if (!data) return null
+
+  const DEPORTES = [
+    {key:'running',  label:'🏃 Running',  color:NOAH_C.run || '#8B5CF6'},
+    {key:'cycling',  label:'🚴 Ciclismo', color:NOAH_C.bike || '#38BDF8'},
+    {key:'swimming', label:'🏊 Natación', color:NOAH_C.swim || '#34D399'},
+  ]
+
+  const conDatos = DEPORTES.filter(d => data[d.key])
+  if (conDatos.length === 0) return null
+
+  return (
+    <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,border:`1px solid ${NOAH_C.border}`}}>
+      <div style={{ fontSize:11, fontWeight:600, color:NOAH_C.ink3, letterSpacing:0.8, textTransform:'uppercase', marginBottom:14 }}>
+        CTL / ATL / TSB por deporte
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:`repeat(${conDatos.length},1fr)`,gap:12}}>
+        {conDatos.map(({key,label,color}) => {
+          const d = data[key]
+          const tsbColor = d.tsb>5?NOAH_C.done:d.tsb<-15?NOAH_C.miss:NOAH_C.amber
+          return (
+            <div key={key} style={{background:NOAH_C.cardBg2,borderRadius:8,padding:'12px 14px',border:`1px solid ${NOAH_C.border}`}}>
+              <div style={{fontSize:12,fontWeight:700,color,marginBottom:8}}>{label}</div>
+              <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                <div style={{display:'flex',justifyContent:'space-between'}}>
+                  <span style={{fontSize:11,color:NOAH_C.ink3}}>CTL</span>
+                  <span style={{fontSize:12,fontWeight:700,color:NOAH_C.ink}}>{d.ctl}</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between'}}>
+                  <span style={{fontSize:11,color:NOAH_C.ink3}}>ATL</span>
+                  <span style={{fontSize:12,fontWeight:700,color:NOAH_C.ink}}>{d.atl}</span>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between'}}>
+                  <span style={{fontSize:11,color:NOAH_C.ink3}}>TSB</span>
+                  <span style={{fontSize:12,fontWeight:700,color:tsbColor}}>{d.tsb}</span>
+                </div>
+              </div>
+              <div style={{fontSize:9,color:NOAH_C.ink4,marginTop:8}}>
+                {d.total_sesiones} sesiones · últ. {d.ultima_fecha_con_datos}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+
+function ProyeccionMultideporte({ atletaId }) {
+  const [data, setData]       = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!atletaId) return
+    setLoading(true)
+    authFetch(`${API}/atletas/${atletaId}/proyeccion_multideporte`)
+      .then(r => r.json())
+      .then(r => { setData(r.data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [atletaId])
+
+  if (loading) return (
+    <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,border:`1px solid ${NOAH_C.border}`,
+      textAlign:'center',color:NOAH_C.ink3,fontSize:12}}>Calculando proyección...</div>
+  )
+  if (!data || data.msg) return (
+    <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,border:`1px solid ${NOAH_C.border}`,
+      textAlign:'center',color:NOAH_C.ink3,fontSize:12}}>
+      {data?.msg || 'Sin datos de proyección todavía'}
+    </div>
+  )
+
+  const DEPORTES = [
+    {key:'running',  label:'🏃 Running',  color:NOAH_C.run  || '#8B5CF6'},
+    {key:'cycling',  label:'🚴 Ciclismo', color:NOAH_C.bike || '#38BDF8'},
+    {key:'swimming', label:'🏊 Natación', color:NOAH_C.swim || '#34D399'},
+  ]
+  const conDatos = DEPORTES.filter(d => data[d.key])
+  if (conDatos.length === 0) return null
+
+  return (
+    <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,border:`1px solid ${NOAH_C.border}`}}>
+      <div style={{ fontSize:11, fontWeight:600, color:NOAH_C.ink3, letterSpacing:0.8, textTransform:'uppercase', marginBottom:6 }}>
+        Proyección hacia la carrera — por disciplina
+      </div>
+      <div style={{ fontSize:11, color:NOAH_C.ink4, marginBottom:14 }}>
+        Fecha límite de carga = último día para seguir sumando antes de tener que empezar a bajar (taper)
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        {conDatos.map(({key,label,color}) => {
+          const d = data[key]
+          return (
+            <div key={key} style={{background:NOAH_C.cardBg2,borderRadius:8,padding:'12px 14px',border:`1px solid ${NOAH_C.border}`}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                <span style={{fontSize:12,fontWeight:700,color}}>{label}</span>
+                {!d.invariantes_ok && (
+                  <span style={{fontSize:9,fontWeight:700,color:NOAH_C.miss,background:`${NOAH_C.miss}18`,padding:'2px 7px',borderRadius:99}}>⚠ revisar</span>
+                )}
+              </div>
+              <div style={{display:'flex',gap:16,flexWrap:'wrap',fontSize:11,color:NOAH_C.ink3,marginBottom:6}}>
+                <span>CTL actual <b style={{color:NOAH_C.ink}}>{d.ctl_actual ?? '--'}</b></span>
+                <span>CTL pico <b style={{color:NOAH_C.ink}}>{d.ctl_pico ?? '--'}</b></span>
+                <span>TSB en carrera <b style={{color:NOAH_C.ink}}>{d.tsb_carrera_A ?? '--'}</b></span>
+              </div>
+              <div style={{fontSize:12,fontWeight:700,color:NOAH_C.amber}}>
+                📅 Fecha límite de carga: {d.fecha_inicio_taper || '--'}
+              </div>
+              {d.notas?.length > 0 && (
+                <div style={{marginTop:6,display:'flex',flexDirection:'column',gap:2}}>
+                  {d.notas.map((n,i) => (
+                    <div key={i} style={{fontSize:10,color:n.startsWith('⚠')?NOAH_C.miss:NOAH_C.ink4}}>{n}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

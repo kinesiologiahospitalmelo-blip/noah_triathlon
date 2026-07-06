@@ -3206,6 +3206,9 @@ function DashboardAtleta({ atletaId, atleta }) {
           <div style={{gridColumn:'1/-1'}}>
             <HannaLifeGrafico atletaId={atletaId} modo="dark" />
           </div>
+          <div style={{gridColumn:'1/-1'}}>
+            <ResumenCumplimientoCoach atletaId={atletaId} />
+          </div>
         </div>
       )}
 
@@ -3214,7 +3217,12 @@ function DashboardAtleta({ atletaId, atleta }) {
       {tab==='calendario' && atletaId && (
         <CalendarioMensual atletaId={atletaId} presc={presc} dark={true}/>
       )}
-      {tab==='fases'&&<ModeloBanisterFases atletaId={atletaId} />}
+      {tab==='fases'&&(
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+          <ModeloBanisterFases atletaId={atletaId} />
+          <ProyeccionMultideporteCoach atletaId={atletaId} />
+        </div>
+      )}
 
       {tab==='intel'&&<NOAHIntelPanel atletaId={atletaId} />}
 
@@ -4783,5 +4791,136 @@ function OptimizerPanel({ atletaId, atleta }) {
       </div>
 
     </div>
+  )
+}
+
+
+function ResumenCumplimientoCoach({ atletaId }) {
+  const [data, setData]       = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [dias, setDias]       = useState(30)
+
+  useEffect(() => {
+    if (!atletaId) return
+    setLoading(true)
+    authFetch(`${API}/atletas/${atletaId}/resumen_cumplimiento?dias=${dias}`)
+      .then(r => r.json())
+      .then(r => { setData(r.data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [atletaId, dias])
+
+  if (loading) return (
+    <Card style={{textAlign:'center',color:C.text2,fontSize:12}}>Cargando resumen...</Card>
+  )
+  if (!data) return null
+
+  const pct = data.pct_horas
+  const pctColor = pct == null ? C.text2 : pct >= 90 ? C.done : pct >= 70 ? C.amber : C.miss
+
+  return (
+    <Card>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <SectionTitle>Cumplimiento — {data.periodo_dias} días</SectionTitle>
+        <select value={dias} onChange={e=>setDias(Number(e.target.value))} style={{
+          padding:'4px 8px', borderRadius:6, border:`1px solid ${C.border}`,
+          background:C.bg3, color:C.text, fontSize:11,
+        }}>
+          <option value={7}>7 días</option>
+          <option value={30}>30 días</option>
+          <option value={90}>90 días</option>
+        </select>
+      </div>
+
+      <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:4}}>
+        <span style={{fontSize:28,fontWeight:800,color:pctColor}}>{pct != null ? `${pct}%` : '--'}</span>
+        <span style={{fontSize:12,color:C.text2}}>de las horas prescriptas</span>
+      </div>
+      <div style={{fontSize:11,color:C.text3,marginBottom:16}}>
+        {data.horas_realizadas}h realizadas de {data.horas_prescriptas}h planificadas
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+        {[
+          {label:'Completadas', value:data.sesiones_completadas, color:C.done},
+          {label:'No realizadas', value:data.sesiones_no_realizadas, color:C.miss},
+          {label:'Extra (no planificadas)', value:data.sesiones_extra, color:C.amber},
+        ].map(({label,value,color}) => (
+          <div key={label} style={{background:C.bg3,borderRadius:8,padding:'10px 12px',
+            border:`1px solid ${C.border}`,textAlign:'center'}}>
+            <div style={{fontSize:20,fontWeight:800,color}}>{value}</div>
+            <div style={{fontSize:9,color:C.text3,marginTop:2,lineHeight:1.3}}>{label}</div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+
+function ProyeccionMultideporteCoach({ atletaId }) {
+  const [data, setData]       = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!atletaId) return
+    setLoading(true)
+    authFetch(`${API}/atletas/${atletaId}/proyeccion_multideporte`)
+      .then(r => r.json())
+      .then(r => { setData(r.data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [atletaId])
+
+  if (loading) return <Card style={{textAlign:'center',color:C.text2,fontSize:12}}>Calculando proyección...</Card>
+  if (!data || data.msg) return (
+    <Card style={{textAlign:'center',color:C.text2,fontSize:12}}>
+      {data?.msg || 'Sin datos de proyección todavía'}
+    </Card>
+  )
+
+  const DEPORTES = [
+    {key:'running',  label:'🏃 Running',  color:C.purple},
+    {key:'cycling',  label:'🚴 Ciclismo', color:C.blue},
+    {key:'swimming', label:'🏊 Natación', color:'#34D399'},
+  ]
+  const conDatos = DEPORTES.filter(d => data[d.key])
+  if (conDatos.length === 0) return null
+
+  return (
+    <Card>
+      <SectionTitle>Proyección hacia la carrera — por disciplina</SectionTitle>
+      <div style={{ fontSize:11, color:C.text3, marginBottom:14 }}>
+        Fecha límite de carga = último día para seguir sumando antes de tener que empezar a bajar (taper)
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        {conDatos.map(({key,label,color}) => {
+          const d = data[key]
+          return (
+            <div key={key} style={{background:C.bg3,borderRadius:8,padding:'12px 14px',border:`1px solid ${C.border}`}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                <span style={{fontSize:12,fontWeight:700,color}}>{label}</span>
+                {!d.invariantes_ok && (
+                  <span style={{fontSize:9,fontWeight:700,color:C.miss,background:`${C.miss}18`,padding:'2px 7px',borderRadius:99}}>⚠ revisar</span>
+                )}
+              </div>
+              <div style={{display:'flex',gap:16,flexWrap:'wrap',fontSize:11,color:C.text2,marginBottom:6}}>
+                <span>CTL actual <b style={{color:C.text}}>{d.ctl_actual ?? '--'}</b></span>
+                <span>CTL pico <b style={{color:C.text}}>{d.ctl_pico ?? '--'}</b></span>
+                <span>TSB en carrera <b style={{color:C.text}}>{d.tsb_carrera_A ?? '--'}</b></span>
+              </div>
+              <div style={{fontSize:12,fontWeight:700,color:C.amber}}>
+                📅 Fecha límite de carga: {d.fecha_inicio_taper || '--'}
+              </div>
+              {d.notas?.length > 0 && (
+                <div style={{marginTop:6,display:'flex',flexDirection:'column',gap:2}}>
+                  {d.notas.map((n,i) => (
+                    <div key={i} style={{fontSize:10,color:n.startsWith('⚠')?C.miss:C.text3}}>{n}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </Card>
   )
 }
