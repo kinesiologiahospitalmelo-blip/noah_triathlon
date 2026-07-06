@@ -1,21 +1,32 @@
 """
 procesar_cola_sync.py - Proyecto NOAH
 ========================================
-Este archivo se perdio durante la reorganizacion del repo (nunca llego a
-subirse a GitHub) -- por eso el GitHub Action "Procesar cola de
-sincronizacion NOAH" fallaba con "No such file or directory".
-
-Que hace: lee la tabla `sync_log` (la misma que ya escribe el endpoint
+Lee la tabla `sync_log` (la misma que escribe el endpoint
 POST /api/atletas/<id>/sincronizar en app.py con status='pendiente'), y
-por cada pedido pendiente llama a sincronizar_garmin.py como subproceso
--- EXACTAMENTE igual a como Rodrigo ya lo corre a mano en su terminal
-(python sincronizar_garmin.py --atleta X --modo Y). No reimplementa nada
-de la logica interna de sincronizar_garmin.py, para no arriesgar romper
-lo que ya funciona.
+por cada pedido pendiente:
+
+  1. Calcula desde que fecha faltan datos para ese atleta (mirando la
+     ultima sesion guardada y el ultimo bio/sleep_hrv guardado en la
+     base -- el mas antiguo de los dos, para no dejar ningun hueco).
+  2. Baja TODOS los dias faltantes, uno por uno (--fecha puntual),
+     no solo "hoy" -- asi si el atleta se olvido de sincronizar varios
+     dias, se completa el historial entero al primer sync.
+  3. Pausa unos segundos entre cada dia, para no golpear la API de
+     Garmin de forma agresiva (ya vimos casos de "429 IP rate limited
+     by Garmin" en los logs).
+  4. Tope de seguridad: nunca baja mas de MAX_DIAS_BACKFILL dias de
+     una sola vez, aunque el hueco calculado sea mayor (evita que un
+     atleta nuevo o con mucho tiempo sin sincronizar deje el job
+     corriendo demasiado tiempo). Si hace falta mas, el proximo sync
+     sigue completando desde donde quedo.
+
+No reimplementa la logica interna de sincronizar_garmin.py -- lo sigue
+llamando como subproceso, exactamente como Rodrigo ya lo corre a mano,
+solo que ahora con --fecha explicito por cada dia faltante en vez de
+depender del default (que solo miraba "hoy").
 
 Requiere la variable de entorno DATABASE_URL (la misma que usa app.py y
-sincronizar_garmin.py). En GitHub Actions ya viene del secret
-DATABASE_URL definido en el workflow.
+sincronizar_garmin.py).
 
 USO:
     python procesar_cola_sync.py
@@ -23,8 +34,9 @@ USO:
 
 import os
 import sys
+import time
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 
 try:
     import psycopg2
@@ -33,8 +45,10 @@ except ImportError:
     print("Falta psycopg2. Instalar con: pip install psycopg2-binary")
     sys.exit(1)
 
-TIMEOUT_SEG = 280          # tope por atleta (el job entero de GH Actions tiene mucho mas margen)
-MAX_DETALLE = 2000         # no guardar logs gigantes en sync_log.detalle
+TIMEOUT_SEG          = 120   # tope por dia individual (antes era por atleta entero)
+MAX_DETALLE          = 3000  # no guardar logs gigantes en sync_log.detalle
+MAX_DIAS_BACKFILL    = 21    # tope de seguridad: nunca bajar mas de N dias por corrida
+PAUSA_ENTRE_FECHAS_S = 3     # pausa entre cada dia, para no gatillar el rate-limit de Garmin
 
 
 def get_conn():
@@ -62,6 +76,53 @@ def marcar(conn, row_id, status, detalle=''):
     conn.commit()
 
 
+def calcular_fechas_faltantes(conn, atleta_id, max_dias=MAX_DIAS_BACKFILL):
+    """
+    Devuelve la lista de fechas (YYYY-MM-DD, ordenadas de mas vieja a
+    mas nueva, terminando hoy) que hay que sincronizar para este atleta.
+
+    Toma el mas antiguo entre "ultima sesion guardada" y "ultimo bio
+    guardado" -- asi si por ejemplo las actividades estan al dia pero
+    el bio quedo atrasado 3 dias, igualmente bajamos esos 3 dias.
+    """
+    cur = conn.cursor()
+    cur.execute("SELECT MAX(fecha) FROM sesiones WHERE atleta_id=%s", (atleta_id,))
+    max_ses = cur.fetchone()[0]
+    cur.execute("SELECT MAX(fecha) FROM sleep_hrv WHERE atleta_id=%s", (atleta_id,))
+    max_bio = cur.fetchone()[0]
+
+    candidatos = [f[:10] for f in (max_ses, max_bio) if f]
+    hoy = date.today()
+
+    if not candidatos:
+        # Nunca sincronizo nada -- limitamos a max_dias para no intentar
+        # bajar el historial completo en una sola corrida.
+        ultimo = hoy - timedelta(days=max_dias)
+    else:
+        ultimo = date.fromisoformat(min(candidatos))
+
+    dias_atras = (hoy - ultimo).days
+    dias_atras = max(1, min(dias_atras, max_dias))  # minimo "hoy", tope de seguridad
+
+    return [(hoy - timedelta(days=i)).isoformat() for i in range(dias_atras - 1, -1, -1)]
+
+
+def sync_un_dia(atleta_id, modo, fecha_str):
+    cmd = [sys.executable, 'sincronizar_garmin.py',
+           '--atleta', str(atleta_id), '--modo', modo, '--fecha', fecha_str]
+    try:
+        resultado = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=TIMEOUT_SEG,
+            env=os.environ.copy()
+        )
+        salida = (resultado.stdout or '') + (resultado.stderr or '')
+        return resultado.returncode == 0, salida
+    except subprocess.TimeoutExpired:
+        return False, f'[{fecha_str}] Timeout despues de {TIMEOUT_SEG}s'
+    except Exception as e:
+        return False, f'[{fecha_str}] {e}'
+
+
 def procesar_pendientes(conn):
     cur = conn.cursor()
     cur.execute(
@@ -77,31 +138,33 @@ def procesar_pendientes(conn):
 
     for row in pendientes:
         row_id, atleta_id, modo = row['id'], row['atleta_id'], row['modo'] or 'todo'
-        print(f'  -> Procesando id={row_id} atleta_id={atleta_id} modo={modo} ...')
         marcar(conn, row_id, 'procesando')
 
-        cmd = [sys.executable, 'sincronizar_garmin.py',
-               '--atleta', str(atleta_id), '--modo', modo]
+        fechas = calcular_fechas_faltantes(conn, atleta_id)
+        print(f'  -> id={row_id} atleta_id={atleta_id} modo={modo} '
+              f'-- {len(fechas)} dia(s) a sincronizar: {fechas[0]} .. {fechas[-1]}')
 
-        try:
-            resultado = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=TIMEOUT_SEG,
-                env=os.environ.copy()
-            )
-            salida = (resultado.stdout or '') + (resultado.stderr or '')
-            if resultado.returncode == 0:
-                marcar(conn, row_id, 'completado', salida)
-                print(f'     [OK] atleta_id={atleta_id}')
+        salidas = []
+        hubo_error = False
+        for i, fecha_str in enumerate(fechas):
+            ok, salida = sync_un_dia(atleta_id, modo, fecha_str)
+            salidas.append(salida)
+            if ok:
+                print(f'     [OK] {fecha_str}')
             else:
-                marcar(conn, row_id, 'error', salida)
-                print(f'     [ERROR] atleta_id={atleta_id} (returncode {resultado.returncode})')
+                hubo_error = True
+                print(f'     [ERROR] {fecha_str}')
+            # Pausa entre dias (no hace falta pausar despues del ultimo)
+            if i < len(fechas) - 1:
+                time.sleep(PAUSA_ENTRE_FECHAS_S)
 
-        except subprocess.TimeoutExpired:
-            marcar(conn, row_id, 'error', f'Timeout despues de {TIMEOUT_SEG}s')
-            print(f'     [ERROR] atleta_id={atleta_id} -- timeout')
-        except Exception as e:
-            marcar(conn, row_id, 'error', str(e))
-            print(f'     [ERROR] atleta_id={atleta_id} -- {e}')
+        detalle_final = '\n'.join(salidas)
+        if not hubo_error:
+            marcar(conn, row_id, 'completado', detalle_final)
+            print(f'     [OK] atleta_id={atleta_id} -- {len(fechas)} dia(s) completados')
+        else:
+            marcar(conn, row_id, 'parcial', detalle_final)
+            print(f'     [PARCIAL] atleta_id={atleta_id} -- algun dia fallo, revisar detalle')
 
 
 def limpiar_viejos(conn, dias=7):
@@ -110,7 +173,7 @@ def limpiar_viejos(conn, dias=7):
     cur = conn.cursor()
     limite = (datetime.now() - timedelta(days=dias)).isoformat()
     cur.execute(
-        "DELETE FROM sync_log WHERE status IN ('completado','error') AND ts < %s",
+        "DELETE FROM sync_log WHERE status IN ('completado','error','parcial') AND ts < %s",
         (limite,)
     )
     conn.commit()
