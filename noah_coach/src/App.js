@@ -3726,6 +3726,7 @@ function AnalisisCiclismoPanel({ atletaId, atleta, ftp = 200, cadenciaOptima = 8
               <div style={{ fontSize:12, color:C.text2, marginBottom:8 }}>
                 Cada punto = 1 seg · Eje X = Cadencia (RPM) · Eje Y = Torque (N·m)
                 · Líneas = FTP ({metricas.ftp_usado}W) / Cadencia óptima ({metricas.cadencia_optima}rpm)
+                <br/>· CP {metricas.cp_usado}W · W' {metricas.w_prime_usado ? Math.round(metricas.w_prime_usado/1000) : '--'}kJ ({metricas.w_prime_usado}J)
               </div>
               <ScatterChart width={Math.min(window.innerWidth - 80, 600)} height={260}>
                 <CartesianGrid stroke="rgba(255,255,255,0.06)" />
