@@ -86,6 +86,10 @@ class Carrera:
     nombre: str = ''
     distancia: str = ''
     ctl_objetivo: Optional[float] = None
+    deporte: str = 'running'  # 'running'|'cycling'|'swimming'|'duatlon'|'triatlon'
+                               # -- determina que disciplinas participan (ver
+                               # disciplinas_de_carrera). Default 'running' para
+                               # no romper llamadas existentes que no lo pasan.
 
 
 @dataclass
@@ -109,6 +113,8 @@ class ResultadoProyeccion:
     ramp_max_real: float
     invariantes_ok: bool
     notas: List[str]
+    fecha_inicio_taper: Optional[date] = None  # ultimo dia de build antes de
+                                                 # tener que empezar a bajar carga
 
 
 def simular_dia(ctl_prev: float, atl_prev: float, tss: float):
@@ -157,7 +163,8 @@ def proyectar_pmc(
         return ResultadoProyeccion(
             dias=[], fases=[], ctl_pico=ctl_inicial,
             tsb_carrera_A=0, ramp_max_real=0,
-            invariantes_ok=False, notas=['Sin carreras futuras']
+            invariantes_ok=False, notas=['Sin carreras futuras'],
+            fecha_inicio_taper=None,
         )
 
     # Carrera A final = ancla del macrociclo
@@ -174,7 +181,8 @@ def proyectar_pmc(
         return ResultadoProyeccion(
             dias=[], fases=[], ctl_pico=ctl_inicial,
             tsb_carrera_A=0, ramp_max_real=0,
-            invariantes_ok=False, notas=['Carrera demasiado próxima (< 7 días)']
+            invariantes_ok=False, notas=['Carrera demasiado próxima (< 7 días)'],
+            fecha_inicio_taper=None,
         )
 
     # ── Construir mapa de tipo de día ─────────────────────────────────────────
@@ -403,6 +411,7 @@ def proyectar_pmc(
         ramp_max_real=round(ramp_max_real, 2),
         invariantes_ok=invariantes_ok,
         notas=notas,
+        fecha_inicio_taper=fecha_inicio_taper,
     )
 
 
@@ -428,7 +437,82 @@ def proyeccion_a_dict(resultado: ResultadoProyeccion) -> dict:
         'ramp_max_real':  resultado.ramp_max_real,
         'invariantes_ok': resultado.invariantes_ok,
         'notas':          resultado.notas,
+        'fecha_inicio_taper': str(resultado.fecha_inicio_taper) if resultado.fecha_inicio_taper else None,
     }
+
+
+# ── Multi-deporte: correr proyectar_pmc() una vez por disciplina ─────────────
+
+DISCIPLINAS_POR_DEPORTE = {
+    'running':  ['running'],
+    'run':      ['running'],
+    'cycling':  ['cycling'],
+    'bike':     ['cycling'],
+    'swimming': ['swimming'],
+    'swim':     ['swimming'],
+    'duatlon':  ['running', 'cycling'],
+    'triatlon': ['running', 'cycling', 'swimming'],
+}
+
+
+def disciplinas_de_carrera(deporte: str) -> List[str]:
+    """
+    Traduce el campo 'deporte' de una carrera (tal como ya se guarda hoy
+    en la tabla `carreras`: running/cycling/swimming/duatlon/triatlon) a
+    la lista de disciplinas que efectivamente compiten en ese evento.
+    """
+    return DISCIPLINAS_POR_DEPORTE.get((deporte or '').lower(), [deporte or 'running'])
+
+
+def proyectar_multideporte(
+    ctl_por_deporte: dict,
+    hoy: date,
+    carreras: List[Carrera],
+    ramp_semanal: float = 3.5,
+    ramp_max: float = 6.0,
+) -> dict:
+    """
+    Corre proyectar_pmc() UNA VEZ POR DISCIPLINA (running, cycling,
+    swimming) -- NO modifica proyectar_pmc, la reutiliza tal cual.
+
+    Para cada disciplina, filtra del listado de carreras solo aquellas
+    donde esa disciplina participa (segun carrera.deporte):
+      - Una carrera de running en pretemporada -> solo afecta 'running'
+      - Un duatlon -> afecta 'running' y 'cycling'
+      - Un triatlon -> afecta las 3, cada una con su propio ritmo de
+        carga pero todas apuntando a la MISMA fecha de carrera.
+
+    Args:
+        ctl_por_deporte: dict como el que devuelve
+            _calcular_ctl_atl_sport() en app.py, ej:
+            {'running': {'ctl':20,'atl':18,...}, 'cycling': {...}, 'swimming': None}
+        hoy: fecha de hoy
+        carreras: TODAS las carreras del atleta (con su campo .deporte)
+        ramp_semanal / ramp_max: iguales que en proyectar_pmc
+
+    Devuelve: {'running': ResultadoProyeccion|None, 'cycling': ..., 'swimming': ...}
+    Una disciplina da None si el atleta no tiene datos de CTL para ella,
+    o si no hay ninguna carrera futura donde esa disciplina participe.
+    """
+    resultados = {}
+    for disciplina in ('running', 'cycling', 'swimming'):
+        carreras_disciplina = [
+            c for c in carreras
+            if disciplina in disciplinas_de_carrera(c.deporte)
+        ]
+        datos_ctl = ctl_por_deporte.get(disciplina)
+        if not carreras_disciplina or not datos_ctl:
+            resultados[disciplina] = None
+            continue
+        resultados[disciplina] = proyectar_pmc(
+            ctl_inicial=datos_ctl['ctl'],
+            atl_inicial=datos_ctl['atl'],
+            hoy=hoy,
+            carreras=carreras_disciplina,
+            ramp_semanal=ramp_semanal,
+            ramp_max=ramp_max,
+        )
+    return resultados
 
 
 # ── Tests de invariantes ──────────────────────────────────────────────────────

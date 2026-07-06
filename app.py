@@ -2284,6 +2284,194 @@ def get_ultima_actividad(atleta_id):
     return ok({'actividad': dict(zip(cols, row))})
 
 
+@app.route('/api/atletas/<int:atleta_id>/resumen_cumplimiento', methods=['GET'])
+@requiere_login
+def get_resumen_cumplimiento(atleta_id):
+    """
+    Estadisticas simples de cumplimiento para un periodo: cuanto se
+    prescribio vs cuanto se realizo (horas y sesiones), sin matching
+    complejo por pesos -- solo dia+deporte.
+    """
+    dias = int(request.args.get('dias', 30))
+    conn = get_conn()
+    try:
+        desde = (date.today() - timedelta(days=dias)).isoformat()
+
+        prescriptas = conn.execute(
+            "SELECT fecha, sport, duration_min FROM sesiones "
+            "WHERE atleta_id=%s AND fecha >= %s "
+            "AND fuente IN ('prescripcion','generada')",
+            (atleta_id, desde)
+        ).fetchall()
+
+        reales = conn.execute(
+            "SELECT fecha, sport, duration_min FROM sesiones "
+            "WHERE atleta_id=%s AND fecha >= %s "
+            "AND (fuente IS NULL OR fuente NOT IN ('prescripcion','simulacion','generada'))",
+            (atleta_id, desde)
+        ).fetchall()
+
+        horas_prescriptas = sum((r[2] or 0) for r in prescriptas) / 60
+        horas_realizadas  = sum((r[2] or 0) for r in reales) / 60
+        pct_horas = round((horas_realizadas / horas_prescriptas) * 100, 1) if horas_prescriptas > 0 else None
+
+        set_prescriptas = {(r[0], r[1]) for r in prescriptas}
+        set_reales      = {(r[0], r[1]) for r in reales}
+
+        completadas    = set_prescriptas & set_reales
+        no_realizadas  = set_prescriptas - set_reales
+        extra          = set_reales - set_prescriptas
+
+        return ok({
+            'periodo_dias':          dias,
+            'horas_prescriptas':     round(horas_prescriptas, 1),
+            'horas_realizadas':      round(horas_realizadas, 1),
+            'pct_horas':             pct_horas,
+            'sesiones_prescriptas':  len(set_prescriptas),
+            'sesiones_completadas':  len(completadas),
+            'sesiones_no_realizadas':len(no_realizadas),
+            'sesiones_extra':        len(extra),
+        })
+    finally:
+        conn.close()
+
+
+def _calcular_ctl_atl_sport(conn, atleta_id, sport):
+    """
+    CTL/ATL/TSB para UN solo deporte, con el mismo modelo EMA que usa
+    noa_db.py (tau_ctl=42, tau_atl=7) pero sumando TSS solo de ese
+    deporte por dia (no de todos los deportes juntos).
+    Devuelve None si el atleta no tiene ninguna sesion de ese deporte.
+    """
+    from collections import defaultdict
+    rows = conn.execute(
+        "SELECT fecha, tss_total FROM sesiones WHERE atleta_id=%s AND sport=%s "
+        "AND (fuente IS NULL OR fuente NOT IN ('prescripcion','simulacion','generada'))",
+        (atleta_id, sport)
+    ).fetchall()
+    if not rows:
+        return None
+
+    tss_por_dia = defaultdict(float)
+    for row in rows:
+        fecha, tss = row[0], row[1]
+        tss_por_dia[str(fecha)[:10]] += float(tss or 0)
+
+    fechas_ordenadas = sorted(tss_por_dia.keys())
+    fecha_min = datetime.fromisoformat(fechas_ordenadas[0])
+    fecha_max = datetime.fromisoformat(fechas_ordenadas[-1])
+    dias_totales = (fecha_max - fecha_min).days + 1
+
+    a_ctl = 2 / (42 + 1)
+    a_atl = 2 / (7 + 1)
+    ctl = atl = 0.0
+    for i in range(dias_totales):
+        f = (fecha_min + timedelta(days=i)).strftime('%Y-%m-%d')
+        t = tss_por_dia.get(f, 0.0)
+        if i == 0:
+            ctl = t; atl = t
+        else:
+            ctl = ctl * (1 - a_ctl) + t * a_ctl
+            atl = atl * (1 - a_atl) + t * a_atl
+
+    tsb = ctl - atl
+    return {
+        'ctl': round(ctl, 1),
+        'atl': round(atl, 1),
+        'tsb': round(tsb, 1),
+        'ultima_fecha_con_datos': fechas_ordenadas[-1],
+        'total_sesiones': len(rows),
+    }
+
+
+@app.route('/api/atletas/<int:atleta_id>/ctl_por_deporte', methods=['GET'])
+@requiere_login
+def get_ctl_por_deporte(atleta_id):
+    """
+    CTL/ATL/TSB separado por deporte (running, cycling, swimming).
+    Solo lectura -- no modifica el CTL/ATL/TSB global existente.
+    """
+    conn = get_conn()
+    try:
+        resultado = {}
+        for sport in ('running', 'cycling', 'swimming'):
+            resultado[sport] = _calcular_ctl_atl_sport(conn, atleta_id, sport)
+        return ok(resultado)
+    finally:
+        conn.close()
+
+
+@app.route('/api/atletas/<int:atleta_id>/proyeccion_multideporte', methods=['GET'])
+@requiere_login
+def get_proyeccion_multideporte(atleta_id):
+    """
+    Proyeccion de CTL/ATL/TSB y fecha limite de carga, SEPARADA por
+    disciplina (running/cycling/swimming), corriendo el motor probado
+    de noah_pmc_projection.py una vez por disciplina -- cada carrera
+    del calendario aporta a las disciplinas que realmente participan
+    en ella (running/cycling/swimming/duatlon/triatlon).
+    """
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from noah_pmc_projection import Carrera as CarreraObj, proyectar_multideporte, proyeccion_a_dict
+
+    conn = get_conn()
+    try:
+        hoy = date.today()
+
+        # 1. CTL/ATL actual por deporte
+        ctl_por_deporte = {}
+        for sport in ('running', 'cycling', 'swimming'):
+            ctl_por_deporte[sport] = _calcular_ctl_atl_sport(conn, atleta_id, sport)
+
+        # 2. Carreras del atleta
+        _init_carreras_table(conn)
+        carreras_rows = conn.execute(
+            "SELECT nombre, fecha, prioridad, deporte, ctl_objetivo, estado "
+            "FROM carreras WHERE atleta_id=%s AND estado != 'cancelada' "
+            "ORDER BY fecha ASC", (atleta_id,)).fetchall()
+
+        carreras_obj = []
+        for r in carreras_rows:
+            try:
+                fc = date.fromisoformat(str(r[1])[:10])
+                if fc > hoy:
+                    carreras_obj.append(CarreraObj(
+                        fecha=fc, prioridad=r[2] or 'B', nombre=r[0] or '',
+                        distancia='', ctl_objetivo=r[4], deporte=r[3] or 'running',
+                    ))
+            except Exception:
+                continue
+
+        if not carreras_obj:
+            return ok({
+                'running': None, 'cycling': None, 'swimming': None,
+                'msg': 'Sin carreras futuras para proyectar',
+            })
+
+        resultados = proyectar_multideporte(ctl_por_deporte, hoy, carreras_obj)
+
+        respuesta = {}
+        for deporte, res in resultados.items():
+            if res is None:
+                respuesta[deporte] = None
+                continue
+            d = proyeccion_a_dict(res)
+            respuesta[deporte] = {
+                'ctl_pico':           d['ctl_pico'],
+                'tsb_carrera_A':      d['tsb_carrera_A'],
+                'fecha_inicio_taper': d['fecha_inicio_taper'],
+                'invariantes_ok':     d['invariantes_ok'],
+                'notas':              d['notas'],
+                'ctl_actual':         ctl_por_deporte[deporte]['ctl'] if ctl_por_deporte[deporte] else None,
+            }
+        return ok(respuesta)
+    except Exception as e:
+        return error(str(e))
+    finally:
+        conn.close()
+
+
 @app.route('/api/atletas/<int:atleta_id>/sync_status', methods=['GET'])
 @requiere_login
 def get_sync_status(atleta_id):
