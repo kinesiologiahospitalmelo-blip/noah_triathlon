@@ -392,6 +392,7 @@ def listar_atletas():
             'deporte'     : _clean(a['deporte_ppal']),
             'lthr_run'    : _clean(a['lthr_run']),
             'ctl'         : estado.get('ctl'),
+            'atl'         : estado.get('atl'),
             'tsb'         : estado.get('tsb'),
             'hrv_flag'    : estado.get('hrv_flag'),
             'km_semana'   : estado.get('km_semana'),
@@ -2468,6 +2469,76 @@ def get_proyeccion_multideporte(atleta_id):
         return ok(respuesta)
     except Exception as e:
         return error(str(e))
+    finally:
+        conn.close()
+
+
+def _calcular_cs_dprime(conn, atleta_id):
+    """
+    Velocidad Critica (CS, en m/s) y D' (capacidad anaerobica, en metros)
+    para running -- modelo de 2 parametros (mismo principio que CP/W'
+    en ciclismo, pero con velocidad en vez de potencia).
+
+    distancia = CS * tiempo + D'  -- ajustado por minimos cuadrados con
+    los mejores tiempos historicos en 1k/5k/10k (fastest_1k/5k/10k, en
+    segundos). Requiere al menos 2 de los 3 puntos.
+    """
+    row = conn.execute(
+        "SELECT MIN(fastest_1k)  FILTER (WHERE fastest_1k  > 0), "
+        "       MIN(fastest_5k)  FILTER (WHERE fastest_5k  > 0), "
+        "       MIN(fastest_10k) FILTER (WHERE fastest_10k > 0) "
+        "FROM sesiones WHERE atleta_id=%s AND sport='running'",
+        (atleta_id,)
+    ).fetchone()
+
+    t1k, t5k, t10k = row[0], row[1], row[2]
+    puntos = []
+    if t1k:  puntos.append((1000.0,  float(t1k)))
+    if t5k:  puntos.append((5000.0,  float(t5k)))
+    if t10k: puntos.append((10000.0, float(t10k)))
+
+    if len(puntos) < 2:
+        return None
+
+    n      = len(puntos)
+    sum_t  = sum(t for _, t in puntos)
+    sum_d  = sum(d for d, _ in puntos)
+    sum_tt = sum(t * t for _, t in puntos)
+    sum_td = sum(t * d for d, t in puntos)
+    denom  = n * sum_tt - sum_t * sum_t
+    if denom == 0:
+        return None
+
+    cs = (n * sum_td - sum_t * sum_d) / denom       # m/s
+    d_prime = (sum_d - cs * sum_t) / n               # metros
+
+    pace_min_km = (1000 / cs) / 60 if cs > 0 else None
+
+    return {
+        'cs_ms':          round(cs, 3),
+        'cs_pace_min_km': round(pace_min_km, 3) if pace_min_km else None,
+        'd_prime_m':      round(d_prime, 0),
+        'puntos_usados':  len(puntos),
+        'fastest_1k':     t1k,
+        'fastest_5k':     t5k,
+        'fastest_10k':    t10k,
+    }
+
+
+@app.route('/api/atletas/<int:atleta_id>/velocidad_critica', methods=['GET'])
+@requiere_login
+def get_velocidad_critica(atleta_id):
+    """Velocidad Critica (CS) y D' para running -- solo lectura."""
+    conn = get_conn()
+    try:
+        resultado = _calcular_cs_dprime(conn, atleta_id)
+        if resultado is None:
+            return ok({
+                'disponible': False,
+                'msg': 'Faltan marcas historicas (se necesitan al menos 2 de: mejor 1k, mejor 5k, mejor 10k)',
+            })
+        resultado['disponible'] = True
+        return ok(resultado)
     finally:
         conn.close()
 

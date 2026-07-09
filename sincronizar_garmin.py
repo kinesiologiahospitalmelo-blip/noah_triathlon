@@ -137,6 +137,27 @@ def asegurar_columnas(conn):
     ''')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_samp_sesion ON activity_samples(sesion_id)')
 
+    # FIX: la tabla de arriba puede existir de antes con el esquema viejo
+    # (CREATE TABLE IF NOT EXISTS no la actualiza). Estas 11 columnas se
+    # agregaban en el INSERT de _guardar_streams pero nunca se crearon en
+    # la tabla real -- por eso TODOS los streams se guardaban como "0
+    # samples" en silencio (columna inexistente = error, tragado por el
+    # except/rollback). Se agregan ahora si faltan, sin tocar datos.
+    from db_compat import asegurar_columnas as _aseg_samples
+    _aseg_samples(conn, 'activity_samples', [
+        ('ground_contact_ms',     'REAL'),
+        ('vertical_osc_mm',       'REAL'),
+        ('stride_length_m',       'REAL'),
+        ('vertical_ratio',        'REAL'),
+        ('ground_balance',        'REAL'),
+        ('performance_cond',      'REAL'),
+        ('respiration_rate',      'REAL'),
+        ('left_right_pct',        'REAL'),
+        ('pedal_smoothness',      'REAL'),
+        ('torque_effectiveness',  'REAL'),
+        ('spo2_pct',              'REAL'),
+    ])
+
     # Log de sync
     conn.execute('''
         CREATE TABLE IF NOT EXISTS sync_log (
@@ -312,12 +333,16 @@ def _guardar_streams(conn, atleta_id, sesion_id, garmin_id, samples):
                   s['respiration'], s['left_right_pct'], s['pedal_smoothness'],
                   s['torque_effectiveness'], s['spo2_pct']))
             saved += 1
-        except Exception:
+        except Exception as e:
             # Rollback OBLIGATORIO: este insert corre en un loop de
             # potencialmente cientos de samples — sin rollback, un solo
             # fallo deja la transacción abortada para todos los siguientes
             # en Postgres (a diferencia de SQLite).
             conn.rollback()
+            if saved == 0:
+                # Solo imprime el primer error de la sesion (evita floodear
+                # el log si TODOS los samples fallan por el mismo motivo).
+                print(f'      [WARN] Sample insert error (se muestra 1 vez): {e}')
     if saved:
         conn.execute('UPDATE sesiones SET has_streams=1 WHERE id=%s', (sesion_id,))
     conn.commit()
