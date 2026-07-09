@@ -1050,6 +1050,11 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
         />
       )}
 
+      {/* Velocidad Critica (CS) y D' — solo para running */}
+      {sport === 'running' && (
+        <VelocidadCriticaBotones atletaId={atletaId} />
+      )}
+
       {/* Tabla de laps expandible */}
       {expandido && laps.length > 0 && (
         <div style={{padding:'0 18px 14px',
@@ -4387,7 +4392,7 @@ export default function AtletaDashboard({ atletaId }) {
             )}
             {subTabZonas==='running' && <div style={{ background:NOAH_C.cardBg, borderRadius:12, padding:20, border:`1px solid ${NOAH_C.border}` }}><div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}><div style={{ display:'flex', alignItems:'center', gap:8 }}><IconRun size={18} color={NOAH_C.run} /><span style={{ fontSize:16, fontWeight:700, color:NOAH_C.ink }}>Zonas Running</span></div><div style={{ fontSize:13, color:NOAH_C.ink3 }}>LTHR <b style={{ color:NOAH_C.run }}>{atleta?.lthr_run}</b> bpm</div></div><ZonasRunningTable zonas={zonasRun} lthr={atleta?.lthr_run} /></div>}
             {subTabZonas==='cycling' && <div style={{ background:NOAH_C.cardBg, borderRadius:12, padding:20, border:`1px solid ${NOAH_C.border}` }}><div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}><div style={{ display:'flex', alignItems:'center', gap:8 }}><IconBike size={18} color={NOAH_C.bike} /><span style={{ fontSize:16, fontWeight:700, color:NOAH_C.ink }}>Zonas Ciclismo</span></div><div style={{ fontSize:13, color:NOAH_C.ink3 }}>FTP <b style={{ color:NOAH_C.bike }}>{zonasBike?.ftp}</b>W</div></div><ZonasCyclingTable zonas={zonasBike} /></div>}
-            {subTabZonas==='swimming' && <div style={{ background:NOAH_C.cardBg, borderRadius:12, padding:20, border:`1px solid ${NOAH_C.border}` }}><div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}><div style={{ display:'flex', alignItems:'center', gap:8 }}><IconSwim size={18} color={NOAH_C.swim} /><span style={{ fontSize:16, fontWeight:700, color:NOAH_C.ink }}>Zonas Natación</span></div><div style={{ fontSize:13, color:NOAH_C.ink3 }}>CSS <b style={{ color:NOAH_C.swim }}>{zonasSwim?.css}</b> min/100m</div></div><ZonasSwimTable zonas={zonasSwim} /></div>}
+            {subTabZonas==='swimming' && <div style={{ background:NOAH_C.cardBg, borderRadius:12, padding:20, border:`1px solid ${NOAH_C.border}` }}><div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}><div style={{ display:'flex', alignItems:'center', gap:8 }}><IconSwim size={18} color={NOAH_C.swim} /><span style={{ fontSize:16, fontWeight:700, color:NOAH_C.ink }}>Zonas Natación</span></div><div style={{ fontSize:13, color:NOAH_C.ink3 }}>CSS <b style={{ color:NOAH_C.swim }}>{zonasSwim?.css ? `${Math.floor(zonasSwim.css)}:${String(Math.round((zonasSwim.css%1)*60)).padStart(2,'0')}` : '--'}</b> /100m</div></div><ZonasSwimTable zonas={zonasSwim} /></div>}
           </div>
         )}
       </div>
@@ -4597,6 +4602,72 @@ function ProyeccionMultideporte({ atletaId }) {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+
+function VelocidadCriticaBotones({ atletaId }) {
+  const [data, setData]       = useState(null)
+  const [abierto, setAbierto] = useState(false)
+  const [cargando, setCargando] = useState(false)
+
+  const cargar = async () => {
+    if (data) return
+    setCargando(true)
+    try {
+      const r = await authFetch(`${API}/atletas/${atletaId}/velocidad_critica`)
+      const d = await r.json()
+      setData(d.data || d)
+    } catch {}
+    setCargando(false)
+  }
+
+  const toggle = () => {
+    setAbierto(o => !o)
+    if (!data) cargar()
+  }
+
+  return (
+    <div style={{ padding:'12px 6px', borderBottom:`1px solid ${NOAH_C.border}` }}>
+      <button onClick={toggle} style={{
+        width:'100%', padding:'10px 0', borderRadius:10, fontSize:13, fontWeight:700,
+        background: abierto ? '#007AFF' : 'rgba(0,122,255,0.12)',
+        color: abierto ? '#fff' : '#007AFF',
+        border:`1.5px solid ${abierto ? '#007AFF' : 'rgba(0,122,255,0.3)'}`,
+        cursor:'pointer',
+      }}>{cargando && !data ? '⏳' : '🏃 Velocidad Crítica'}</button>
+
+      {abierto && (
+        <div style={{ marginTop:12 }}>
+          {!data && cargando && (
+            <div style={{ textAlign:'center', padding:20, color:NOAH_C.ink3, fontSize:12 }}>
+              Calculando...
+            </div>
+          )}
+          {data && !data.disponible && (
+            <div style={{ textAlign:'center', padding:16, color:NOAH_C.ink3, fontSize:12 }}>
+              📡 {data.msg}
+            </div>
+          )}
+          {data && data.disponible && (
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              <div style={{ flex:1, minWidth:120, background:'#F9731612', borderRadius:8, padding:'8px 12px', border:'1px solid #F9731625' }}>
+                <div style={{ fontSize:10, color:NOAH_C.ink3 }}>CS (Velocidad Crítica)</div>
+                <div style={{ fontSize:18, fontWeight:800, color:'#F97316' }}>
+                  {data.cs_pace_min_km ? `${Math.floor(data.cs_pace_min_km)}:${String(Math.round((data.cs_pace_min_km%1)*60)).padStart(2,'0')}/km` : '--'}
+                </div>
+              </div>
+              <div style={{ flex:1, minWidth:120, background:'#A855F712', borderRadius:8, padding:'8px 12px', border:'1px solid #A855F725' }}>
+                <div style={{ fontSize:10, color:NOAH_C.ink3 }}>D' (capacidad anaeróbica)</div>
+                <div style={{ fontSize:18, fontWeight:800, color:'#A855F7' }}>
+                  {data.d_prime_m ? `${Math.round(data.d_prime_m)}m` : '--'}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

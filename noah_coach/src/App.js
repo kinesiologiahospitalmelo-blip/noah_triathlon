@@ -178,6 +178,27 @@ function MetricCard({ label, value, sub, color }) {
   )
 }
 
+function MetricBadgeCircular({ label, value, sub, color }) {
+  const c = color || C.purple
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:7, minWidth:78 }}>
+      <div style={{
+        width:78, height:78, borderRadius:'50%',
+        background:'rgba(255,255,255,0.045)',
+        backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)',
+        border:`2px solid ${c}`, boxShadow:`0 0 18px ${c}30, inset 0 0 12px ${c}12`,
+        display:'flex', alignItems:'center', justifyContent:'center',
+      }}>
+        <span style={{ fontSize:18, fontWeight:800, color:c, lineHeight:1 }}>{value??'--'}</span>
+      </div>
+      <div style={{ textAlign:'center' }}>
+        <div style={{ fontSize:9.5, fontWeight:700, color:C.text2, letterSpacing:0.7, textTransform:'uppercase' }}>{label}</div>
+        {sub && <div style={{ fontSize:9, color:C.text3, marginTop:1 }}>{sub}</div>}
+      </div>
+    </div>
+  )
+}
+
 function SectionTitle({ children }) {
   return <div style={{ fontSize:10, fontWeight:600, letterSpacing:1.5, textTransform:'uppercase', color:C.text2, marginBottom:10 }}>{children}</div>
 }
@@ -195,27 +216,35 @@ function CardRow({ label, value }) {
   )
 }
 
-function AtletaItem({ atleta, selected, onClick }) {
-  const tsb = atleta.tsb
-  const tsbColor = tsb>5?C.done:tsb<-15?C.miss:C.amber
+function AtletaItem({ atleta, selected, onClick, colapsado }) {
   const dep = atleta.deporte_ppal||atleta.deporte||'running'
   const s = SPORT[dep]||SPORT.running
+  const inicial = (atleta.nombre||'?').trim().charAt(0).toUpperCase()
 
   return (
-    <div onClick={onClick} style={{ padding:'11px 14px', cursor:'pointer', borderBottom:`1px solid ${C.border}`, background:selected?`${C.purple}18`:'transparent', borderLeft:selected?`3px solid ${C.purple}`:'3px solid transparent', transition:'all 0.15s' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
-        <div style={{ fontWeight:600, fontSize:13, color:C.text }}>{atleta.nombre}</div>
-        <Pill flag={atleta.hrv_flag} />
-      </div>
-      <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:6 }}>
-        <s.Icon size={12} color={s.color} />
-        <span style={{ fontSize:10, fontWeight:700, color:s.color, letterSpacing:0.8 }}>{s.label.toUpperCase()}</span>
-      </div>
-      <div style={{ display:'flex', gap:12 }}>
-        <span style={{ fontSize:11, color:C.text2 }}>CTL <b style={{ color:C.text }}>{atleta.ctl?.toFixed(0)}</b></span>
-        <span style={{ fontSize:11, color:C.text2 }}>TSB <b style={{ color:tsbColor }}>{atleta.tsb?.toFixed(1)}</b></span>
-        <span style={{ fontSize:11, color:C.text2 }}>LTHR <b style={{ color:C.text }}>{atleta.lthr_run}</b></span>
-      </div>
+    <div onClick={onClick} title={atleta.nombre} style={{
+      padding: colapsado ? '10px 0' : '10px 14px',
+      cursor:'pointer', display:'flex', alignItems:'center',
+      justifyContent: colapsado ? 'center' : 'flex-start',
+      gap:10, borderBottom:`1px solid ${C.border}`,
+      background:selected?`${C.purple}18`:'transparent',
+      borderLeft:selected?`3px solid ${C.purple}`:'3px solid transparent',
+      transition:'all 0.15s',
+    }}>
+      <div style={{
+        width:34, height:34, borderRadius:'50%', flexShrink:0,
+        background:`${s.color}22`, border:`1.5px solid ${s.color}55`,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        fontSize:14, fontWeight:800, color:s.color,
+      }}>{inicial}</div>
+      {!colapsado && (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flex:1, minWidth:0 }}>
+          <div style={{ fontWeight:600, fontSize:13, color:C.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+            {atleta.nombre}
+          </div>
+          <Pill flag={atleta.hrv_flag} />
+        </div>
+      )}
     </div>
   )
 }
@@ -610,8 +639,11 @@ function ActividadCoach({ atletaId, fecha, sport, tssPresc, lthr = 162 }) {
   return (
     <div style={{display:'flex',flexDirection:'column',gap:10,marginTop:10}}>
       {actsFiltradas.map((act,idx)=>(
-        <GraficoActividad key={idx} act={act} laps={act.laps||[]} sport={act.sport} lthr={lthr}
-          sesionId={act.sesion_id || act.id} atletaId={atletaId}/>
+        <div key={idx}>
+          <GraficoActividad act={act} laps={act.laps||[]} sport={act.sport} lthr={lthr}
+            sesionId={act.sesion_id || act.id} atletaId={atletaId}/>
+          {act.sport === 'running' && <VelocidadCriticaBotonesCoach atletaId={atletaId} />}
+        </div>
       ))}
     </div>
   )
@@ -3109,7 +3141,16 @@ function DashboardAtleta({ atletaId, atleta }) {
   const tabs = [{id:'semana',label:'📅 Semana'},{id:'calendario',label:'🗓 Calendario'},{id:'estado',label:'📊 Estado'},{id:'diagnostico',label:'🔍 Diagnóstico'},{id:'zonas',label:'🎯 Zonas'},{id:'fases',label:'📈 Fases'},{id:'intel',label:'🧠 NOAH Intel'},{id:'race',label:'🏁 Race'},{id:'tests',label:'🔬 Tests'},{id:'clustering',label:'🧬 Clusters'},{id:'optimizer',label:'🎯 Optimizer'},{id:'perfil',label:'⚙ Perfil'},{id:'aprendizaje',label:'📈 Aprendizaje'},{id:'analisis_ciclismo',label:'⚡ Análisis Ciclismo'}]
 
   return (
-    <div style={{ flex:1, overflow:'auto', padding:'22px 26px' }}>
+    <div style={{ flex:1, overflow:'auto' }}>
+      {/* Banner NOAH -- imagen de marca arriba de todo */}
+      <div style={{ position:'relative', width:'100%', height:240, overflow:'hidden' }}>
+        <img src="/assets/noah_banner_header.png" alt=""
+          onError={e=>{e.target.parentElement.style.display='none'}}
+          style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center 25%', display:'block' }} />
+        <div style={{ position:'absolute', inset:0, background:`linear-gradient(to bottom, transparent 55%, ${C.bg} 100%)` }}/>
+      </div>
+
+      <div style={{ padding:'18px 26px 22px' }}>
       {/* Header atleta */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:18 }}>
         <div>
@@ -3149,23 +3190,23 @@ function DashboardAtleta({ atletaId, atleta }) {
         </div>
       </div>
 
-      {/* Métricas */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:8, marginBottom:18 }}>
-        <MetricCard label="CTL" value={ctl?.toFixed(1)} sub="fitness" color={C.blue} />
-        <MetricCard label="ATL" value={atl?.toFixed(1)} sub="fatiga" color={C.miss} />
-        <MetricCard label="TSB" value={<span style={{ color:tsbColor }}>{tsb?.toFixed(1)}</span>} sub="frescura" color={tsbColor} />
-        <MetricCard label="HANNA LIFE" value={estado?.estado?.hanna_life?.toFixed(0)||'--'} sub={estado?.estado?.hanna_nivel||'calculando'} color={{'Óptimo':C.done,'Bueno':'#3B82F6','Moderado':C.amber,'Bajo':'#F97316','Crítico':C.miss}[estado?.estado?.hanna_nivel]||C.text2} />
-        <MetricCard label="Diagnóstico" value={diag?.score_general?`${diag.score_general}/100`:'--'} sub={diag?.color||'calculando'} color={{verde:C.done,amarillo:C.amber,rojo:C.miss}[diag?.color]||C.text2} />
+      {/* Métricas -- badges circulares con vidrio esmerilado */}
+      <div style={{
+        display:'flex', justifyContent:'space-around', flexWrap:'wrap', gap:14,
+        marginBottom:18, padding:'16px 18px', borderRadius:14,
+        background:'rgba(255,255,255,0.02)', backdropFilter:'blur(8px)', WebkitBackdropFilter:'blur(8px)',
+        border:`1px solid ${C.border}`,
+      }}>
+        <MetricBadgeCircular label="CTL" value={ctl?.toFixed(1)} sub="fitness" color={C.blue} />
+        <MetricBadgeCircular label="ATL" value={atl?.toFixed(1)} sub="fatiga" color={C.miss} />
+        <MetricBadgeCircular label="TSB" value={tsb?.toFixed(1)} sub="frescura" color={tsbColor} />
+        <MetricBadgeCircular label="Hanna Life" value={estado?.estado?.hanna_life?.toFixed(0)||'--'} sub={estado?.estado?.hanna_nivel||'calculando'} color={{'Óptimo':C.done,'Bueno':'#3B82F6','Moderado':C.amber,'Bajo':'#F97316','Crítico':C.miss}[estado?.estado?.hanna_nivel]||C.text2} />
+        <MetricBadgeCircular label="Diagnóstico" value={diag?.score_general?`${diag.score_general}`:'--'} sub={diag?.color||'calculando'} color={{verde:C.done,amarillo:C.amber,rojo:C.miss}[diag?.color]||C.text2} />
       </div>
 
-      {/* Tabs */}
-      <div style={{ display:'flex', gap:2, marginBottom:18, borderBottom:`1px solid ${C.border}` }}>
-        {tabs.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{ padding:'7px 14px', fontSize:12, borderRadius:'6px 6px 0 0', border:`1px solid ${tab===t.id?C.purple:C.border}`, borderBottom:tab===t.id?`1px solid ${C.bg2}`:`1px solid ${C.border}`, background:tab===t.id?C.bg2:'transparent', color:tab===t.id?C.purple:C.text2, cursor:'pointer', fontWeight:tab===t.id?600:400, marginBottom:-1 }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* Tabs -- ahora en columna vertical a la derecha (ver cierre mas abajo) */}
+      <div style={{ display:'flex', gap:16, alignItems:'flex-start' }}>
+        <div style={{ flex:1, minWidth:0 }}>
 
       {tab==='semana'&&(
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
@@ -3349,6 +3390,35 @@ function DashboardAtleta({ atletaId, atleta }) {
           )}
         </div>
       )}
+        </div>
+
+        {/* Rail vertical de tabs -- a la derecha del contenido */}
+        <div style={{
+          width:132, flexShrink:0, display:'flex', flexDirection:'column', gap:5,
+          position:'sticky', top:0,
+        }}>
+          {tabs.map(t=>{
+            const partes = t.label.split(' ')
+            const icono = partes[0]
+            const texto = partes.slice(1).join(' ')
+            return (
+              <button key={t.id} onClick={()=>setTab(t.id)} style={{
+                display:'flex', alignItems:'center', gap:8, padding:'9px 12px',
+                borderRadius:10, border:`1px solid ${tab===t.id?C.purple:C.border}`,
+                background: tab===t.id ? `${C.purple}18` : 'rgba(255,255,255,0.02)',
+                backdropFilter:'blur(6px)', WebkitBackdropFilter:'blur(6px)',
+                color: tab===t.id?C.purple:C.text2, cursor:'pointer',
+                fontWeight: tab===t.id?700:500, fontSize:11.5, textAlign:'left',
+                transition:'all 0.15s',
+              }}>
+                <span style={{ fontSize:15 }}>{icono}</span>
+                <span>{texto}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      </div>
     </div>
   )
 }
@@ -3359,6 +3429,7 @@ function CoachApp() {
   const [selectedId, setSelectedId] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [colapsado, setColapsado] = useState(false)  // sidebar dinamico: abierto/cerrado
 
   const cargarAtletas = async () => {
     try { const r=await axios.get(`${API}/atletas`); setAtletas(r.data.data); if(!selectedId&&r.data.data.length>0)setSelectedId(r.data.data[0].id) }
@@ -3372,24 +3443,50 @@ function CoachApp() {
     <>
       <style>{css}</style>
       <div style={{ display:'flex', height:'100vh', overflow:'hidden' }}>
-        {/* Sidebar */}
-        <div style={{ width:268, flexShrink:0, background:C.bg2, borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column' }}>
-          <div style={{ padding:'18px 16px 14px', borderBottom:`1px solid ${C.border}` }}>
-            <div style={{ display:'flex', alignItems:'baseline' }}>
-              <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:C.text }}>N</span>
-              <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:C.run }}>O</span>
-              <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:C.text }}>A</span>
-              <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:C.run }}>H</span>
+        {/* Sidebar -- ancho dinamico: 268px abierto, 64px colapsado */}
+        <div style={{ width: colapsado ? 64 : 268, flexShrink:0, background:C.bg2, borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s' }}>
+          <div style={{ padding: colapsado ? '18px 0 14px' : '18px 16px 14px', borderBottom:`1px solid ${C.border}`, display:'flex', flexDirection:'column', alignItems: colapsado ? 'center' : 'stretch' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              {!colapsado && (
+                <div style={{ display:'flex', alignItems:'baseline' }}>
+                  <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:C.text }}>N</span>
+                  <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:C.run }}>O</span>
+                  <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:C.text }}>A</span>
+                  <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:C.run }}>H</span>
+                </div>
+              )}
+              <button onClick={()=>setColapsado(c=>!c)} title={colapsado?'Expandir':'Colapsar'} style={{
+                background:'transparent', border:`1px solid ${C.border}`, borderRadius:6,
+                width:22, height:22, display:'flex', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', color:C.text2, fontSize:11, flexShrink:0,
+              }}>{colapsado?'›':'‹'}</button>
             </div>
-            <div style={{ fontSize:9, color:C.text2, letterSpacing:2.5, marginTop:2, textTransform:'uppercase' }}>NOAH Coach</div>
+            {!colapsado && <div style={{ fontSize:9, color:C.text2, letterSpacing:2.5, marginTop:2, textTransform:'uppercase' }}>NOAH Coach</div>}
           </div>
+
+          {/* Imagen de marca NOAH -- interactiva y liviana: reutiliza datos
+              ya cargados (selectedAtleta), sin llamadas nuevas ni librerias. */}
+          {/* Imagen de marca NOAH -- alterna al azar entre masculino/femenino en cada carga. */}
+          {!colapsado && (
+            <div style={{ position:'relative', width:'100%', height:280, overflow:'hidden' }}>
+              <img src={Math.random() < 0.5 ? '/assets/noah_avatar_m.png' : '/assets/noah_avatar_f.png'}
+                alt="" onError={e=>{e.target.parentElement.style.display='none'}}
+                style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', display:'block' }} />
+              <div style={{
+                position:'absolute', left:0, right:0, bottom:0, height:'50%',
+                background:`linear-gradient(to bottom, transparent, ${C.bg2}CC 60%, ${C.bg2} 100%)`,
+                pointerEvents:'none',
+              }}/>
+            </div>
+          )}
+
           <div style={{ flex:1, overflow:'auto' }}>
-            {loading?<div style={{ padding:14, color:C.text2, fontSize:13 }}>Cargando...</div>
-              :atletas.map(a=><AtletaItem key={a.id} atleta={a} selected={selectedId===a.id} onClick={()=>setSelectedId(a.id)} />)}
+            {loading?(!colapsado && <div style={{ padding:14, color:C.text2, fontSize:13 }}>Cargando...</div>)
+              :atletas.map(a=><AtletaItem key={a.id} atleta={a} selected={selectedId===a.id} onClick={()=>setSelectedId(a.id)} colapsado={colapsado} />)}
           </div>
           <div style={{ padding:10, borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:6 }}>
-            <button onClick={()=>setShowModal(true)} style={{ width:'100%', padding:'9px', borderRadius:8, border:'none', background:C.purple, color:'#fff', cursor:'pointer', fontSize:13, fontWeight:600 }}>
-              + Agregar atleta
+            <button onClick={()=>setShowModal(true)} title="Agregar atleta" style={{ width:'100%', padding:'9px', borderRadius:8, border:'none', background:C.purple, color:'#fff', cursor:'pointer', fontSize:13, fontWeight:600 }}>
+              {colapsado ? '+' : '+ Agregar atleta'}
             </button>
             <button onClick={()=>{
               const navigate = window.location
@@ -3397,8 +3494,8 @@ function CoachApp() {
               if (s?.token) axios.post(`${API}/logout`, {}).catch(()=>{})
               limpiarSesion()
               window.location.href = '/login'
-            }} style={{ width:'100%', padding:'8px', borderRadius:8, border:`1px solid ${C.border}`, background:'transparent', color:C.text2, cursor:'pointer', fontSize:12, fontWeight:600 }}>
-              Cerrar sesión
+            }} title="Cerrar sesión" style={{ width:'100%', padding:'8px', borderRadius:8, border:`1px solid ${C.border}`, background:'transparent', color:C.text2, cursor:'pointer', fontSize:12, fontWeight:600 }}>
+              {colapsado ? '⏻' : 'Cerrar sesión'}
             </button>
           </div>
         </div>
@@ -4103,7 +4200,21 @@ function PerfilFisiologico({ atletaId, atleta }) {
       <Campo label="LTHR Ciclismo" value={lthrBike} setValue={setLthrBike} unit="bpm" placeholder="ej: 158" />
       <Campo label="LTHR Natacion" value={lthrSwim} setValue={setLthrSwim} unit="bpm" placeholder="ej: 150" />
       <Campo label="FTP (potencia umbral)" value={ftp} setValue={setFtp} unit="W" placeholder="ej: 220" />
-      <Campo label="CSS (ritmo critico natacion)" value={css} setValue={setCss} unit="min/100m" placeholder="ej: 1.75" />
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 12, color: C.text2, marginBottom: 4 }}>CSS (ritmo critico natacion)</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="number" value={css} placeholder="ej: 1.75"
+            onChange={e => setCss(e.target.value)}
+            style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.border}`,
+              background: C.bg2, color: C.text, fontSize: 14 }} />
+          <span style={{ fontSize: 12, color: C.text2, minWidth: 50 }}>min/100m</span>
+          {css && (
+            <span style={{ fontSize: 12, color: C.text3, minWidth: 55 }}>
+              ≈ {Math.floor(Number(css))}:{String(Math.round((Number(css)%1)*60)).padStart(2,'0')}/100m
+            </span>
+          )}
+        </div>
+      </div>
       <Campo label="FC Maxima" value={hrMax} setValue={setHrMax} unit="bpm" placeholder="ej: 190" />
       <Campo label="Peso" value={pesoKg} setValue={setPesoKg} unit="kg" placeholder="ej: 72" />
       <button onClick={guardar} disabled={saving}
@@ -4924,3 +5035,67 @@ function ProyeccionMultideporteCoach({ atletaId }) {
     </Card>
   )
 }
+
+
+function VelocidadCriticaBotonesCoach({ atletaId }) {
+  const [data, setData]       = useState(null)
+  const [abierto, setAbierto] = useState(false)
+  const [cargando, setCargando] = useState(false)
+
+  const cargar = async () => {
+    if (data) return
+    setCargando(true)
+    try {
+      const r = await authFetch(`${API}/atletas/${atletaId}/velocidad_critica`)
+      const d = await r.json()
+      setData(d.data || d)
+    } catch {}
+    setCargando(false)
+  }
+
+  const toggle = () => {
+    setAbierto(o => !o)
+    if (!data) cargar()
+  }
+
+  return (
+    <div style={{ marginTop:8 }}>
+      <button onClick={toggle} style={{
+        width:'100%', padding:'10px 0', borderRadius:10, fontSize:13, fontWeight:700,
+        background: abierto ? C.purple : `${C.purple}18`,
+        color: abierto ? '#fff' : C.purple,
+        border:`1.5px solid ${abierto ? C.purple : C.purple+'40'}`,
+        cursor:'pointer',
+      }}>{cargando && !data ? '⏳' : '🏃 Velocidad Crítica'}</button>
+
+      {abierto && (
+        <div style={{ marginTop:10 }}>
+          {!data && cargando && (
+            <div style={{ textAlign:'center', padding:20, color:C.text2, fontSize:12 }}>Calculando...</div>
+          )}
+          {data && !data.disponible && (
+            <div style={{ textAlign:'center', padding:16, color:C.text2, fontSize:12 }}>📡 {data.msg}</div>
+          )}
+          {data && data.disponible && (
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              <div style={{ flex:1, minWidth:120, background:'#F9731612', borderRadius:8, padding:'8px 12px', border:'1px solid #F9731625' }}>
+                <div style={{ fontSize:10, color:C.text2 }}>CS (Velocidad Crítica)</div>
+                <div style={{ fontSize:18, fontWeight:800, color:'#F97316' }}>
+                  {data.cs_pace_min_km ? `${Math.floor(data.cs_pace_min_km)}:${String(Math.round((data.cs_pace_min_km%1)*60)).padStart(2,'0')}/km` : '--'}
+                </div>
+              </div>
+              <div style={{ flex:1, minWidth:120, background:'#A855F712', borderRadius:8, padding:'8px 12px', border:'1px solid #A855F725' }}>
+                <div style={{ fontSize:10, color:C.text2 }}>D' (capacidad anaeróbica)</div>
+                <div style={{ fontSize:18, fontWeight:800, color:'#A855F7' }}>
+                  {data.d_prime_m ? `${Math.round(data.d_prime_m)}m` : '--'}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
