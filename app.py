@@ -3343,11 +3343,33 @@ def get_actividades_rango(atleta_id):
         rows = conn.execute(
             "SELECT id, fecha, sport, distance_km, duration_min, hr_avg, tss_total, tipo_sesion FROM sesiones WHERE atleta_id=%s AND fecha BETWEEN %s AND %s AND tss_total>0 AND (fuente IS NULL OR fuente NOT IN ('prescripcion','simulacion','generada')) ORDER BY fecha, sport",
             (atleta_id, desde, hasta)).fetchall()
+
+        # Laps de cada actividad -- mismo patron que ya usa /actividades_dia
+        # (columnas_de_tabla detecta que columnas extra existen en `laps`,
+        # por si el esquema varia entre entornos).
+        from db_compat import columnas_de_tabla
+        lap_cols = set(columnas_de_tabla(conn, 'laps'))
+        lap_extra = []
+        lap_extra.append('avg_power' if 'avg_power' in lap_cols else ('potencia_media' if 'potencia_media' in lap_cols else 'NULL'))
+        lap_extra.append('cadence' if 'cadence' in lap_cols else 'NULL')
+        lap_extra.append('ascent_m' if 'ascent_m' in lap_cols else 'NULL')
+
         actividades = {}
         for r in rows:
             f = str(r[1])[:10]
+            ses_id = r[0]
+            laps_rows = conn.execute(
+                f"SELECT lap_num, distance_km, duration_min, hr_avg, hr_max, pace, "
+                f"{','.join(lap_extra)} FROM laps "
+                "WHERE atleta_id=%s AND sesion_id=%s AND (es_largo IS NULL OR es_largo=0) "
+                "ORDER BY lap_num",
+                (atleta_id, ses_id)
+            ).fetchall()
+            laps = [{'lap':l[0],'distance_km':l[1],'duration_min':l[2],
+                     'hr_avg':l[3],'hr_max':l[4],'pace':l[5],
+                     'watts':l[6],'cadencia':l[7],'ascenso_m':l[8]} for l in laps_rows]
             if f not in actividades: actividades[f] = []
-            actividades[f].append({'sesion_id':r[0],'fecha':f,'sport':r[2],'distance_km':r[3],'duration_min':r[4],'hr_avg':r[5],'tss':r[6],'tipo':r[7]})
+            actividades[f].append({'sesion_id':ses_id,'fecha':f,'sport':r[2],'distance_km':r[3],'duration_min':r[4],'hr_avg':r[5],'tss':r[6],'tipo':r[7],'laps':laps})
         presc_rows = conn.execute(
             "SELECT pb.sesion_fecha, pb.sesion_sport, pb.sesion_tss, pb.sesion_nombre, pb.sesion_duracion, NULL as completada FROM prescripcion_bloques pb JOIN prescripciones p ON p.id=pb.prescripcion_id WHERE p.atleta_id=%s AND p.estado IN ('pendiente','aprobada') AND pb.sesion_fecha BETWEEN %s AND %s AND pb.bloque_num=1 ORDER BY pb.sesion_fecha",
             (atleta_id, desde, hasta)).fetchall()

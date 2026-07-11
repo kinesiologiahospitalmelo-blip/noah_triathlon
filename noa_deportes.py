@@ -108,26 +108,30 @@ class ZonasRunning:
         # Mantener por compatibilidad; calcula Z2 desde el umbral estimado
         return self._estimar_pace_umbral() / 0.92
 
-    def _pace_para_zona(self, pct_min: float, pct_max: float) -> tuple:
+    def _pace_en_pct(self, pct: float) -> float:
         """
-        Calcula pace minimo y maximo para una zona usando el pace de
-        umbral (Z4) como referencia central.
-
-        El pace varia INVERSAMENTE con la intensidad:
-        - Mas intensidad (mayor % LTHR) = pace mas rapido (numero menor)
-        - La Z4 (umbral, 96.5% LTHR) tiene como referencia el pace_umbral
-
-        Formula: pace_zona = pace_umbral * (z4_center / ref_pct)
-        Donde z4_center = 0.965 (centro de Z4: 93-100% LTHR)
+        Pace exacto en un limite de %LTHR puntual (sin margen
+        artificial). Usada para los bordes pct_min/pct_max de cada
+        zona -- asi el borde superior de una zona y el borde inferior
+        de la siguiente dan EXACTAMENTE el mismo pace (continuidad
+        garantizada, sin huecos entre zonas).
         """
         z4_center = 0.965  # centro de Z4 (umbral)
-        ref_pct   = (pct_min + pct_max) / 2
-        if ref_pct <= 0:
-            ref_pct = 0.50
+        if pct <= 0:
+            pct = 0.50  # piso para Z1, que arranca en 0% LTHR
+        return self.pace_umbral * (z4_center / pct)
 
-        pace_center = self.pace_umbral * (z4_center / ref_pct)
-        margin = 0.025  # ±2.5% alrededor del centro de cada zona
-        return pace_center * (1 + margin), pace_center * (1 - margin)
+    def _pace_para_zona(self, pct_min: float, pct_max: float) -> tuple:
+        """
+        Calcula pace minimo y maximo para una zona usando los limites
+        REALES de la zona (pct_min, pct_max) -- no un margen inventado
+        alrededor de un centro. Esto garantiza que las zonas sean
+        continuas y que las zonas lentas tengan un rango de pace mas
+        ancho de forma natural.
+        """
+        pace_slow = self._pace_en_pct(pct_min)
+        pace_fast = self._pace_en_pct(pct_max)
+        return pace_fast, pace_slow
 
     def _fmt_pace(self, p: float) -> str:
         if not p: return '--'

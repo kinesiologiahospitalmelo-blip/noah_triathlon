@@ -156,6 +156,9 @@ def asegurar_columnas(conn):
         ('pedal_smoothness',      'REAL'),
         ('torque_effectiveness',  'REAL'),
         ('spo2_pct',              'REAL'),
+        ('temperature',           'REAL'),  # FIX: la tabla real tenia 'temperature_c'
+                                             # (con _c), pero el INSERT usa 'temperature'
+                                             # sin _c -- por eso seguia fallando.
     ])
 
     # Log de sync
@@ -209,7 +212,7 @@ def _parsear_streams(details: dict, sport: str) -> list:
         'directEnhancedAltitude':           ('altitude_m',          100.0),
         'directLatitude':                   ('lat',                  1.0),
         'directLongitude':                  ('lon',                  1.0),
-        'directAirTemperature':             ('temperature_c',          1.0),
+        'directAirTemperature':             ('temperature',            1.0),
         'directPower':                      ('power_w',              1.0),
         'sumAccumulatedPower':              ('power_acc',            1.0),
         # Running — dynamics
