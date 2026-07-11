@@ -3796,9 +3796,10 @@ export default function AtletaDashboard({ atletaId }) {
       <style>{`
         .hero-bg-img { background-color: #0A0A12; }
         @media (max-width: 640px) {
+          .hero-container { min-height: 0 !important; aspect-ratio: 1077 / 467; }
           .hero-bg-img {
-            background-size: contain !important;
-            background-position: top center !important;
+            background-size: cover !important;
+            background-position: center !important;
             background-repeat: no-repeat !important;
           }
         }
@@ -3843,7 +3844,7 @@ export default function AtletaDashboard({ atletaId }) {
 
       {/* HEADER estilo Garmin — imagen hero grande (30%), nombre prominente,
           botones azules, logo arriba. Logica de sync identica. */}
-      <div style={{ position:'relative', overflow:'hidden', minHeight:'85vh' }}>
+      <div className="hero-container" style={{ position:'relative', overflow:'hidden', minHeight:'50vh' }}>
         {/* Imagen hero */}
         <div className="hero-bg-img" style={{
           position:'absolute', inset:0,
@@ -3875,9 +3876,10 @@ export default function AtletaDashboard({ atletaId }) {
               localStorage.removeItem('noah_sesion')
               window.location.href = '/login'
             }} title="Cerrar sesión" style={{
-              width:32, height:32, borderRadius:'50%', flexShrink:0,
-              background:'rgba(6,182,212,0.15)', border:'1px solid rgba(6,182,212,0.4)',
-              color:'#06B6D4', display:'flex', alignItems:'center', justifyContent:'center',
+              width:34, height:34, borderRadius:'50%', flexShrink:0,
+              background:'rgba(255,255,255,0.18)', border:'1.5px solid rgba(255,255,255,0.85)',
+              boxShadow:'0 0 10px rgba(255,255,255,0.35)',
+              color:'#fff', display:'flex', alignItems:'center', justifyContent:'center',
               cursor:'pointer',
             }}>
               <LogOut size={14}/>
