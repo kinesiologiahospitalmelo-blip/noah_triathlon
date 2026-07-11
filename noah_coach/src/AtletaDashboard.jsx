@@ -3794,6 +3794,14 @@ export default function AtletaDashboard({ atletaId }) {
         linear-gradient(145deg, #0A0A0F 0%, #0D0D14 55%, #080810 100%)
       `, fontFamily:'Inter, system-ui, -apple-system, sans-serif' }}>
       <style>{`
+        .hero-bg-img { background-color: #0A0A12; }
+        @media (max-width: 640px) {
+          .hero-bg-img {
+            background-size: contain !important;
+            background-position: top center !important;
+            background-repeat: no-repeat !important;
+          }
+        }
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: #0A0F1E !important; }
@@ -3837,11 +3845,12 @@ export default function AtletaDashboard({ atletaId }) {
           botones azules, logo arriba. Logica de sync identica. */}
       <div style={{ position:'relative', overflow:'hidden', minHeight:'85vh' }}>
         {/* Imagen hero */}
-        <div style={{
+        <div className="hero-bg-img" style={{
           position:'absolute', inset:0,
           backgroundImage:'url(/assets/noah_banner_header.png)',
           backgroundSize:'cover',
           backgroundPosition:'center 25%',
+          backgroundRepeat:'no-repeat',
           filter:'saturate(1.05)',
         }}/>
         {/* Overlay de abajo hacia arriba — negro abajo, transparente arriba */}
