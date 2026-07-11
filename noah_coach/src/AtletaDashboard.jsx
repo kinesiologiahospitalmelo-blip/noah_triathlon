@@ -490,8 +490,8 @@ function SesionCard({ sesion, expandida, onToggle, esHoy, atletaId }) {
   const s = SPORT[sesion?.sport||'running']
   const borderLeft = estado==='done'?NOAH_C.done:estado==='miss'?NOAH_C.miss:estado==='partial'?NOAH_C.partial:esHoy?s.color:NOAH_C.border2
   return (
-    <div style={{ background:NOAH_C.cardBg, borderRadius:10, border:`1px solid ${esHoy?s.color+'28':NOAH_C.border}`, borderLeft:`4px solid ${borderLeft}`, boxShadow:esHoy?`0 2px 8px ${s.color}10`:'0 1px 2px rgba(0,0,0,0.04)', overflow:'hidden' }}>
-      <div onClick={onToggle} style={{ padding:'12px 16px', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
+    <div style={{ borderLeft:`3px solid ${borderLeft}` }}>
+      <div onClick={onToggle} style={{ padding:'10px 0 10px 13px', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
         {/* Ícono deporte con label */}
         <div style={{ width:44, height:44, borderRadius:8, flexShrink:0, background:s.light, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2 }}>
           <s.Icon size={16} color={s.color} />
@@ -514,7 +514,7 @@ function SesionCard({ sesion, expandida, onToggle, esHoy, atletaId }) {
         <span style={{ fontSize:12, color:NOAH_C.ink4, transform:expandida?'rotate(180deg)':'none', transition:'transform 0.2s', marginLeft:4 }}>▾</span>
       </div>
       {expandida && (
-        <div style={{ borderTop:`1px solid ${NOAH_C.border}`, padding:'14px 16px', background:NOAH_C.cardBg2 }}>
+        <div style={{ borderTop:`1px solid ${NOAH_C.border}`, padding:'14px 0 14px 13px' }}>
           <WorkoutChart sesion={sesion} atletaId={atletaId} mostrarGrafico={false} />
           {/* Actividad realizada si la sesión ya pasó */}
           {getDiaKey(sesion.fecha) <= hoyKey() && atletaId && (
@@ -584,14 +584,14 @@ function SemanaCompleta({ presc, atletaId, sesionExpandida, setSesionExpandida }
         const fkDate = fk!=='sin-fecha' ? new Date(fk+'T12:00:00') : null
         const diaNombre = fkDate ? fkDate.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'short'}) : 'Sin fecha'
         return (
-          <div key={fk} style={{ borderRadius:12, border:`1px solid ${esHoy?sc0.color+'40':NOAH_C.border}`, boxShadow:esHoy?`0 4px 16px ${sc0.color}12`:'0 1px 3px rgba(0,0,0,0.04)', overflow:'hidden' }}>
-            <div style={{ padding:'9px 16px', background:esHoy?`linear-gradient(90deg,${sc0.color}15,${sc0.color}06)`:NOAH_C.cardBg2, borderBottom:`1px solid ${esHoy?sc0.color+'20':NOAH_C.border}`, display:'flex', alignItems:'center', gap:10 }}>
+          <div key={fk}>
+            <div style={{ padding:'6px 2px', borderBottom:`1px solid ${esHoy?sc0.color+'40':NOAH_C.border}`, display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
               <span style={{ fontSize:11, fontWeight:700, letterSpacing:0.8, textTransform:'uppercase', color:esHoy?sc0.color:esPasado?NOAH_C.ink4:NOAH_C.ink3 }}>{diaNombre}</span>
               {esHoy && <span style={{ fontSize:9, fontWeight:700, color:sc0.color, background:sc0.light, borderRadius:99, padding:'2px 7px', border:`1px solid ${sc0.color}33` }}>HOY</span>}
               <div style={{ flex:1 }} />
               <span style={{ fontSize:11, color:NOAH_C.ink4 }}>TSS {sesDia.reduce((a,s)=>a+(s.tss||0),0)}</span>
             </div>
-            <div style={{ padding:'10px 12px', background:NOAH_C.cardBg, display:'flex', flexDirection:'column', gap:8 }}>
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
               {sesDia.map((s,i) => (
                 <SesionCard key={i} sesion={s} esHoy={esHoy}
                   atletaId={atletaId}
@@ -599,29 +599,38 @@ function SemanaCompleta({ presc, atletaId, sesionExpandida, setSesionExpandida }
                   onToggle={() => setSesionExpandida(sesionExpandida===`${fk}-${i}`?null:`${fk}-${i}`)}
                 />
               ))}
-              {/* Actividades reales del día sin prescripción */}
-              {sesDia.length===0 && (actsSemana[fk]||[]).map((act,i)=>(
+              {/* Actividades reales del día sin prescripción -- colapsable, boton verde solido */}
+              {sesDia.length===0 && (actsSemana[fk]||[]).map((act,i)=>{
+                const keyExpand = `${fk}-real-${i}`
+                const abierta = sesionExpandida===keyExpand
+                return (
                 <div key={i} style={{background:NOAH_C.cardBg,borderRadius:10,
-                  border:`1px solid ${NOAH_C.border}`,borderLeft:`4px solid ${NOAH_C.success}`,
-                  padding:'12px 16px'}}>
-                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                  border:`1px solid ${NOAH_C.border}`,overflow:'hidden'}}>
+                  <button
+                    onClick={()=>setSesionExpandida(abierta?null:keyExpand)}
+                    style={{width:'100%',display:'flex',alignItems:'center',gap:10,
+                      padding:'12px 16px',border:'none',cursor:'pointer',
+                      background:`linear-gradient(90deg, ${NOAH_C.success}30, ${NOAH_C.success}1c)`,
+                      color:NOAH_C.ink,textAlign:'left'}}>
                     <SportTag sport={act.sport||'running'}/>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:600,color:NOAH_C.ink}}>
-                        {SPORT[act.sport]?.label||act.sport} — {act.distance_km?.toFixed(1)}km
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,color:NOAH_C.success,display:'flex',alignItems:'center',gap:6}}>
+                        <CheckCircle2 size={13}/> {SPORT[act.sport]?.label||act.sport} — {act.distance_km?.toFixed(1)}km · Realizada
                       </div>
                       <div style={{fontSize:11,color:NOAH_C.ink3}}>
                         {Math.round(act.duration_min)}min · TSS {act.tss?.toFixed(0)} · HR {act.hr_avg?Math.round(act.hr_avg):'--'}bpm
                       </div>
                     </div>
-                    <div style={{marginLeft:'auto',fontSize:10,padding:'3px 8px',borderRadius:99,
-                      background:NOAH_C.successL,color:NOAH_C.success,fontWeight:700,display:'flex',alignItems:'center',gap:3}}>
-                      <CheckCircle2 size={11}/> Realizada
+                    <span style={{fontSize:12,color:NOAH_C.ink3,transform:abierta?'rotate(180deg)':'none',transition:'transform 0.2s'}}>▾</span>
+                  </button>
+                  {abierta && (
+                    <div style={{padding:'14px 16px',background:NOAH_C.cardBg2,borderTop:`1px solid ${NOAH_C.border}`}}>
+                      <ActividadRealizada sesionPresc={{fecha:fk,sport:act.sport}} atletaId={atletaId}/>
                     </div>
-                  </div>
-                  <ActividadRealizada sesionPresc={{fecha:fk,sport:act.sport}} atletaId={atletaId}/>
+                  )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )
@@ -920,7 +929,6 @@ function ActividadRealizada({ sesionPresc, atletaId }) {
       {actividadesFiltradas.map((act, idx) => (
         <ActividadCard key={act.sesion_id || act.id || `${fecha}-${idx}`} act={act} sesionPresc={sesionPresc} atletaId={atletaId}/>
       ))}
-      <NutricionPost atletaId={atletaId} fecha={fecha} />
     </div>
   )
 }
@@ -981,16 +989,14 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
     : `${Math.abs(pct)}% bajo`
 
   return (
-    <div style={{background:NOAH_C.cardBg,borderRadius:14,overflow:'hidden',
-      border:`1px solid ${NOAH_C.border}`,borderTop:`4px solid ${s.color}`}}>
+    <div style={{ borderTop:`2px solid ${s.color}`, paddingTop:14 }}>
 
-      {/* Header */}
-      <div style={{padding:'14px 18px',display:'flex',alignItems:'center',gap:12,
-        background:`linear-gradient(135deg,${s.color}12,${s.color}04)`}}>
-        <div style={{width:46,height:46,borderRadius:10,background:s.light,
-          display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:1}}>
-          <s.Icon size={18} color={s.color}/>
-          <span style={{fontSize:8,fontWeight:800,color:s.color}}>{s.short}</span>
+      {/* Header -- sin fondo, sin caja: el color del deporte es la unica marca */}
+      <div style={{padding:'0 2px 12px',display:'flex',alignItems:'center',gap:12}}>
+        <div style={{width:40,height:40,borderRadius:10,background:s.light,
+          display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:1,flexShrink:0}}>
+          <s.Icon size={17} color={s.color}/>
+          <span style={{fontSize:7.5,fontWeight:800,color:s.color}}>{s.short}</span>
         </div>
         <div style={{flex:1}}>
           <div style={{fontSize:15,fontWeight:700,color:NOAH_C.ink}}>
@@ -1002,20 +1008,18 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
             {act.hr_max ? ` · máx ${Math.round(act.hr_max)}` : ''}
           </div>
         </div>
-        <div style={{padding:'4px 12px',borderRadius:99,fontSize:11,fontWeight:700,
-          background:`${cumplColor}20`,color:cumplColor,border:`1px solid ${cumplColor}40`,flexShrink:0}}>
+        <div style={{fontSize:11,fontWeight:700,color:cumplColor,flexShrink:0}}>
           {cumplLabel}
         </div>
         <button onClick={()=>setExpandido(e=>!e)} style={{
-          background:'transparent',border:`1px solid ${NOAH_C.border}`,borderRadius:7,
-          padding:'4px 10px',cursor:'pointer',fontSize:11,color:NOAH_C.ink3}}>
+          background:'transparent',border:'none',borderRadius:7,
+          padding:'4px 6px',cursor:'pointer',fontSize:11,color:NOAH_C.ink3}}>
           {expandido?'▲':'▼'}
         </button>
       </div>
 
-      {/* Métricas pills */}
-      <div style={{padding:'10px 18px',display:'flex',gap:8,flexWrap:'wrap',
-        borderBottom:`1px solid ${NOAH_C.border}`}}>
+      {/* Métricas -- chips inline, no cajas contenedoras (estilo Whoop/Strava) */}
+      <div style={{padding:'0 2px 12px',display:'flex',gap:8,flexWrap:'wrap'}}>
         {[
           [Activity, `${Math.round(act.duration_min)} min`],
           [Ruler, fmtDist(act.distance_km)],
@@ -1254,6 +1258,11 @@ function SesionDelDia({ atletaId, presc }) {
         </div>
       )}
 
+      {/* Nutricion post-entreno -- solo tiene sentido si hubo actividad ese día */}
+      {acts !== null && acts.length > 0 && (
+        <NutricionPost atletaId={atletaId} fecha={fechaSel} />
+      )}
+
       {/* Sin actividad ese día */}
       {acts !== null && acts.length === 0 && (
         <div style={{padding:'24px 20px',background:NOAH_C.cardBg2,borderRadius:12,
@@ -1276,9 +1285,9 @@ function SesionDelDia({ atletaId, presc }) {
             <ClipboardList size={12}/> {labelPrescripcion}
           </div>
           {sesDelDia.map((ses,i) => (
-            <div key={i} style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,
-              border:`1px solid ${NOAH_C.border}`,marginBottom:i<sesDelDia.length-1?12:0,
-              borderLeft:`4px solid ${SPORT[ses.sport]?.color||NOAH_C.run}`}}>
+            <div key={i} style={{
+              borderTop:`2px solid ${SPORT[ses.sport]?.color||NOAH_C.run}`,paddingTop:14,
+              marginBottom:i<sesDelDia.length-1?20:0}}>
               <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
                 <SportTag sport={ses.sport}/>
                 <div>
@@ -2695,15 +2704,10 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
     t+(actsMes[f]||[]).reduce((tt,a)=>tt+(a.tss_total||0),0), 0)
 
   return (
-    <div style={{
-      borderRadius:14, overflow:'hidden',
-      background:T.wrap,
-      border:`1px solid ${T.border}`,
-      boxShadow: dark?'0 20px 60px rgba(0,0,0,0.5)':'0 4px 16px rgba(0,0,0,0.06)',
-    }}>
+    <div>
 
       {/* Header */}
-      <div style={{padding:'12px 18px',background:T.header,borderBottom:`1px solid ${T.border}`,
+      <div style={{padding:'8px 4px 12px',borderBottom:`1px solid ${T.border}`,
         display:'flex',alignItems:'center',gap:10}}>
         {[['‹',()=>setMesOffset(m=>m-1)],['›',()=>setMesOffset(m=>m+1)]].map(([l,fn],i)=>(
           <button key={i} onClick={fn} style={{width:30,height:30,borderRadius:7,
@@ -2809,9 +2813,8 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
         const acts=actsMes[diaDetalle]||[], pres=sesiones.filter(s=>getDiaKey(s.fecha)===diaDetalle)
         const label=new Date(diaDetalle+'T12:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})
         return (
-          <div style={{margin:'4px 6px 6px',borderRadius:9,padding:'12px 14px',
-            background:dark?'rgba(99,102,241,0.1)':'#F5F3FF',
-            border:`1px solid ${dark?'rgba(99,102,241,0.25)':'#C7D2FE'}`}}>
+          <div style={{margin:'10px 4px 6px',padding:'12px 0',
+            borderTop:`2px solid ${dark?'#818CF8':'#4F46E5'}`}}>
             <div style={{fontSize:12,fontWeight:700,color:dark?'#A5B4FC':'#4F46E5',
               marginBottom:8,textTransform:'capitalize',display:'flex',alignItems:'center',gap:6}}>
               <CalendarDays size={13}/> {label}
@@ -3836,7 +3839,7 @@ export default function AtletaDashboard({ atletaId }) {
         {/* Imagen hero */}
         <div style={{
           position:'absolute', inset:0,
-          backgroundImage:'url(/assets/hero_dashboard.png)',
+          backgroundImage:'url(/assets/noah_banner_header.png)',
           backgroundSize:'cover',
           backgroundPosition:'center 25%',
           filter:'saturate(1.05)',
@@ -4002,33 +4005,34 @@ export default function AtletaDashboard({ atletaId }) {
           {(() => {
             const hannaColor = {'Óptimo':NOAH_C.success,'Bueno':NOAH_C.info,'Moderado':NOAH_C.warning,'Bajo':'#F97316','Crítico':NOAH_C.danger}[estado?.estado?.hanna_nivel] || '#6B7280'
             return (
-              <div style={{
-                flex:1, position:'relative', overflow:'hidden',
-                background:`linear-gradient(150deg, ${hannaColor}26 0%, ${hannaColor}0A 70%)`,
-                borderRadius:13, padding:'12px 14px', textAlign:'center',
-                backdropFilter:'blur(16px) saturate(150%)', WebkitBackdropFilter:'blur(16px) saturate(150%)',
-                border:`1px solid ${hannaColor}40`,
-                boxShadow:`0 10px 30px -8px rgba(0,0,0,0.5), 0 0 28px -8px ${hannaColor}40, inset 0 1px 0 rgba(255,255,255,0.12)`,
-              }}>
-                <div style={{ position:'absolute', top:0, left:'10%', right:'10%', height:2.5,
-                  background:`linear-gradient(90deg, transparent, ${hannaColor}, transparent)`, boxShadow:`0 0 10px ${hannaColor}` }} />
-                <div style={{fontSize:9,fontWeight:700,color:'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:0.8}}>HANNA LIFE</div>
-                <div style={{fontSize:26,fontWeight:800,color:hannaColor,textShadow:`0 0 18px ${hannaColor}80, 0 0 4px ${hannaColor}50`,lineHeight:1.15}}>
-                  {estado?.estado?.hanna_life?.toFixed(0)||'--'}
+              <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center' }}>
+                <div style={{
+                  width:86, height:86, borderRadius:'50%',
+                  border:`2.5px solid ${hannaColor}`,
+                  boxShadow:`0 0 16px ${hannaColor}40`,
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                }}>
+                  <div style={{fontSize:22,fontWeight:800,color:hannaColor,lineHeight:1}}>
+                    {estado?.estado?.hanna_life?.toFixed(0)||'--'}
+                  </div>
                 </div>
+                <div style={{fontSize:9,fontWeight:700,color:'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:0.8,marginTop:6}}>HANNA LIFE</div>
                 <div style={{fontSize:10,color:'rgba(255,255,255,0.55)',fontWeight:600}}>{estado?.estado?.hanna_nivel||'sin datos'}</div>
               </div>
             )
           })()}
           {semanas && (
-            <div style={{ flex:1, position:'relative', overflow:'hidden', textAlign:'center', padding:'12px 14px',
-              background:`linear-gradient(150deg, ${NOAH_C.run} 0%, #6D28D9 100%)`, borderRadius:13,
-              boxShadow:`0 10px 28px -6px ${NOAH_C.run}55, 0 0 24px -4px ${NOAH_C.run}40, inset 0 1px 0 rgba(255,255,255,0.25)` }}>
-              <div style={{ position:'absolute', top:0, left:0, right:0, height:'50%',
-                background:'linear-gradient(180deg, rgba(255,255,255,0.18), transparent)' }} />
-              <div style={{ fontSize:9,fontWeight:700,color:'rgba(255,255,255,0.7)',textTransform:'uppercase',letterSpacing:0.8 }}>Objetivo</div>
-              <div style={{ fontSize:24, fontWeight:800, color:'#fff', lineHeight:1.15, textShadow:'0 2px 8px rgba(0,0,0,0.25)' }}>{semanas}<span style={{fontSize:11,fontWeight:600}}> sem</span></div>
-              <div style={{ fontSize:9, color:'rgba(255,255,255,0.7)', marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{diag?.carrera}</div>
+            <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center' }}>
+              <div style={{
+                width:86, height:86, borderRadius:'50%',
+                border:`2.5px solid ${NOAH_C.run}`,
+                boxShadow:`0 0 16px ${NOAH_C.run}40`,
+                display:'flex', alignItems:'center', justifyContent:'center',
+              }}>
+                <div style={{ fontSize:20, fontWeight:800, color:NOAH_C.run, lineHeight:1 }}>{semanas}<span style={{fontSize:10,fontWeight:600}}> sem</span></div>
+              </div>
+              <div style={{ fontSize:9,fontWeight:700,color:'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:0.8,marginTop:6 }}>Objetivo</div>
+              <div style={{ fontSize:9, color:'rgba(255,255,255,0.55)', marginTop:1, maxWidth:110, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', textAlign:'center' }}>{diag?.carrera}</div>
             </div>
           )}
         </div>
@@ -4064,6 +4068,7 @@ export default function AtletaDashboard({ atletaId }) {
           const MetCard = ({ idx, pos }) => {
             const m = metricas[idx]
             const isCenter = pos === 0
+            const size = isCenter ? 92 : 58
             return (
               <div
                 key={m.id}
@@ -4072,35 +4077,33 @@ export default function AtletaDashboard({ atletaId }) {
                 onTouchEnd={isCenter ? onTouchEnd : undefined}
                 style={{
                   flex: isCenter ? '1 1 auto' : '0 0 auto',
-                  width: isCenter ? undefined : 64,
-                  padding: isCenter ? '14px 16px' : '10px 6px',
-                  borderRadius: 13,
-                  background: isCenter
-                    ? `linear-gradient(135deg, ${m.color}22, ${m.color}08)`
-                    : 'transparent',
-                  border: `1px solid ${isCenter ? m.color+'40' : 'rgba(255,255,255,0.08)'}`,
-                  boxShadow: isCenter ? `0 8px 24px -6px ${m.color}30` : 'none',
+                  display:'flex', flexDirection:'column', alignItems:'center',
                   opacity: isCenter ? 1 : 0.4,
-                  filter: isCenter ? 'none' : 'blur(0.4px)',
-                  transform: isCenter ? 'scale(1)' : 'scale(0.84)',
+                  transform: isCenter ? 'scale(1)' : 'scale(0.92)',
                   transition: 'all 0.28s cubic-bezier(.22,.68,0,1.15)',
-                  textAlign: 'center',
                   cursor: isCenter ? 'default' : 'pointer',
                   userSelect: 'none', touchAction: isCenter ? 'pan-y' : 'auto',
                 }}
               >
-                <div style={{fontSize:isCenter?9:8,fontWeight:700,
+                <div style={{
+                  width:size, height:size, borderRadius:'50%',
+                  border: `${isCenter?2.5:1.5}px solid ${isCenter ? m.color : 'rgba(255,255,255,0.15)'}`,
+                  boxShadow: isCenter ? `0 0 16px ${m.color}40` : 'none',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                }}>
+                  <div style={{fontSize:isCenter?22:13,fontWeight:800,
+                    color:isCenter?m.color:'rgba(255,255,255,0.4)',
+                    fontVariantNumeric:'tabular-nums',letterSpacing:-0.5,lineHeight:1}}>
+                    {m.value ?? '--'}
+                  </div>
+                </div>
+                <div style={{fontSize:isCenter?9:7.5,fontWeight:700,
                   color:isCenter?'rgba(255,255,255,0.5)':'rgba(255,255,255,0.3)',
-                  textTransform:'uppercase',letterSpacing:0.8,marginBottom:isCenter?5:3,
-                  whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                  textTransform:'uppercase',letterSpacing:0.6,marginTop:6,
+                  whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:size+20}}>
                   {m.label}
                 </div>
-                <div style={{fontSize:isCenter?28:16,fontWeight:800,
-                  color:isCenter?m.color:'rgba(255,255,255,0.4)',
-                  fontVariantNumeric:'tabular-nums',letterSpacing:-0.5,lineHeight:1}}>
-                  {m.value ?? '--'}
-                </div>
-                {isCenter && <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:3}}>{m.unit}</div>}
+                {isCenter && <div style={{fontSize:9,color:'rgba(255,255,255,0.35)'}}>{m.unit}</div>}
               </div>
             )
           }
@@ -4265,7 +4268,7 @@ export default function AtletaDashboard({ atletaId }) {
       })()}
 
       {/* CONTENT */}
-      <div style={{ padding:'20px 16px', maxWidth:960, margin:'0 auto' }}>
+      <div style={{ padding:'20px 16px' }}>
         {tab==='hoy' && <SesionDelDia atletaId={id} presc={presc} />}
         {tab==='semana' && <SemanaCompleta presc={presc} atletaId={id} sesionExpandida={sesionExp} setSesionExpandida={setSesionExp} />}
 
@@ -4480,8 +4483,7 @@ function CtlPorDeporteAtleta({ atletaId }) {
   }, [atletaId])
 
   if (loading) return (
-    <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,border:`1px solid ${NOAH_C.border}`,
-      textAlign:'center',color:NOAH_C.ink3,fontSize:12}}>Cargando...</div>
+    <div style={{textAlign:'center',color:NOAH_C.ink3,fontSize:12,padding:'12px 0'}}>Cargando...</div>
   )
   if (!data) return null
 
@@ -4495,16 +4497,16 @@ function CtlPorDeporteAtleta({ atletaId }) {
   if (conDatos.length === 0) return null
 
   return (
-    <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,border:`1px solid ${NOAH_C.border}`}}>
+    <div>
       <div style={{ fontSize:11, fontWeight:600, color:NOAH_C.ink3, letterSpacing:0.8, textTransform:'uppercase', marginBottom:14 }}>
         CTL / ATL / TSB por deporte
       </div>
-      <div style={{display:'grid',gridTemplateColumns:`repeat(${conDatos.length},1fr)`,gap:12}}>
+      <div style={{display:'grid',gridTemplateColumns:`repeat(${conDatos.length},1fr)`,gap:18}}>
         {conDatos.map(({key,label,color}) => {
           const d = data[key]
           const tsbColor = d.tsb>5?NOAH_C.done:d.tsb<-15?NOAH_C.miss:NOAH_C.amber
           return (
-            <div key={key} style={{background:NOAH_C.cardBg2,borderRadius:8,padding:'12px 14px',border:`1px solid ${NOAH_C.border}`}}>
+            <div key={key} style={{borderTop:`2px solid ${color}`,paddingTop:10}}>
               <div style={{fontSize:12,fontWeight:700,color,marginBottom:8}}>{label}</div>
               <div style={{display:'flex',flexDirection:'column',gap:4}}>
                 <div style={{display:'flex',justifyContent:'space-between'}}>
@@ -4546,12 +4548,10 @@ function ProyeccionMultideporte({ atletaId }) {
   }, [atletaId])
 
   if (loading) return (
-    <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,border:`1px solid ${NOAH_C.border}`,
-      textAlign:'center',color:NOAH_C.ink3,fontSize:12}}>Calculando proyección...</div>
+    <div style={{textAlign:'center',color:NOAH_C.ink3,fontSize:12,padding:'12px 0'}}>Calculando proyección...</div>
   )
   if (!data || data.msg) return (
-    <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,border:`1px solid ${NOAH_C.border}`,
-      textAlign:'center',color:NOAH_C.ink3,fontSize:12}}>
+    <div style={{textAlign:'center',color:NOAH_C.ink3,fontSize:12,padding:'12px 0'}}>
       {data?.msg || 'Sin datos de proyección todavía'}
     </div>
   )
@@ -4565,18 +4565,18 @@ function ProyeccionMultideporte({ atletaId }) {
   if (conDatos.length === 0) return null
 
   return (
-    <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:20,border:`1px solid ${NOAH_C.border}`}}>
+    <div>
       <div style={{ fontSize:11, fontWeight:600, color:NOAH_C.ink3, letterSpacing:0.8, textTransform:'uppercase', marginBottom:6 }}>
         Proyección hacia la carrera — por disciplina
       </div>
-      <div style={{ fontSize:11, color:NOAH_C.ink4, marginBottom:14 }}>
+      <div style={{ fontSize:11, color:NOAH_C.ink4, marginBottom:16 }}>
         Fecha límite de carga = último día para seguir sumando antes de tener que empezar a bajar (taper)
       </div>
-      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+      <div style={{display:'flex',flexDirection:'column',gap:20}}>
         {conDatos.map(({key,label,color}) => {
           const d = data[key]
           return (
-            <div key={key} style={{background:NOAH_C.cardBg2,borderRadius:8,padding:'12px 14px',border:`1px solid ${NOAH_C.border}`}}>
+            <div key={key} style={{borderTop:`2px solid ${color}`,paddingTop:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
                 <span style={{fontSize:12,fontWeight:700,color}}>{label}</span>
                 {!d.invariantes_ok && (
@@ -4629,9 +4629,9 @@ function VelocidadCriticaBotones({ atletaId }) {
   }
 
   return (
-    <div style={{ padding:'12px 6px', borderBottom:`1px solid ${NOAH_C.border}` }}>
+    <div style={{ padding:'16px 4px' }}>
       <button onClick={toggle} style={{
-        width:'100%', padding:'10px 0', borderRadius:10, fontSize:13, fontWeight:700,
+        width:'100%', padding:'14px 0', borderRadius:12, fontSize:16, fontWeight:800,
         background: abierto ? '#007AFF' : 'rgba(0,122,255,0.12)',
         color: abierto ? '#fff' : '#007AFF',
         border:`1.5px solid ${abierto ? '#007AFF' : 'rgba(0,122,255,0.3)'}`,
@@ -4639,35 +4639,119 @@ function VelocidadCriticaBotones({ atletaId }) {
       }}>{cargando && !data ? '⏳' : '🏃 Velocidad Crítica'}</button>
 
       {abierto && (
-        <div style={{ marginTop:12 }}>
+        <div style={{ marginTop:16 }}>
           {!data && cargando && (
-            <div style={{ textAlign:'center', padding:20, color:NOAH_C.ink3, fontSize:12 }}>
+            <div style={{ textAlign:'center', padding:20, color:NOAH_C.ink3, fontSize:14 }}>
               Calculando...
             </div>
           )}
           {data && !data.disponible && (
-            <div style={{ textAlign:'center', padding:16, color:NOAH_C.ink3, fontSize:12 }}>
+            <div style={{ textAlign:'center', padding:16, color:NOAH_C.ink3, fontSize:14 }}>
               📡 {data.msg}
             </div>
           )}
           {data && data.disponible && (
-            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-              <div style={{ flex:1, minWidth:120, background:'#F9731612', borderRadius:8, padding:'8px 12px', border:'1px solid #F9731625' }}>
-                <div style={{ fontSize:10, color:NOAH_C.ink3 }}>CS (Velocidad Crítica)</div>
-                <div style={{ fontSize:18, fontWeight:800, color:'#F97316' }}>
+            <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
+              <div style={{ flex:1, minWidth:140, padding:'4px 2px' }}>
+                <div style={{ fontSize:13, color:NOAH_C.ink3, fontWeight:600 }}>CS (Velocidad Crítica)</div>
+                <div style={{ fontSize:28, fontWeight:800, color:'#F97316' }}>
                   {data.cs_pace_min_km ? `${Math.floor(data.cs_pace_min_km)}:${String(Math.round((data.cs_pace_min_km%1)*60)).padStart(2,'0')}/km` : '--'}
                 </div>
               </div>
-              <div style={{ flex:1, minWidth:120, background:'#A855F712', borderRadius:8, padding:'8px 12px', border:'1px solid #A855F725' }}>
-                <div style={{ fontSize:10, color:NOAH_C.ink3 }}>D' (capacidad anaeróbica)</div>
-                <div style={{ fontSize:18, fontWeight:800, color:'#A855F7' }}>
+              <div style={{ flex:1, minWidth:140, padding:'4px 2px' }}>
+                <div style={{ fontSize:13, color:NOAH_C.ink3, fontWeight:600 }}>D' (capacidad anaeróbica)</div>
+                <div style={{ fontSize:28, fontWeight:800, color:'#A855F7' }}>
                   {data.d_prime_m ? `${Math.round(data.d_prime_m)}m` : '--'}
                 </div>
               </div>
             </div>
           )}
+          {data && data.disponible && <ExplicacionCS data={data} />}
         </div>
       )}
+    </div>
+  )
+}
+
+
+function ExplicacionCS({ data }) {
+  const puntos = [
+    data.fastest_1k  && { label:'1k',  km:1,  seg:data.fastest_1k  },
+    data.fastest_5k  && { label:'5k',  km:5,  seg:data.fastest_5k  },
+    data.fastest_10k && { label:'10k', km:10, seg:data.fastest_10k },
+  ].filter(Boolean).map(p => ({ ...p, pace: (p.seg/p.km)/60 }))
+
+  if (!data.cs_pace_min_km || puntos.length === 0) return null
+
+  const csPace = data.cs_pace_min_km
+  const todos = [...puntos, { label:'CS', pace:csPace, esCS:true }]
+  const paceMin = Math.min(...todos.map(p=>p.pace)) - 0.06
+  const paceMax = Math.max(...todos.map(p=>p.pace)) + 0.06
+
+  const CX=150, CY=118, R=88
+  const anguloDe = (pace) => 180 - ((pace-paceMin)/(paceMax-paceMin))*180
+  const puntoArco = (pace, r=R) => {
+    const a = anguloDe(pace) * Math.PI/180
+    return { x: CX + r*Math.cos(a), y: CY - r*Math.sin(a) }
+  }
+  const fmtP = (p) => `${Math.floor(p)}:${String(Math.round((p%1)*60)).padStart(2,'0')}`
+
+  const inicio = puntoArco(paceMin)
+  const fin    = puntoArco(paceMax)
+  const csPos  = puntoArco(csPace)
+  const csIn   = puntoArco(csPace, R-13)
+  const csOut  = puntoArco(csPace, R+13)
+
+  return (
+    <div style={{ marginTop:14, padding:'14px 4px 10px', borderTop:`1px solid ${NOAH_C.border}` }}>
+      <div style={{ fontSize:10.5, color:NOAH_C.ink3, marginBottom:4, lineHeight:1.5, textAlign:'center' }}>
+        Cuanto más lejos del rojo (esfuerzo corto/anaeróbico), más cerca del límite sostenible
+        {puntos.length < 3 && <span style={{display:'block',fontSize:9,marginTop:2,opacity:0.7}}>
+          (faltan marcas históricas para completar el gráfico — {3-puntos.length} distancia{puntos.length===2?'':'s'} sin datos)
+        </span>}
+      </div>
+      <svg viewBox="0 0 300 175" style={{ width:'100%', maxWidth:440, display:'block', margin:'0 auto' }}>
+        <defs>
+          <linearGradient id="gaugeCS" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"  stopColor="#EF4444"/>
+            <stop offset="35%" stopColor="#F97316"/>
+            <stop offset="65%" stopColor="#FACC15"/>
+            <stop offset="100%" stopColor="#38BDF8"/>
+          </linearGradient>
+        </defs>
+
+        {/* Arco base */}
+        <path d={`M ${inicio.x} ${inicio.y} A ${R} ${R} 0 0 1 ${fin.x} ${fin.y}`}
+          stroke="url(#gaugeCS)" strokeWidth="13" fill="none" strokeLinecap="round" opacity="0.9"/>
+
+        {/* Marca de CS -- estilo "redline" de tacómetro */}
+        <line x1={csIn.x} y1={csIn.y} x2={csOut.x} y2={csOut.y}
+          stroke="#fff" strokeWidth="3.5" strokeLinecap="round"/>
+        <circle cx={csPos.x} cy={csPos.y} r="5" fill="#38BDF8" stroke="#fff" strokeWidth="1.5"/>
+
+        {/* Puntos de cada distancia */}
+        {puntos.map((p,i) => {
+          const pos = puntoArco(p.pace)
+          const arriba = pos.y < CY - 20
+          return (
+            <g key={i}>
+              <circle cx={pos.x} cy={pos.y} r="5" fill={NOAH_C.cardBg2} stroke="#EF4444" strokeWidth="2.5"/>
+              <text x={pos.x} y={arriba ? pos.y-12 : pos.y+20} textAnchor="middle"
+                fontSize="9" fontWeight="700" fill={NOAH_C.ink3}>{p.label}</text>
+              <text x={pos.x} y={arriba ? pos.y-2 : pos.y+30} textAnchor="middle"
+                fontSize="8.5" fill={NOAH_C.ink4}>{fmtP(p.pace)}</text>
+            </g>
+          )
+        })}
+
+        {/* Lectura central tipo velocímetro digital */}
+        <text x={CX} y={CY+2} textAnchor="middle" fontSize="30" fontWeight="800" fill="#38BDF8">
+          {fmtP(csPace)}
+        </text>
+        <text x={CX} y={CY+18} textAnchor="middle" fontSize="9" fontWeight="700" fill={NOAH_C.ink3} letterSpacing="1">
+          CS · min/km
+        </text>
+      </svg>
     </div>
   )
 }

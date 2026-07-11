@@ -4981,11 +4981,11 @@ function ProyeccionMultideporteCoach({ atletaId }) {
       .catch(() => setLoading(false))
   }, [atletaId])
 
-  if (loading) return <Card style={{textAlign:'center',color:C.text2,fontSize:12}}>Calculando proyección...</Card>
+  if (loading) return <div style={{textAlign:'center',color:C.text2,fontSize:12,padding:'12px 0'}}>Calculando proyección...</div>
   if (!data || data.msg) return (
-    <Card style={{textAlign:'center',color:C.text2,fontSize:12}}>
+    <div style={{textAlign:'center',color:C.text2,fontSize:12,padding:'12px 0'}}>
       {data?.msg || 'Sin datos de proyección todavía'}
-    </Card>
+    </div>
   )
 
   const DEPORTES = [
@@ -4997,16 +4997,16 @@ function ProyeccionMultideporteCoach({ atletaId }) {
   if (conDatos.length === 0) return null
 
   return (
-    <Card>
+    <div>
       <SectionTitle>Proyección hacia la carrera — por disciplina</SectionTitle>
-      <div style={{ fontSize:11, color:C.text3, marginBottom:14 }}>
+      <div style={{ fontSize:11, color:C.text3, marginBottom:16 }}>
         Fecha límite de carga = último día para seguir sumando antes de tener que empezar a bajar (taper)
       </div>
-      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+      <div style={{display:'flex',flexDirection:'column',gap:20}}>
         {conDatos.map(({key,label,color}) => {
           const d = data[key]
           return (
-            <div key={key} style={{background:C.bg3,borderRadius:8,padding:'12px 14px',border:`1px solid ${C.border}`}}>
+            <div key={key} style={{borderTop:`2px solid ${color}`,paddingTop:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
                 <span style={{fontSize:12,fontWeight:700,color}}>{label}</span>
                 {!d.invariantes_ok && (
@@ -5032,7 +5032,7 @@ function ProyeccionMultideporteCoach({ atletaId }) {
           )
         })}
       </div>
-    </Card>
+    </div>
   )
 }
 
@@ -5092,6 +5092,7 @@ function VelocidadCriticaBotonesCoach({ atletaId }) {
               </div>
             </div>
           )}
+          {data && data.disponible && <ExplicacionCSCoach data={data} />}
         </div>
       )}
     </div>
@@ -5099,3 +5100,79 @@ function VelocidadCriticaBotonesCoach({ atletaId }) {
 }
 
 
+
+
+function ExplicacionCSCoach({ data }) {
+  const puntos = [
+    data.fastest_1k  && { label:'1k',  km:1,  seg:data.fastest_1k  },
+    data.fastest_5k  && { label:'5k',  km:5,  seg:data.fastest_5k  },
+    data.fastest_10k && { label:'10k', km:10, seg:data.fastest_10k },
+  ].filter(Boolean).map(p => ({ ...p, pace: (p.seg/p.km)/60 }))
+
+  if (!data.cs_pace_min_km || puntos.length === 0) return null
+
+  const csPace = data.cs_pace_min_km
+  const todos = [...puntos, { label:'CS', pace:csPace, esCS:true }]
+  const paceMin = Math.min(...todos.map(p=>p.pace)) - 0.06
+  const paceMax = Math.max(...todos.map(p=>p.pace)) + 0.06
+
+  const CX=140, CY=128, R=104
+  const anguloDe = (pace) => 180 - ((pace-paceMin)/(paceMax-paceMin))*180
+  const puntoArco = (pace, r=R) => {
+    const a = anguloDe(pace) * Math.PI/180
+    return { x: CX + r*Math.cos(a), y: CY - r*Math.sin(a) }
+  }
+  const fmtP = (p) => `${Math.floor(p)}:${String(Math.round((p%1)*60)).padStart(2,'0')}`
+
+  const inicio = puntoArco(paceMin)
+  const fin    = puntoArco(paceMax)
+  const csPos  = puntoArco(csPace)
+  const csIn   = puntoArco(csPace, R-13)
+  const csOut  = puntoArco(csPace, R+13)
+
+  return (
+    <div style={{ marginTop:14, padding:'14px 14px 10px', background:C.bg3, borderRadius:10, border:`1px solid ${C.border}` }}>
+      <div style={{ fontSize:10.5, color:C.text2, marginBottom:4, lineHeight:1.5, textAlign:'center' }}>
+        Cuanto más lejos del rojo (esfuerzo corto/anaeróbico), más cerca del límite sostenible
+      </div>
+      <svg viewBox="0 0 280 145" style={{ width:'100%', maxWidth:320, display:'block', margin:'0 auto' }}>
+        <defs>
+          <linearGradient id="gaugeCSCoach" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"  stopColor="#EF4444"/>
+            <stop offset="35%" stopColor="#F97316"/>
+            <stop offset="65%" stopColor="#FACC15"/>
+            <stop offset="100%" stopColor="#38BDF8"/>
+          </linearGradient>
+        </defs>
+
+        <path d={`M ${inicio.x} ${inicio.y} A ${R} ${R} 0 0 1 ${fin.x} ${fin.y}`}
+          stroke="url(#gaugeCSCoach)" strokeWidth="13" fill="none" strokeLinecap="round" opacity="0.9"/>
+
+        <line x1={csIn.x} y1={csIn.y} x2={csOut.x} y2={csOut.y}
+          stroke="#fff" strokeWidth="3.5" strokeLinecap="round"/>
+        <circle cx={csPos.x} cy={csPos.y} r="5" fill="#38BDF8" stroke="#fff" strokeWidth="1.5"/>
+
+        {puntos.map((p,i) => {
+          const pos = puntoArco(p.pace)
+          const arriba = pos.y < CY - 20
+          return (
+            <g key={i}>
+              <circle cx={pos.x} cy={pos.y} r="5" fill={C.bg3} stroke="#EF4444" strokeWidth="2.5"/>
+              <text x={pos.x} y={arriba ? pos.y-12 : pos.y+20} textAnchor="middle"
+                fontSize="9" fontWeight="700" fill={C.text2}>{p.label}</text>
+              <text x={pos.x} y={arriba ? pos.y-2 : pos.y+30} textAnchor="middle"
+                fontSize="8.5" fill={C.text3}>{fmtP(p.pace)}</text>
+            </g>
+          )
+        })}
+
+        <text x={CX} y={CY+2} textAnchor="middle" fontSize="22" fontWeight="800" fill="#38BDF8">
+          {fmtP(csPace)}
+        </text>
+        <text x={CX} y={CY+18} textAnchor="middle" fontSize="9" fontWeight="700" fill={C.text2} letterSpacing="1">
+          CS · min/km
+        </text>
+      </svg>
+    </div>
+  )
+}

@@ -244,7 +244,13 @@ export default function GraficoActividadStreams({
       ]
     : _lapsNorm
 
-  const _rawSeries = usarLaps ? lapsComoSeries : (tieneStreams ? streams : (tieneLaps ? lapsComoSeries : []))
+  // FIX: antes, mientras los streams todavia cargaban (tieneStreams=false
+  // por unos segundos), caia al relleno de laps si habia al menos 1 -- eso
+  // causaba que el grafico se viera distinto por 1-2 segundos y despues
+  // "cambiara solo" cuando los streams terminaban de llegar. Ahora, mientras
+  // esta cargando, no se usa ese relleno -- se espera a que termine.
+  const _rawSeries = usarLaps ? lapsComoSeries
+    : (tieneStreams ? streams : (loading ? [] : (tieneLaps ? lapsComoSeries : [])))
   const series = _rawSeries.map(s => ({
     ...s,
     pace:  s.pace  != null ? s.pace  : (s.speed_ms && s.speed_ms > 0.3
@@ -353,6 +359,11 @@ export default function GraficoActividadStreams({
   const SportIconC = sport === 'cycling' ? BikeIcon : sport === 'swimming' ? Waves : Footprints
   const paceUnit   = sport === 'swimming' ? '/100m' : '/km'
 
+  // FIX: antes el eje izquierdo (principal) estaba hardcodeado a FC siempre.
+  // Para running/swimming, si hay pace real y el canal esta activo, Pace pasa
+  // a ser el eje principal (izquierda) y FC se mueve a la derecha.
+  const mostrarPaceIzq = sport !== 'cycling' && canalesOn.pace && paceVals.length > 0
+
   const toggleCanal = key => setCanalesOn(prev => ({ ...prev, [key]: !prev[key] }))
 
   const CANALES = [
@@ -371,16 +382,10 @@ export default function GraficoActividadStreams({
   ].filter(c => c.show)
 
   return (
-    <div style={{
-      borderRadius: 16, overflow: 'hidden',
-      background: `linear-gradient(160deg, ${D.bg} 0%, ${D.bg2} 100%)`,
-      border: `1px solid ${D.border}`,
-      boxShadow: '0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
-    }}>
-      {/* HEADER */}
+    <div style={{ borderRadius: 0, overflow: 'visible', background: 'transparent' }}>
+      {/* HEADER -- sin caja, solo un separador sutil abajo */}
       <div style={{
-        padding: '14px 16px 10px',
-        background: `linear-gradient(90deg, ${sportColor}18, transparent 70%)`,
+        padding: '10px 4px 10px',
         borderBottom: `1px solid ${D.border}`,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -772,32 +777,59 @@ export default function GraficoActividadStreams({
             </>
           )}
 
-          {/* Eje Y izquierdo */}
-          {hrTicks.map(v => (
-            <text key={v} x={PL-7} y={yHR(v)+4} textAnchor="end"
-              fontSize="9" fill={D.text3}>{v}</text>
-          ))}
-          <text x={14} y={H/2} textAnchor="middle" fontSize="9"
-            fill="rgba(139,92,246,0.5)" transform={`rotate(-90,14,${H/2})`}>FC bpm</text>
-
-          {/* Eje Y derecho */}
-          {canalesOn.power && powVals.length > 0 && sport !== 'swimming' && (
-            <>
-              {[0, Math.round(powMax*0.5), Math.round(powMax)].map(v => (
-                <text key={v} x={W-PR+7} y={yPow(v)+4} textAnchor="start"
-                  fontSize="9" fill="rgba(245,158,11,0.4)">{v}W</text>
-              ))}
-              <text x={W-12} y={H/2} textAnchor="middle" fontSize="9"
-                fill="rgba(245,158,11,0.4)"
-                transform={`rotate(90,${W-12},${H/2})`}>W</text>
-            </>
-          )}
-          {canalesOn.pace && paceVals.length > 0 && !canalesOn.power && (
+          {/* Eje Y izquierdo -- Pace si mostrarPaceIzq, sino FC (como antes) */}
+          {mostrarPaceIzq ? (
             <>
               {[paceMin, (paceMin+paceMax)/2, paceMax].map(v => (
-                <text key={v} x={W-PR+7} y={yPace(v)+4} textAnchor="start"
-                  fontSize="9" fill="rgba(56,189,248,0.4)">{fmtPace(v)}</text>
+                <text key={v} x={PL-7} y={yPace(v)+4} textAnchor="end"
+                  fontSize="9" fill={D.text3}>{fmtPace(v)}</text>
               ))}
+              <text x={14} y={H/2} textAnchor="middle" fontSize="9"
+                fill="rgba(56,189,248,0.55)" transform={`rotate(-90,14,${H/2})`}>Pace {paceUnit}</text>
+            </>
+          ) : (
+            <>
+              {hrTicks.map(v => (
+                <text key={v} x={PL-7} y={yHR(v)+4} textAnchor="end"
+                  fontSize="9" fill={D.text3}>{v}</text>
+              ))}
+              <text x={14} y={H/2} textAnchor="middle" fontSize="9"
+                fill="rgba(139,92,246,0.5)" transform={`rotate(-90,14,${H/2})`}>FC bpm</text>
+            </>
+          )}
+
+          {/* Eje Y derecho -- FC si mostrarPaceIzq movio FC ahi, sino Potencia/Pace como antes */}
+          {mostrarPaceIzq ? (
+            <>
+              {hrTicks.map(v => (
+                <text key={v} x={W-PR+7} y={yHR(v)+4} textAnchor="start"
+                  fontSize="9" fill="rgba(139,92,246,0.4)">{v}</text>
+              ))}
+              <text x={W-12} y={H/2} textAnchor="middle" fontSize="9"
+                fill="rgba(139,92,246,0.4)"
+                transform={`rotate(90,${W-12},${H/2})`}>FC bpm</text>
+            </>
+          ) : (
+            <>
+              {canalesOn.power && powVals.length > 0 && sport !== 'swimming' && (
+                <>
+                  {[0, Math.round(powMax*0.5), Math.round(powMax)].map(v => (
+                    <text key={v} x={W-PR+7} y={yPow(v)+4} textAnchor="start"
+                      fontSize="9" fill="rgba(245,158,11,0.4)">{v}W</text>
+                  ))}
+                  <text x={W-12} y={H/2} textAnchor="middle" fontSize="9"
+                    fill="rgba(245,158,11,0.4)"
+                    transform={`rotate(90,${W-12},${H/2})`}>W</text>
+                </>
+              )}
+              {canalesOn.pace && paceVals.length > 0 && !canalesOn.power && (
+                <>
+                  {[paceMin, (paceMin+paceMax)/2, paceMax].map(v => (
+                    <text key={v} x={W-PR+7} y={yPace(v)+4} textAnchor="start"
+                      fontSize="9" fill="rgba(56,189,248,0.4)">{fmtPace(v)}</text>
+                  ))}
+                </>
+              )}
             </>
           )}
 
