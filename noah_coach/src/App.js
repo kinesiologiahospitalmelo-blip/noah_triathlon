@@ -3430,6 +3430,7 @@ function CoachApp() {
   const [showModal, setShowModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [colapsado, setColapsado] = useState(false)  // sidebar dinamico: abierto/cerrado
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)  // drawer mobile: abierto/cerrado (no afecta PC)
 
   const cargarAtletas = async () => {
     try { const r=await axios.get(`${API}/atletas`); setAtletas(r.data.data); if(!selectedId&&r.data.data.length>0)setSelectedId(r.data.data[0].id) }
@@ -3442,9 +3443,39 @@ function CoachApp() {
   return (
     <>
       <style>{css}</style>
+      <style>{`
+        .coach-mobile-toggle { display: none; }
+        @media (max-width: 768px) {
+          .coach-mobile-toggle {
+            display: flex; position: fixed; top: 12px; left: 12px; z-index: 1001;
+            width: 42px; height: 42px; border-radius: 11px;
+            background: rgba(20,20,30,0.92); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.15);
+            align-items: center; justify-content: center; color: #fff; cursor: pointer;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+          }
+          .coach-sidebar {
+            position: fixed !important; top:0; left:0; bottom:0; z-index: 1000;
+            width: 78vw !important; max-width: 300px;
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+            box-shadow: 6px 0 30px rgba(0,0,0,0.6);
+          }
+          .coach-sidebar.mobile-open { transform: translateX(0); }
+        }
+      `}</style>
+      {mobileMenuOpen && (
+        <div onClick={()=>setMobileMenuOpen(false)} style={{
+          position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:999,
+        }}/>
+      )}
+      <button className="coach-mobile-toggle" onClick={()=>setMobileMenuOpen(o=>!o)}>
+        {mobileMenuOpen ? '✕' : '☰'}
+      </button>
       <div style={{ display:'flex', height:'100vh', overflow:'hidden' }}>
-        {/* Sidebar -- ancho dinamico: 268px abierto, 64px colapsado */}
-        <div style={{ width: colapsado ? 64 : 268, flexShrink:0, background:C.bg2, borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s' }}>
+        {/* Sidebar -- ancho dinamico: 268px abierto, 64px colapsado (PC).
+            En mobile se convierte en panel deslizable via CSS de arriba. */}
+        <div className={`coach-sidebar${mobileMenuOpen ? ' mobile-open' : ''}`} style={{ width: colapsado ? 64 : 268, flexShrink:0, background:C.bg2, borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s' }}>
           <div style={{ padding: colapsado ? '18px 0 14px' : '18px 16px 14px', borderBottom:`1px solid ${C.border}`, display:'flex', flexDirection:'column', alignItems: colapsado ? 'center' : 'stretch' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               {!colapsado && (
@@ -3482,7 +3513,7 @@ function CoachApp() {
 
           <div style={{ flex:1, overflow:'auto' }}>
             {loading?(!colapsado && <div style={{ padding:14, color:C.text2, fontSize:13 }}>Cargando...</div>)
-              :atletas.map(a=><AtletaItem key={a.id} atleta={a} selected={selectedId===a.id} onClick={()=>setSelectedId(a.id)} colapsado={colapsado} />)}
+              :atletas.map(a=><AtletaItem key={a.id} atleta={a} selected={selectedId===a.id} onClick={()=>{setSelectedId(a.id); setMobileMenuOpen(false)}} colapsado={colapsado} />)}
           </div>
           <div style={{ padding:10, borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:6 }}>
             <button onClick={()=>setShowModal(true)} title="Agregar atleta" style={{ width:'100%', padding:'9px', borderRadius:8, border:'none', background:C.purple, color:'#fff', cursor:'pointer', fontSize:13, fontWeight:600 }}>
