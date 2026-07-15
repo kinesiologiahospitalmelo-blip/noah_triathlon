@@ -3802,6 +3802,7 @@ export default function AtletaDashboard({ atletaId }) {
             background-position: center !important;
             background-repeat: no-repeat !important;
           }
+          .hero-content { min-height: 0 !important; height: 100%; }
         }
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -3860,7 +3861,7 @@ export default function AtletaDashboard({ atletaId }) {
           background:'linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.30) 30%, transparent 60%)',
         }}/>
         {/* Contenido */}
-        <div style={{ position:'relative', zIndex:1, display:'flex', flexDirection:'column', minHeight:'85vh' }}>
+        <div className="hero-content" style={{ position:'relative', zIndex:1, display:'flex', flexDirection:'column', minHeight:'85vh' }}>
           {/* Logout arriba -- se saco el logo "noah" que quedaba superpuesto sobre el banner */}
           <div style={{ display:'flex', justifyContent:'flex-end', alignItems:'center', padding:'12px 16px' }}>
             <button onClick={() => {
