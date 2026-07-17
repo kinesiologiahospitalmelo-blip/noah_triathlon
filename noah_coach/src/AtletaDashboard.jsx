@@ -3983,6 +3983,26 @@ export default function AtletaDashboard({ atletaId }) {
         actLoading={syncLoading}
       />
 
+      {/* Conectar con Wahoo */}
+      <div style={{ padding:'0 16px 12px' }}>
+        <button onClick={async () => {
+          try {
+            const r = await axios.get(`${API}/atletas/${id}/wahoo/authorize_url`)
+            const url = r.data?.data?.url
+            if (url) window.location.href = url
+            else alert('No se pudo generar el link de conexión con Wahoo.')
+          } catch {
+            alert('No se pudo conectar con Wahoo. Probá de nuevo.')
+          }
+        }} style={{
+          width:'100%', padding:'9px 14px', borderRadius:9, fontSize:12, fontWeight:700,
+          background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.75)',
+          border:'1px solid rgba(255,255,255,0.15)', cursor:'pointer',
+        }}>
+          🔗 Conectar con Wahoo
+        </button>
+      </div>
+
       {/* SYNC RESULT */}
       {syncResult && (
         <div style={{
