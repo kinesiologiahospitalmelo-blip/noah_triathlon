@@ -3537,6 +3537,56 @@ function CoachApp() {
   )
 }
 
+function WahooCallback() {
+  const [estado, setEstado] = useState('conectando')
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    const state = params.get('state')
+    if (!code || !state) {
+      setEstado('error'); setMsg('Falta el código de autorización de Wahoo.')
+      return
+    }
+    axios.post(`${API}/wahoo/callback`, { code, state })
+      .then(() => {
+        setEstado('ok')
+        setTimeout(() => { window.location.href = `/atleta/${state}` }, 1800)
+      })
+      .catch(err => {
+        setEstado('error')
+        setMsg(err?.response?.data?.error || 'No se pudo conectar con Wahoo. Probá de nuevo.')
+      })
+  }, [])
+
+  return (
+    <div style={{
+      minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center',
+      justifyContent:'center', background:'#0A0F1E', color:'#fff', gap:14, padding:20, textAlign:'center',
+    }}>
+      {estado === 'conectando' && (
+        <>
+          <div style={{ fontSize:36 }}>⏳</div>
+          <div style={{ fontSize:15, fontWeight:600 }}>Conectando con Wahoo...</div>
+        </>
+      )}
+      {estado === 'ok' && (
+        <>
+          <div style={{ fontSize:36 }}>✅</div>
+          <div style={{ fontSize:15, fontWeight:600 }}>¡Conectado! Redirigiendo...</div>
+        </>
+      )}
+      {estado === 'error' && (
+        <>
+          <div style={{ fontSize:36 }}>⚠️</div>
+          <div style={{ fontSize:15, fontWeight:600, maxWidth:320 }}>{msg}</div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function AtletaPage() {
   const { id } = useParams()
   return <AtletaDashboard atletaId={parseInt(id)} />
@@ -3983,6 +4033,7 @@ export default function App() {
         <Route path="/" element={<RequireCoach><CoachApp /></RequireCoach>} />
         <Route path="/coach" element={<RequireCoach><CoachApp /></RequireCoach>} />
         <Route path="/atleta/:id" element={<RequireAtleta><AtletaPage /></RequireAtleta>} />
+        <Route path="/wahoo/callback" element={<WahooCallback />} />
       </Routes>
     </BrowserRouter>
   )
