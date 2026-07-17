@@ -29,6 +29,7 @@ from functools import wraps
 BASE_DIR = Path(__file__).parent
 sys.path.insert(0, str(BASE_DIR))
 
+import os
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import psycopg2
@@ -128,8 +129,95 @@ def _init_auth_tables():
             expira     TEXT NOT NULL
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS wahoo_tokens (
+            atleta_id     INTEGER PRIMARY KEY,
+            access_token  TEXT NOT NULL,
+            refresh_token TEXT NOT NULL,
+            expires_at    TEXT NOT NULL,
+            wahoo_user_id INTEGER,
+            actualizado   TEXT NOT NULL
+        )
+    """)
     conn.commit()
     conn.close()
+
+
+# ── Wahoo OAuth2 ────────────────────────────────────────────────────────────
+WAHOO_AUTH_URL  = 'https://api.wahooligan.com/oauth/authorize'
+WAHOO_TOKEN_URL = 'https://api.wahooligan.com/oauth/token'
+WAHOO_REDIRECT_URI = 'https://noah-triathlon.vercel.app/wahoo/callback'
+
+@app.route('/api/atletas/<int:atleta_id>/wahoo/authorize_url', methods=['GET'])
+def wahoo_authorize_url(atleta_id):
+    """Devuelve la URL a la que hay que mandar al atleta para conectar Wahoo."""
+    client_id = os.environ.get('WAHOO_CLIENT_ID')
+    if not client_id:
+        return error('Falta configurar WAHOO_CLIENT_ID en el servidor')
+    from urllib.parse import urlencode
+    params = {
+        'client_id': client_id,
+        'redirect_uri': WAHOO_REDIRECT_URI,
+        'scope': 'workouts_read user_read',
+        'response_type': 'code',
+        'state': str(atleta_id),
+    }
+    url = f'{WAHOO_AUTH_URL}?{urlencode(params)}'
+    return ok({'url': url})
+
+
+@app.route('/api/wahoo/callback', methods=['POST'])
+def wahoo_callback():
+    """
+    Recibe el codigo que el frontend obtuvo de Wahoo y lo intercambia
+    por un access_token + refresh_token. El Client Secret se usa SOLO
+    aca, del lado del servidor.
+    """
+    data = request.get_json(force=True) or {}
+    code = data.get('code')
+    atleta_id = data.get('state')
+    if not code or not atleta_id:
+        return error('Falta code o state')
+
+    client_id = os.environ.get('WAHOO_CLIENT_ID')
+    client_secret = os.environ.get('WAHOO_CLIENT_SECRET')
+    if not client_id or not client_secret:
+        return error('Falta configurar WAHOO_CLIENT_ID / WAHOO_CLIENT_SECRET en el servidor')
+
+    import requests as _requests
+    r = _requests.post(WAHOO_TOKEN_URL, data={
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'code': code,
+        'redirect_uri': WAHOO_REDIRECT_URI,
+        'grant_type': 'authorization_code',
+    })
+    if r.status_code != 200:
+        return error(f'Wahoo rechazo el intercambio de token: {r.status_code} {r.text}')
+
+    tok = r.json()
+    access_token  = tok.get('access_token')
+    refresh_token = tok.get('refresh_token')
+    expires_in    = tok.get('expires_in', 7200)
+
+    from datetime import datetime, timedelta
+    expires_at = (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat()
+
+    conn = get_conn()
+    conn.execute("""
+        INSERT INTO wahoo_tokens (atleta_id, access_token, refresh_token, expires_at, actualizado)
+        VALUES (%s,%s,%s,%s,%s)
+        ON CONFLICT (atleta_id) DO UPDATE SET
+            access_token=EXCLUDED.access_token,
+            refresh_token=EXCLUDED.refresh_token,
+            expires_at=EXCLUDED.expires_at,
+            actualizado=EXCLUDED.actualizado
+    """, (int(atleta_id), access_token, refresh_token, expires_at, datetime.utcnow().isoformat()))
+    conn.commit()
+    conn.close()
+
+    return ok({'conectado': True})
+
 
 def _hash_password(password, salt):
     return hashlib.sha256((salt + password).encode('utf-8')).hexdigest()
