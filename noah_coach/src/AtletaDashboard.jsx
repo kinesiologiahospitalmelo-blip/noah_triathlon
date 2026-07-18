@@ -3502,7 +3502,7 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
 
   const Q_COLOR = { Q1:'#F97316', Q2:'#EF4444', Q3:'#22C55E', Q4:'#3B82F6' }
   const torque_umbral = Math.round((9.549 * ftp) / cadenciaOptima)
-  const { samples=[], cuadrantes={}, metricas={} } = data || {}
+  const { samples=[], cuadrantes={}, metricas={}, curva_potencia={} } = data || {}
 
   const step1 = Math.max(1, Math.floor(samples.length / 1200))
   const scatterData = samples
@@ -3530,6 +3530,43 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
           }}>{cargando && !data ? '⏳' : label}</button>
         ))}
       </div>
+
+      {/* Curva de potencia + NP/Joules/VI -- siempre visible */}
+      {data && (metricas?.np_watts || metricas?.trabajo_kj) && (
+        <div style={{ marginBottom:14 }}>
+          <div style={{ display:'flex', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+            {[
+              { label:'NP (Potencia Normalizada)', value: metricas?.np_watts ? `${metricas.np_watts}W` : '--', color:'#3B82F6' },
+              { label:'Trabajo total', value: metricas?.trabajo_kj ? `${Math.round(metricas.trabajo_kj)}kJ` : '--', color:'#F97316' },
+              { label:'Variability Index', value: metricas?.variability_index ? metricas.variability_index.toFixed(2) : '--', color:'#A855F7' },
+            ].map(({label,value,color}) => (
+              <div key={label} style={{ flex:1, minWidth:100, background:`${color}12`, borderRadius:8,
+                padding:'8px 12px', border:`1px solid ${color}25` }}>
+                <div style={{ fontSize:10, color:NOAH_C.ink3 }}>{label}</div>
+                <div style={{ fontSize:16, fontWeight:800, color }}>{value}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize:11, color:NOAH_C.ink3, marginBottom:6, fontWeight:600 }}>
+            Curva de potencia — mejor esfuerzo sostenido
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:6 }}>
+            {[
+              ['5s', curva_potencia['5s']], ['30s', curva_potencia['30s']],
+              ['1min', curva_potencia['1min']], ['3min', curva_potencia['3min']],
+              ['5min', curva_potencia['5min']], ['20min', curva_potencia['20min']],
+            ].map(([dur, watts]) => (
+              <div key={dur} style={{ textAlign:'center', background:'rgba(255,255,255,0.04)',
+                borderRadius:8, padding:'8px 4px' }}>
+                <div style={{ fontSize:9, color:NOAH_C.ink3 }}>{dur}</div>
+                <div style={{ fontSize:14, fontWeight:800, color:'#fff' }}>
+                  {watts ? `${Math.round(watts)}W` : '--'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Gráfico de cuadrantes */}
       {vista === 'torque' && (
