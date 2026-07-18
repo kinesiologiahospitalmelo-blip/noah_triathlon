@@ -1936,6 +1936,11 @@ def get_torque_wbal(atleta_id, sesion_id):
             '3min': extra_row[6], '5min': extra_row[7], '20min': extra_row[8],
         }
 
+    MAX_PUNTOS_SAMPLES = 1200
+    if len(samples) > MAX_PUNTOS_SAMPLES:
+        paso_out = max(1, len(samples) // MAX_PUNTOS_SAMPLES)
+        samples = samples[::paso_out]
+
     return ok({
         'samples': samples,
         'cuadrantes': cuadrantes,
@@ -3519,11 +3524,18 @@ def get_activity_streams(atleta_id):
                 (sesion_id, atleta_id)
             ).fetchone()
             if fila_sesion:
-                muestras = conn.execute("""
+                muestras_todas = conn.execute("""
                     SELECT ts_s, hr, speed_ms, cadence, power_w, altitude_m,
                            distance_m, temperature, left_right_pct
                     FROM activity_samples WHERE sesion_id=%s ORDER BY ts_s
                 """, (sesion_id,)).fetchall()
+
+                MAX_PUNTOS = 1500
+                if muestras_todas and len(muestras_todas) > MAX_PUNTOS:
+                    paso = max(1, len(muestras_todas) // MAX_PUNTOS)
+                    muestras = muestras_todas[::paso]
+                else:
+                    muestras = muestras_todas
 
                 if muestras and len(muestras) > 5:
                     sport_local = fila_sesion[0]
