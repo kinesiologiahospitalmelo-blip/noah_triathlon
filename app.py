@@ -3511,6 +3511,69 @@ def get_activity_streams(atleta_id):
     if not sesion_id:
         return error('sesion_id requerido')
     conn = get_conn()
+
+    if not force:
+        try:
+            fila_sesion = conn.execute(
+                "SELECT sport FROM sesiones WHERE id=%s AND atleta_id=%s",
+                (sesion_id, atleta_id)
+            ).fetchone()
+            if fila_sesion:
+                muestras = conn.execute("""
+                    SELECT ts_s, hr, speed_ms, cadence, power_w, altitude_m,
+                           distance_m, temperature, left_right_pct
+                    FROM activity_samples WHERE sesion_id=%s ORDER BY ts_s
+                """, (sesion_id,)).fetchall()
+
+                if muestras and len(muestras) > 5:
+                    sport_local = fila_sesion[0]
+                    lthr_row = conn.execute(
+                        "SELECT lthr_run, lthr_bike FROM atletas WHERE id=%s", (atleta_id,)
+                    ).fetchone()
+                    lthr_local = 162
+                    if lthr_row:
+                        lthr_local = (lthr_row[1] if sport_local == 'cycling' else lthr_row[0]) or 162
+
+                    series = [{
+                        'ts_s': m[0], 'hr': m[1], 'pace': None, 'power': m[4],
+                        'power_w': m[4], 'cadence': m[3], 'speed_ms': m[2],
+                        'altitude_m': m[5], 'distance_m': m[6],
+                        'temperature': m[7], 'left_right_pct': m[8],
+                    } for m in muestras]
+
+                    hrs   = [m[1] for m in muestras if m[1]]
+                    pows  = [m[4] for m in muestras if m[4]]
+                    stats = {
+                        'hr_avg': round(sum(hrs)/len(hrs), 1) if hrs else None,
+                        'hr_max': max(hrs) if hrs else None,
+                        'power_avg': round(sum(pows)/len(pows), 1) if pows else None,
+                        'power_np': None,
+                    }
+
+                    zonas = {}
+                    if hrs and lthr_local:
+                        limites = [0.82, 0.88, 0.94, 1.00, 1.06]
+                        nombres = ['Z1','Z2','Z3','Z4','Z5','Z6']
+                        cuentas = {n: 0 for n in nombres}
+                        for h in hrs:
+                            r = h / lthr_local
+                            idx = 0
+                            for i, lim in enumerate(limites):
+                                if r < lim: break
+                                idx = i + 1
+                            cuentas[nombres[idx]] += 1
+                        total = len(hrs)
+                        zonas = {n: {'pct': round(c/total*100, 1)} for n, c in cuentas.items()}
+
+                    conn.close()
+                    return ok(_limpiar_nan({
+                        'disponible': True, 'sport': sport_local, 'lthr': lthr_local,
+                        'fuente': 'activity_samples', 'series': series,
+                        'stats': stats, 'zonas': zonas,
+                    }))
+        except Exception as e_directo:
+            print(f'[activity_streams] fallback a Garmin, error leyendo activity_samples: {e_directo}')
+
     try:
         from noah_streams import obtener_streams, migrate_db
         migrate_db(conn)
