@@ -1917,9 +1917,29 @@ def get_torque_wbal(atleta_id, sesion_id):
     total_ped  = sum(q_counts.values()) or 1
     cuadrantes = {f'Q{k}': round(v / total_ped * 100, 1) for k, v in q_counts.items()}
     nme        = round(sum_power / sum_torque, 2) if sum_torque > 0 else None
+
+    conn2 = db._conn()
+    extra_row = conn2.execute("""
+        SELECT trabajo_kj, bio_variability_index, np_watts,
+               bio_potencia_5s, bio_potencia_30s, bio_potencia_1min,
+               bio_potencia_3min, bio_potencia_5min_curva, bio_potencia_20min
+        FROM sesiones WHERE id=%s
+    """, (sesion_id,)).fetchone()
+    conn2.close()
+
+    curva_potencia = {}
+    trabajo_kj = variability_index = np_watts = None
+    if extra_row:
+        trabajo_kj, variability_index, np_watts = extra_row[0], extra_row[1], extra_row[2]
+        curva_potencia = {
+            '5s': extra_row[3], '30s': extra_row[4], '1min': extra_row[5],
+            '3min': extra_row[6], '5min': extra_row[7], '20min': extra_row[8],
+        }
+
     return ok({
         'samples': samples,
         'cuadrantes': cuadrantes,
+        'curva_potencia': curva_potencia,
         'metricas': {
             'costo_torque_acumulado': round(torque_acum, 0),
             'vaciados_criticos':      vaciados,
@@ -1930,6 +1950,9 @@ def get_torque_wbal(atleta_id, sesion_id):
             'w_prime_usado':          w_prime,
             'cadencia_optima':        cad_opt,
             'total_muestras':         len(rows),
+            'trabajo_kj':             trabajo_kj,
+            'variability_index':      variability_index,
+            'np_watts':               np_watts,
         }
     })
 
