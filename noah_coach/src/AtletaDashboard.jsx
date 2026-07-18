@@ -1059,64 +1059,7 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
         <VelocidadCriticaBotones atletaId={atletaId} />
       )}
 
-      {/* Tabla de laps expandible */}
-      {expandido && laps.length > 0 && (
-        <div style={{padding:'0 18px 14px',
-          background:'linear-gradient(160deg,rgba(8,8,20,0.95),rgba(12,12,28,0.92))',
-          borderRadius:'0 0 14px 14px'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:10,marginTop:10}}>
-            <thead>
-              <tr>
-                {['#','Dist','Tiempo','FC','Máx FC',
-                  sport==='swimming'?'Swolf':sport==='cycling'?'Watts':'Pace',
-                  'Cad','Zona'].map(h=>(
-                  <th key={h} style={{padding:'4px 6px',textAlign:'left',
-                    color:'rgba(255,255,255,0.3)',fontWeight:600,
-                    textTransform:'uppercase',letterSpacing:0.5,fontSize:9}}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {laps.map((l,i)=>{
-                const zc = (() => {
-                  if (!l.hr_avg||!LTHR) return '#94A3B8'
-                  const r = l.hr_avg/LTHR
-                  return r<0.82?'#94A3B8':r<0.88?NOAH_C.success:r<0.94?'#84CC16':r<1.00?NOAH_C.warning:r<1.06?'#F97316':NOAH_C.danger
-                })()
-                const zn = (() => {
-                  if (!l.hr_avg||!LTHR) return 'Z1'
-                  const r = l.hr_avg/LTHR
-                  return r<0.82?'Z1':r<0.88?'Z2':r<0.94?'Z3':r<1.00?'Z4':r<1.06?'Z5':'Z6'
-                })()
-                const metrica = sport==='swimming'&&l.swolf?l.swolf.toFixed(1):
-                  sport==='cycling'&&l.avg_power?`${Math.round(l.avg_power)}W`:
-                  l.pace?fmtPaceStr(l.pace):'--'
-                return (
-                  <tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
-                    <td style={{padding:'4px 6px',color:'rgba(255,255,255,0.38)',fontWeight:600}}>
-                      {l.lap_num||i+1}</td>
-                    <td style={{padding:'4px 6px',color:'rgba(255,255,255,0.65)'}}>
-                      {l.distance_km?(l.distance_km*1000).toFixed(0)+'m':'--'}</td>
-                    <td style={{padding:'4px 6px',color:'rgba(255,255,255,0.5)'}}>
-                      {l.duration_min?`${Math.floor(l.duration_min)}'${String(Math.round((l.duration_min%1)*60)).padStart(2,'0')}"` :'--'}</td>
-                    <td style={{padding:'4px 6px',fontWeight:700,color:zc}}>
-                      {l.hr_avg?Math.round(l.hr_avg):'--'}</td>
-                    <td style={{padding:'4px 6px',color:'rgba(255,255,255,0.38)'}}>
-                      {l.hr_max?Math.round(l.hr_max):'--'}</td>
-                    <td style={{padding:'4px 6px',color:'rgba(255,255,255,0.55)'}}>{metrica}</td>
-                    <td style={{padding:'4px 6px',color:'rgba(255,255,255,0.38)'}}>
-                      {l.cadence?Math.round(l.cadence):'--'}</td>
-                    <td style={{padding:'4px 6px'}}>
-                      <span style={{padding:'1px 5px',borderRadius:3,fontSize:9,fontWeight:700,
-                        background:`${zc}22`,color:zc}}>{zn}</span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+
     </div>
   )
 }, (prev, next) =>
