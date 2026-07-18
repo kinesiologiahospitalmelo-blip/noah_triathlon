@@ -3547,7 +3547,7 @@ def get_activity_streams(atleta_id):
                         lthr_local = (lthr_row[1] if sport_local == 'cycling' else lthr_row[0]) or 162
 
                     series = [{
-                        'ts_s': m[0], 'hr': m[1], 'pace': None, 'power': m[4],
+                        't': m[0], 'ts_s': m[0], 'hr': m[1], 'pace': None, 'power': m[4],
                         'power_w': m[4], 'cadence': m[3], 'speed_ms': m[2],
                         'altitude_m': m[5], 'distance_m': m[6],
                         'temperature': m[7], 'left_right_pct': m[8],
