@@ -219,6 +219,21 @@ def wahoo_callback():
     return ok({'conectado': True})
 
 
+
+# ── Perfil del atleta (analisis del historial) ───────────────────────────────
+@app.route('/api/atletas/<int:atleta_id>/perfil', methods=['GET'])
+@requiere_login
+def get_perfil_atleta(atleta_id):
+    try:
+        from noah_perfil import generar_perfil
+        conn = get_conn()
+        perfil = generar_perfil(conn, atleta_id)
+        conn.close()
+        return ok(_limpiar_nan(perfil))
+    except Exception as e:
+        return error(str(e))
+
+
 def _hash_password(password, salt):
     return hashlib.sha256((salt + password).encode('utf-8')).hexdigest()
 
