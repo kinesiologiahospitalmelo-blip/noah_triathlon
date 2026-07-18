@@ -220,18 +220,6 @@ def wahoo_callback():
 
 
 
-# ── Perfil del atleta (analisis del historial) ───────────────────────────────
-@app.route('/api/atletas/<int:atleta_id>/perfil', methods=['GET'])
-@requiere_login
-def get_perfil_atleta(atleta_id):
-    try:
-        from noah_perfil import generar_perfil
-        conn = get_conn()
-        perfil = generar_perfil(conn, atleta_id)
-        conn.close()
-        return ok(_limpiar_nan(perfil))
-    except Exception as e:
-        return error(str(e))
 
 
 def _hash_password(password, salt):
@@ -299,6 +287,21 @@ def requiere_login(f):
             return error('No autorizado para ver este atleta', 403)
         return f(*args, **kwargs)
     return wrapper
+
+
+
+# ── Perfil del atleta (analisis del historial) ───────────────────────────────
+@app.route('/api/atletas/<int:atleta_id>/perfil', methods=['GET'])
+@requiere_login
+def get_perfil_atleta(atleta_id):
+    try:
+        from noah_perfil import generar_perfil
+        conn = get_conn()
+        perfil = generar_perfil(conn, atleta_id)
+        conn.close()
+        return ok(_limpiar_nan(perfil))
+    except Exception as e:
+        return error(str(e))
 
 def requiere_coach(f):
     """Decorador para endpoints exclusivos del coach (crear atletas, gestionar
