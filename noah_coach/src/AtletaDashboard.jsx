@@ -12,7 +12,8 @@ import {
   Footprints, Bike as BikeIcon, Waves, Calendar, CalendarDays, BarChart3, TrendingUp, TrendingDown,
   Target, Flag, FlaskConical, CheckCircle2, XCircle, AlertTriangle, Zap, Ruler,
   HeartPulse, Flame, Activity, RotateCw, Satellite, ClipboardList, User, BatteryFull,
-  BatteryLow, Moon, GlassWater, Brain, ChevronLeft, ChevronRight, Banana, Minus, Check, Scale, LogOut
+  BatteryLow, Moon, GlassWater, Brain, ChevronLeft, ChevronRight, Banana, Minus, Check, Scale, LogOut,
+  UserCircle
 } from 'lucide-react'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
@@ -3759,6 +3760,7 @@ export default function AtletaDashboard({ atletaId }) {
     {id:'zonas',         label:'Mis Zonas',     icon: Target},
     {id:'race',          label:'Race',          icon: Flag},
     {id:'tests',         label:'Tests',         icon: FlaskConical},
+    {id:'perfil',        label:'Perfil',        icon: UserCircle},
   ]
   const zonasSubTabs = [
     {id:'running',  label:'Running',  show: true},
@@ -4355,6 +4357,10 @@ export default function AtletaDashboard({ atletaId }) {
         <SeccionTests atletaId={atletaId} modoAtleta={true} />
       )}
 
+      {tab==='perfil' && (
+        <SeccionPerfil atletaId={atletaId} />
+      )}
+
       {tab==='zonas' && (
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
             {/* Banner adaptativo según TSB actual */}
@@ -4761,6 +4767,118 @@ function ExplicacionCS({ data }) {
           CS · min/km
         </text>
       </svg>
+    </div>
+  )
+}
+
+// ── SeccionPerfil -- todo lo que NOAH aprendio del atleta, en texto/tarjetas ──
+function SeccionPerfil({ atletaId }) {
+  const [perfil, setPerfil] = useState(null)
+  const [cargando, setCargando] = useState(true)
+
+  useEffect(() => {
+    authFetch(`${API}/atletas/${atletaId}/perfil`)
+      .then(r => r.json())
+      .then(r => { setPerfil(r.data || null); setCargando(false) })
+      .catch(() => setCargando(false))
+  }, [atletaId])
+
+  if (cargando) {
+    return <div style={{ textAlign:'center', padding:30, color:NOAH_C.ink3, fontSize:13 }}>Analizando historial...</div>
+  }
+  if (!perfil) {
+    return <div style={{ textAlign:'center', padding:30, color:NOAH_C.ink3, fontSize:13 }}>No hay suficientes datos todavía para armar el perfil.</div>
+  }
+
+  const { patron_semanal, distribucion_zonas, carga_actual, mejores_marcas, punto_quiebre_tsb, consistencia } = perfil
+
+  const Tarjeta = ({ titulo, children }) => (
+    <div style={{ padding:'14px 16px', background:NOAH_C.cardBg2, borderRadius:12,
+      border:`1px solid ${NOAH_C.border}`, marginBottom:12 }}>
+      <div style={{ fontSize:11, fontWeight:700, color:NOAH_C.ink3, textTransform:'uppercase',
+        letterSpacing:0.5, marginBottom:8 }}>{titulo}</div>
+      {children}
+    </div>
+  )
+  const Texto = ({ children, size=14, color, weight=500 }) => (
+    <div style={{ fontSize:size, color: color||NOAH_C.ink1, fontWeight:weight, lineHeight:1.5 }}>{children}</div>
+  )
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+
+      <Tarjeta titulo="Cómo entrena">
+        <Texto>
+          {patron_semanal?.dia_mas_activo
+            ? `Su día más activo es el ${patron_semanal.dia_mas_activo}. `
+            : 'Todavía no hay un patrón semanal claro. '}
+          En los últimos 6 meses acumuló {patron_semanal?.total_sesiones||0} sesiones registradas.
+        </Texto>
+      </Tarjeta>
+
+      <Tarjeta titulo="Distribución de entrenamiento">
+        {distribucion_zonas?.patron ? (
+          <>
+            <Texto>Su entrenamiento es <b>{distribucion_zonas.patron}</b>.</Texto>
+            <div style={{ display:'flex', gap:8, marginTop:10 }}>
+              {[
+                ['Baja', distribucion_zonas.z_baja_pct, '#22C55E'],
+                ['Media', distribucion_zonas.z_media_pct, '#F59E0B'],
+                ['Alta', distribucion_zonas.z_alta_pct, '#EF4444'],
+              ].map(([label, pct, color]) => (
+                <div key={label} style={{ flex:1, textAlign:'center' }}>
+                  <div style={{ fontSize:20, fontWeight:800, color }}>{pct}%</div>
+                  <div style={{ fontSize:10, color:NOAH_C.ink3 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : <Texto color={NOAH_C.ink3}>No hay suficientes datos todavía.</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Carga actual">
+        {carga_actual?.ctl ? (
+          <>
+            <div style={{ display:'flex', gap:14, marginBottom:8 }}>
+              <Texto size={13} color={NOAH_C.ink3}>CTL <b style={{color:NOAH_C.ink1}}>{carga_actual.ctl}</b></Texto>
+              <Texto size={13} color={NOAH_C.ink3}>ATL <b style={{color:NOAH_C.ink1}}>{carga_actual.atl}</b></Texto>
+              <Texto size={13} color={NOAH_C.ink3}>TSB <b style={{color:NOAH_C.ink1}}>{carga_actual.tsb}</b></Texto>
+            </div>
+            <Texto>{carga_actual.estado}</Texto>
+          </>
+        ) : <Texto color={NOAH_C.ink3}>No hay datos de carga todavía.</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Mejores marcas registradas">
+        {(mejores_marcas?.mejor_ritmo_5min_run || mejores_marcas?.mejor_potencia_5min || mejores_marcas?.mejor_ritmo_5min_swim) ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {mejores_marcas.mejor_ritmo_5min_run && <Texto>🏃 Mejor ritmo sostenido 5' (running): <b>{mejores_marcas.mejor_ritmo_5min_run}</b></Texto>}
+            {mejores_marcas.mejor_potencia_5min && <Texto>🚴 Mejor potencia sostenida 5': <b>{mejores_marcas.mejor_potencia_5min}W</b></Texto>}
+            {mejores_marcas.mejor_potencia_20min && <Texto>🚴 Mejor potencia sostenida 20': <b>{mejores_marcas.mejor_potencia_20min}W</b></Texto>}
+            {mejores_marcas.mejor_ritmo_5min_swim && <Texto>🏊 Mejor ritmo sostenido 5' (natación): <b>{mejores_marcas.mejor_ritmo_5min_swim}</b></Texto>}
+          </div>
+        ) : <Texto color={NOAH_C.ink3}>Todavía no hay marcas registradas.</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Punto de quiebre personal">
+        {punto_quiebre_tsb?.disponible ? (
+          <Texto>
+            Rinde mejor cuando está en <b>{punto_quiebre_tsb.mejor_rango.replace('_',' ')}</b>,
+            y su rendimiento cae más cuando está <b>{punto_quiebre_tsb.peor_rango.replace('_',' ')}</b>.
+            Esto es específico de su propio historial, no un umbral genérico.
+          </Texto>
+        ) : <Texto color={NOAH_C.ink3}>{punto_quiebre_tsb?.motivo || 'No hay suficientes datos todavía.'}</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Consistencia">
+        {consistencia?.disponible ? (
+          <Texto>
+            En las últimas {consistencia.semanas_analizadas} semanas fue <b>{consistencia.nivel}</b>
+            {' '}(promedio de {consistencia.tss_semanal_promedio} TSS semanal).
+          </Texto>
+        ) : <Texto color={NOAH_C.ink3}>No hay suficientes semanas todavía para medir consistencia.</Texto>}
+      </Tarjeta>
+
     </div>
   )
 }
