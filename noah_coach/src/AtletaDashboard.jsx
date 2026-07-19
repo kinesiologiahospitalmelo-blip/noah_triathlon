@@ -13,7 +13,7 @@ import {
   Target, Flag, FlaskConical, CheckCircle2, XCircle, AlertTriangle, Zap, Ruler,
   HeartPulse, Flame, Activity, RotateCw, Satellite, ClipboardList, User, BatteryFull,
   BatteryLow, Moon, GlassWater, Brain, ChevronLeft, ChevronRight, Banana, Minus, Check, Scale, LogOut,
-  UserCircle
+  UserCircle, MessageCircle, Send
 } from 'lucide-react'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
@@ -3761,6 +3761,7 @@ export default function AtletaDashboard({ atletaId }) {
     {id:'race',          label:'Race',          icon: Flag},
     {id:'tests',         label:'Tests',         icon: FlaskConical},
     {id:'perfil',        label:'Perfil',        icon: UserCircle},
+    {id:'asistente',     label:'Asistente',     icon: MessageCircle},
   ]
   const zonasSubTabs = [
     {id:'running',  label:'Running',  show: true},
@@ -4359,6 +4360,10 @@ export default function AtletaDashboard({ atletaId }) {
 
       {tab==='perfil' && (
         <SeccionPerfil atletaId={atletaId} />
+      )}
+
+      {tab==='asistente' && (
+        <SeccionAsistente atletaId={atletaId} />
       )}
 
       {tab==='zonas' && (
@@ -5104,6 +5109,96 @@ function SeccionPerfil({ atletaId }) {
         ) : <Texto color={NOAH_C.ink3}>No hay suficientes semanas todavía para medir consistencia.</Texto>}
       </Tarjeta>
 
+    </div>
+  )
+}
+
+// -- SeccionAsistente -- chat con NOAH (Groq), usando los datos reales del atleta --
+function SeccionAsistente({ atletaId }) {
+  const [mensajes, setMensajes] = useState([
+    { rol: 'asistente', texto: 'Hola, soy NOAH. Preguntame lo que quieras sobre tu entrenamiento.' }
+  ])
+  const [input, setInput] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const scrollRef = useRef(null)
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+  }, [mensajes])
+
+  const enviar = async () => {
+    const texto = input.trim()
+    if (!texto || enviando) return
+    setInput('')
+    setMensajes(m => [...m, { rol: 'usuario', texto }])
+    setEnviando(true)
+    try {
+      const r = await authFetch(`${API}/atletas/${atletaId}/asistente`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mensaje: texto }),
+      })
+      const data = await r.json()
+      if (data.ok) {
+        setMensajes(m => [...m, { rol: 'asistente', texto: data.data.respuesta }])
+      } else {
+        setMensajes(m => [...m, { rol: 'asistente', texto: `No pude responder: ${data.error || 'error desconocido'}` }])
+      }
+    } catch (e) {
+      setMensajes(m => [...m, { rol: 'asistente', texto: 'No se pudo conectar con el asistente. Probá de nuevo.' }])
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', height:'70vh' }}>
+      <div ref={scrollRef} style={{ flex:1, overflowY:'auto', padding:'8px 4px',
+        display:'flex', flexDirection:'column', gap:10 }}>
+        {mensajes.map((m, i) => (
+          <div key={i} style={{
+            alignSelf: m.rol === 'usuario' ? 'flex-end' : 'flex-start',
+            maxWidth: '80%',
+            background: m.rol === 'usuario' ? 'rgba(139,92,246,0.25)' : 'rgba(15,15,28,0.92)',
+            border: `1px solid ${m.rol === 'usuario' ? 'rgba(139,92,246,0.35)' : 'rgba(255,255,255,0.10)'}`,
+            borderRadius: 14,
+            padding: '10px 14px',
+            color: 'rgba(255,255,255,0.92)',
+            fontSize: 14,
+            lineHeight: 1.5,
+            whiteSpace: 'pre-wrap',
+          }}>
+            {m.texto}
+          </div>
+        ))}
+        {enviando && (
+          <div style={{ alignSelf:'flex-start', color:'rgba(255,255,255,0.4)', fontSize:13, padding:'4px 14px' }}>
+            NOAH está pensando...
+          </div>
+        )}
+      </div>
+
+      <div style={{ display:'flex', gap:8, marginTop:10, padding:'0 4px' }}>
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }}
+          placeholder="Preguntale a NOAH sobre tu entrenamiento..."
+          maxLength={500}
+          style={{
+            flex:1, padding:'12px 14px', borderRadius:12, border:'1px solid rgba(255,255,255,0.15)',
+            background:'rgba(255,255,255,0.05)', color:'#fff', fontSize:14, outline:'none',
+          }}
+        />
+        <button onClick={enviar} disabled={enviando || !input.trim()} style={{
+          width:44, height:44, borderRadius:12, border:'none',
+          background: (enviando || !input.trim()) ? 'rgba(139,92,246,0.3)' : '#8B5CF6',
+          color:'#fff', display:'flex', alignItems:'center', justifyContent:'center',
+          cursor: (enviando || !input.trim()) ? 'default' : 'pointer',
+        }}>
+          <Send size={18}/>
+        </button>
+      </div>
     </div>
   )
 }
