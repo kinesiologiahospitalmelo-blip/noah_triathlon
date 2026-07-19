@@ -4790,19 +4790,60 @@ function SeccionPerfil({ atletaId }) {
     return <div style={{ textAlign:'center', padding:30, color:NOAH_C.ink3, fontSize:13 }}>No hay suficientes datos todavía para armar el perfil.</div>
   }
 
-  const { patron_semanal, distribucion_zonas, mejores_marcas, punto_quiebre_tsb, consistencia, predicciones_ml } = perfil
+  const { patron_semanal, distribucion_zonas, mejores_marcas, punto_quiebre_tsb, consistencia, predicciones_ml,
+    acwr, progreso_tecnico, marca_con_contexto, rachas_fatiga } = perfil
 
   const Tarjeta = ({ titulo, children }) => (
-    <div style={{ padding:'14px 16px', background:NOAH_C.cardBg2, borderRadius:12,
-      border:`1px solid ${NOAH_C.border}`, marginBottom:12 }}>
-      <div style={{ fontSize:11, fontWeight:700, color:NOAH_C.ink3, textTransform:'uppercase',
+    <div style={{ padding:'14px 16px', background:'rgba(15,15,28,0.92)', borderRadius:12,
+      border:'1px solid rgba(255,255,255,0.10)', marginBottom:12 }}>
+      <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.65)', textTransform:'uppercase',
         letterSpacing:0.5, marginBottom:8 }}>{titulo}</div>
       {children}
     </div>
   )
   const Texto = ({ children, size=14, color, weight=500 }) => (
-    <div style={{ fontSize:size, color: color||NOAH_C.ink1, fontWeight:weight, lineHeight:1.5 }}>{children}</div>
+    <div style={{ fontSize:size, color: color||'rgba(255,255,255,0.92)', fontWeight:weight, lineHeight:1.5 }}>{children}</div>
   )
+
+  const AcwrGauge = ({ valor }) => {
+    if (valor == null) return null
+    const W = 300, H = 56
+    const pct = Math.min(100, Math.max(0, (valor / 2.0) * 100))
+    let color = '#3B82F6'
+    if (valor > 1.5) color = '#EF4444'
+    else if (valor > 1.3) color = '#F59E0B'
+    else if (valor >= 0.8) color = '#22C55E'
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:H, marginTop:4 }}>
+        <rect x="0" y="20" width={W} height="12" rx="6" fill="rgba(255,255,255,0.08)"/>
+        <rect x={(0.8/2.0)*W} y="20" width={((1.3-0.8)/2.0)*W} height="12" rx="6" fill="rgba(34,197,94,0.30)"/>
+        <rect x={(1.3/2.0)*W} y="20" width={((1.5-1.3)/2.0)*W} height="12" fill="rgba(245,158,11,0.30)"/>
+        <rect x={(1.5/2.0)*W} y="20" width={((2.0-1.5)/2.0)*W} height="12" rx="6" fill="rgba(239,68,68,0.30)"/>
+        <circle cx={(pct/100)*W} cy="26" r="9" fill={color} stroke="#0A0F1E" strokeWidth="2.5"/>
+        <text x={(pct/100)*W} y="50" textAnchor="middle" fontSize="13" fontWeight="800" fill={color}>{valor}</text>
+      </svg>
+    )
+  }
+
+  const LineChartSimple = ({ valores, color='#3B82F6', height=70 }) => {
+    const idxValidos = valores.map((v,i)=>({v,i})).filter(p=>p.v!=null)
+    if (idxValidos.length < 2) return null
+    const vals = idxValidos.map(p=>p.v)
+    const min = Math.min(...vals), max = Math.max(...vals)
+    const rango = (max - min) || 1
+    const W = 300
+    const puntos = idxValidos.map(({v,i}) => ({
+      x: (i / (valores.length - 1)) * W,
+      y: height - ((v - min) / rango) * (height - 10) - 5,
+    }))
+    const path = puntos.map((p,i) => `${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+    return (
+      <svg viewBox={`0 0 ${W} ${height}`} style={{ width:'100%', height, marginTop:6 }}>
+        <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        {puntos.map((p,i) => <circle key={i} cx={p.x} cy={p.y} r="2.5" fill={color}/>)}
+      </svg>
+    )
+  }
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
@@ -4881,6 +4922,56 @@ function SeccionPerfil({ atletaId }) {
             Esto es específico de su propio historial, no un umbral genérico.
           </Texto>
         ) : <Texto color={NOAH_C.ink3}>{punto_quiebre_tsb?.motivo || 'No hay suficientes datos todavía.'}</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="ACWR — riesgo de lesión por carga">
+        {acwr?.disponible ? (
+          <>
+            <Texto size={13} color="rgba(255,255,255,0.65)">
+              Ratio agudo:crónico actual: <b style={{color:'#fff'}}>{acwr.actual}</b> — {acwr.zona}
+            </Texto>
+            <AcwrGauge valor={acwr.actual} />
+            {acwr.historial?.length > 5 && (
+              <>
+                <Texto size={11} color="rgba(255,255,255,0.4)" weight={400}>Últimos {acwr.historial.length} días</Texto>
+                <LineChartSimple valores={acwr.historial} color="#3B82F6" />
+              </>
+            )}
+          </>
+        ) : <Texto color="rgba(255,255,255,0.5)">{acwr?.motivo || 'No hay suficiente historial todavía.'}</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Progreso técnico (running)">
+        {progreso_tecnico?.disponible ? (
+          <>
+            <Texto>Su eficiencia está <b>{progreso_tecnico.tendencia_eficiencia || 'estable'}</b> en los últimos meses.</Texto>
+            {progreso_tecnico.efficiency_factor?.filter(v=>v!=null).length >= 2 && (
+              <LineChartSimple valores={progreso_tecnico.efficiency_factor} color="#22C55E" />
+            )}
+          </>
+        ) : <Texto color="rgba(255,255,255,0.5)">{progreso_tecnico?.motivo || 'No hay suficientes datos todavía.'}</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Su mejor marca, en contexto">
+        {marca_con_contexto?.disponible ? (
+          <Texto>
+            Su mejor ritmo sostenido ({marca_con_contexto.ritmo}) fue el {marca_con_contexto.fecha},
+            {' '}{marca_con_contexto.contexto}.
+          </Texto>
+        ) : <Texto color="rgba(255,255,255,0.5)">Todavía no hay marcas con suficiente contexto.</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Rachas de fatiga sostenida">
+        {rachas_fatiga?.disponible && rachas_fatiga.rachas?.length > 0 ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {rachas_fatiga.rachas.map((r,i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <div style={{ width:8, height:8, borderRadius:'50%', background:'#EF4444', flexShrink:0 }}/>
+                <Texto size={13}>{r.inicio} → {r.fin} <b>({r.dias} días)</b></Texto>
+              </div>
+            ))}
+          </div>
+        ) : <Texto color="rgba(255,255,255,0.5)">Sin rachas de fatiga sostenida detectadas — buena señal.</Texto>}
       </Tarjeta>
 
       <Tarjeta titulo="Consistencia">
