@@ -4791,7 +4791,9 @@ function SeccionPerfil({ atletaId }) {
   }
 
   const { patron_semanal, distribucion_zonas, mejores_marcas, punto_quiebre_tsb, consistencia, predicciones_ml,
-    acwr, progreso_tecnico, marca_con_contexto, rachas_fatiga } = perfil
+    acwr, progreso_tecnico, marca_con_contexto, rachas_fatiga, volumen_historico, sesiones_anomalas,
+    umbral_tss_tecnica, dias_recuperacion, disciplina_mas_desgaste, fase_actual, rendimiento_por_dia,
+    firma_recuperacion, analisis_random_forest } = perfil
 
   const Tarjeta = ({ titulo, children }) => (
     <div style={{ padding:'14px 16px', background:'rgba(15,15,28,0.92)', borderRadius:12,
@@ -4914,14 +4916,133 @@ function SeccionPerfil({ atletaId }) {
         ) : <Texto color={NOAH_C.ink3}>Todavía no hay marcas registradas.</Texto>}
       </Tarjeta>
 
-      <Tarjeta titulo="Punto de quiebre personal">
+      <Tarjeta titulo="Sensibilidad al TSB (regresión real)">
         {punto_quiebre_tsb?.disponible ? (
+          <>
+            <Texto>
+              Por cada 10 puntos que baja su TSB, su eficiencia cambia en{' '}
+              <b style={{color: punto_quiebre_tsb.cambio_eficiencia_por_10_tsb_pct >= 0 ? '#22C55E' : '#EF4444'}}>
+                {punto_quiebre_tsb.cambio_eficiencia_por_10_tsb_pct}%
+              </b>.
+            </Texto>
+            <Texto size={11} color="rgba(255,255,255,0.4)" weight={400}>
+              R²={punto_quiebre_tsb.r2} sobre {punto_quiebre_tsb.n_sesiones} sesiones —{' '}
+              {punto_quiebre_tsb.confiable ? 'relación detectable' : 'relación débil, tomar con cautela'}
+            </Texto>
+          </>
+        ) : <Texto color="rgba(255,255,255,0.5)">{punto_quiebre_tsb?.motivo || 'No hay suficientes datos todavía.'}</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Técnica vs. carga del día anterior (regresión real)">
+        {umbral_tss_tecnica?.disponible ? (
+          <>
+            <Texto>
+              Por cada 100 puntos de TSS el día anterior, su decoupling del día siguiente
+              cambia <b>{umbral_tss_tecnica.deterioro_decoupling_por_100_tss_previo} puntos</b>.
+            </Texto>
+            <Texto size={11} color="rgba(255,255,255,0.4)" weight={400}>
+              R²={umbral_tss_tecnica.r2} sobre {umbral_tss_tecnica.n_sesiones} sesiones —{' '}
+              {umbral_tss_tecnica.confiable ? 'relación detectable' : 'relación débil, tomar con cautela'}
+            </Texto>
+          </>
+        ) : <Texto color="rgba(255,255,255,0.5)">{umbral_tss_tecnica?.motivo || 'No hay suficientes datos todavía.'}</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Qué predice mejor su rendimiento (Random Forest)">
+        {analisis_random_forest?.disponible ? (
+          <>
+            <Texto size={12} color="rgba(255,255,255,0.5)" weight={400}>
+              Sobre {analisis_random_forest.n_sesiones} sesiones — ajuste del modelo R²={analisis_random_forest.r2_ajuste}
+            </Texto>
+            <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:8 }}>
+              {analisis_random_forest.factores_mas_importantes?.map((f,i) => (
+                <div key={i}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                    <Texto size={13}>{f.factor}</Texto>
+                    <Texto size={13} weight={700}>{f.importancia_pct}%</Texto>
+                  </div>
+                  <div style={{ height:6, background:'rgba(255,255,255,0.08)', borderRadius:3 }}>
+                    <div style={{ height:6, width:`${f.importancia_pct}%`, background:'#A855F7', borderRadius:3 }}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : <Texto color="rgba(255,255,255,0.5)">{analisis_random_forest?.motivo || 'No hay suficientes sesiones todavía.'}</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Volumen histórico (km por mes)">
+        {volumen_historico?.disponible && volumen_historico.km_por_mes?.length >= 2 ? (
+          <>
+            <Texto size={13} color="rgba(255,255,255,0.65)">
+              Último mes: <b style={{color:'#fff'}}>{volumen_historico.km_por_mes[volumen_historico.km_por_mes.length-1]}km</b>
+              {' '}vs. primer mes registrado: <b style={{color:'#fff'}}>{volumen_historico.km_por_mes[0]}km</b>
+            </Texto>
+            <LineChartSimple valores={volumen_historico.km_por_mes} color="#F59E0B" />
+          </>
+        ) : <Texto color="rgba(255,255,255,0.5)">No hay suficiente historial todavía.</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Sesiones fuera de lo normal">
+        {sesiones_anomalas?.disponible && sesiones_anomalas.anomalas?.length > 0 ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {sesiones_anomalas.anomalas.map((a,i) => (
+              <Texto key={i} size={13}>
+                {a.fecha} — {a.sport} — decoupling atípico ({a.decoupling_pct}%)
+              </Texto>
+            ))}
+          </div>
+        ) : <Texto color="rgba(255,255,255,0.5)">Sin sesiones fuera de lo normal detectadas — buena señal.</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Días para recuperarse tras una sesión fuerte">
+        {dias_recuperacion?.disponible ? (
           <Texto>
-            Rinde mejor cuando está en <b>{punto_quiebre_tsb.mejor_rango.replace('_',' ')}</b>,
-            y su rendimiento cae más cuando está <b>{punto_quiebre_tsb.peor_rango.replace('_',' ')}</b>.
-            Esto es específico de su propio historial, no un umbral genérico.
+            En promedio tarda <b>{dias_recuperacion.dias_promedio_recuperacion} días</b> en volver
+            a un nivel de frescura razonable ({dias_recuperacion.muestras} casos analizados).
           </Texto>
-        ) : <Texto color={NOAH_C.ink3}>{punto_quiebre_tsb?.motivo || 'No hay suficientes datos todavía.'}</Texto>}
+        ) : <Texto color="rgba(255,255,255,0.5)">No hay suficientes datos todavía.</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Disciplina con más desgaste">
+        {disciplina_mas_desgaste?.disponible ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {Object.entries(disciplina_mas_desgaste.decoupling_promedio_por_deporte).map(([sport,val]) => (
+              <Texto key={sport} size={13}>
+                {sport}: <b>{val}%</b> de decoupling promedio
+                {sport === disciplina_mas_desgaste.disciplina_mas_desgaste ? ' ← la que más desgasta' : ''}
+              </Texto>
+            ))}
+          </div>
+        ) : <Texto color="rgba(255,255,255,0.5)">No hay suficientes datos en más de un deporte todavía.</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Fase actual">
+        {fase_actual?.disponible ? (
+          <Texto>
+            Está en fase de <b style={{
+              color: fase_actual.fase==='mejora' ? '#22C55E' : fase_actual.fase==='declive' ? '#EF4444' : '#F59E0B'
+            }}>{fase_actual.fase}</b> ({fase_actual.cambio_ctl_pct > 0 ? '+' : ''}{fase_actual.cambio_ctl_pct}% de CTL en las últimas 2 semanas vs. las 2 anteriores).
+          </Texto>
+        ) : <Texto color="rgba(255,255,255,0.5)">No hay suficiente historial reciente todavía.</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Rendimiento por día de la semana (a igual fatiga)">
+        {rendimiento_por_dia?.disponible ? (
+          <Texto>
+            Su mejor día, comparando solo sesiones con nivel de fatiga similar, es el{' '}
+            <b>{rendimiento_por_dia.mejor_dia}</b>.
+          </Texto>
+        ) : <Texto color="rgba(255,255,255,0.5)">No hay suficientes datos comparables todavía.</Texto>}
+      </Tarjeta>
+
+      <Tarjeta titulo="Firma de recuperación nocturna">
+        {firma_recuperacion?.disponible ? (
+          <Texto>
+            Su HRV nocturno promedia <b>{firma_recuperacion.hrv_tras_carga_suave}</b> tras días suaves,
+            {' '}y <b>{firma_recuperacion.hrv_tras_carga_fuerte}</b> tras días de carga fuerte.
+          </Texto>
+        ) : <Texto color="rgba(255,255,255,0.5)">{firma_recuperacion?.motivo || 'No hay biomarcadores de 24hs suficientes todavía.'}</Texto>}
       </Tarjeta>
 
       <Tarjeta titulo="ACWR — riesgo de lesión por carga">
