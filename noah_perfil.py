@@ -204,12 +204,90 @@ def _consistencia(conn, atleta_id, meses=6):
             'tss_semanal_promedio': round(promedio,1), 'coef_variacion_pct': cv, 'nivel': nivel}
 
 
+def _predicciones_ml(conn, atleta_id):
+    """
+    Carga el modelo YA ENTRENADO de este atleta (predictor_respuesta.pkl)
+    y le pide predicciones reales sobre su estado actual -- no
+    estadistica descriptiva, es el modelo de ML aplicado en vivo.
+    """
+    import os
+    try:
+        import joblib
+    except ImportError:
+        return {'disponible': False, 'motivo': 'falta la libreria joblib'}
+
+    ruta_modelo = os.path.join('noah_modelos', f'atleta_{atleta_id}', 'predictor_respuesta.pkl')
+    if not os.path.exists(ruta_modelo):
+        return {'disponible': False, 'motivo': 'este atleta todavía no tiene un modelo entrenado'}
+
+    try:
+        modelo = joblib.load(ruta_modelo)
+    except Exception as e:
+        return {'disponible': False, 'motivo': f'error cargando el modelo: {e}'}
+
+    if not getattr(modelo, 'entrenado', False):
+        return {'disponible': False, 'motivo': 'el modelo de este atleta no llegó a entrenarse'}
+
+    fila = conn.execute("""
+        SELECT ctl, atl, tsb, tss_dia, hrv_rmssd, stress_avg, sleep_h,
+               hrv_7d_avg, stress_7d_avg, sleep_7d_avg, hrv_ratio_7d,
+               delta_hrv, tss_7d, sesion_intensa
+        FROM sesiones
+        WHERE atleta_id=%s AND ctl IS NOT NULL
+        ORDER BY fecha DESC LIMIT 1
+    """, (atleta_id,)).fetchone()
+
+    if not fila:
+        return {'disponible': False, 'motivo': 'no hay datos recientes para evaluar'}
+
+    campos = ['ctl','atl','tsb','tss_dia','hrv_rmssd','stress_avg','sleep_h',
+              'hrv_7d_avg','stress_7d_avg','sleep_7d_avg','hrv_ratio_7d',
+              'delta_hrv','tss_7d','sesion_intensa']
+    estado = dict(zip(campos, fila))
+
+    pred = modelo.predecir(estado)
+    if not pred.get('disponible'):
+        return {'disponible': False, 'motivo': 'el modelo no pudo generar una predicción'}
+
+    importancias = {}
+    try:
+        importancias = modelo.importancia_features()
+    except Exception:
+        pass
+
+    # Traducir los nombres tecnicos de features a texto legible
+    NOMBRES_LEGIBLES = {
+        'ctl': 'fitness acumulado (CTL)', 'atl': 'fatiga reciente (ATL)',
+        'tsb': 'frescura (TSB)', 'tss_7d': 'carga de la semana',
+        'hrv_7d_avg': 'HRV promedio semanal', 'stress_7d_avg': 'estrés promedio semanal',
+        'sleep_7d_avg': 'sueño promedio semanal', 'hrv_ratio_7d': 'relación de HRV semanal',
+        'delta_hrv': 'variación diaria de HRV', 'sesion_intensa': 'sesiones intensas recientes',
+        'tss_dia': 'carga del día', 'hrv_rmssd': 'HRV del día', 'stress_avg': 'estrés del día',
+        'sleep_h': 'horas de sueño',
+    }
+    factores_riesgo = []
+    if importancias.get('riesgo'):
+        top3 = list(importancias['riesgo'].items())[:3]
+        factores_riesgo = [NOMBRES_LEGIBLES.get(k, k) for k, v in top3]
+
+    return {
+        'disponible': True,
+        'semaforo': pred.get('semaforo'),
+        'interpretacion': pred.get('interpretacion'),
+        'prob_riesgo_sobrecarga_pct': round(pred.get('prob_riesgo_sobrecarga', 0) * 100, 1) if pred.get('prob_riesgo_sobrecarga') is not None else None,
+        'prob_buena_absorcion_pct': round(pred.get('prob_absorcion', 0) * 100, 1) if pred.get('prob_absorcion') is not None else None,
+        'ctl_predicho_7d': pred.get('ctl_predicho_7d'),
+        'tsb_predicho_7d': pred.get('tsb_predicho_7d'),
+        'factores_que_mas_pesan_en_su_riesgo': factores_riesgo,
+    }
+
+
 def generar_perfil(conn, atleta_id):
     return {
         'patron_semanal':    _patron_semanal(conn, atleta_id),
         'distribucion_zonas': _distribucion_zonas(conn, atleta_id),
-        'carga_actual':      _ctl_atl_tsb_actual(conn, atleta_id),
         'mejores_marcas':    _mejores_marcas(conn, atleta_id),
         'punto_quiebre_tsb': _punto_quiebre_tsb(conn, atleta_id),
         'consistencia':      _consistencia(conn, atleta_id),
+        'predicciones_ml':   _predicciones_ml(conn, atleta_id),
     }
