@@ -216,9 +216,13 @@ def _predicciones_ml(conn, atleta_id):
     except ImportError:
         return {'disponible': False, 'motivo': 'falta la libreria joblib'}
 
-    ruta_modelo = os.path.join('noah_modelos', f'atleta_{atleta_id}', 'predictor_respuesta.pkl')
+    # Ruta ABSOLUTA, anclada a la carpeta donde vive este mismo archivo
+    # (noah_perfil.py) -- evita depender de desde donde se arranco Flask,
+    # que era la causa real de que no se encontrara el modelo.
+    raiz = os.path.dirname(os.path.abspath(__file__))
+    ruta_modelo = os.path.join(raiz, 'noah_modelos', f'atleta_{atleta_id}', 'predictor_respuesta.pkl')
     if not os.path.exists(ruta_modelo):
-        return {'disponible': False, 'motivo': 'este atleta todavía no tiene un modelo entrenado'}
+        return {'disponible': False, 'motivo': f'este atleta todavía no tiene un modelo entrenado (buscado en {ruta_modelo})'}
 
     try:
         modelo = joblib.load(ruta_modelo)
