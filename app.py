@@ -295,11 +295,19 @@ def requiere_login(f):
 @requiere_login
 def get_perfil_atleta(atleta_id):
     try:
-        from noah_perfil import generar_perfil
+        import json
         conn = get_conn()
-        perfil = generar_perfil(conn, atleta_id)
+        fila = conn.execute(
+            "SELECT perfil_json, actualizado FROM perfil_atleta WHERE atleta_id=%s",
+            (atleta_id,)
+        ).fetchone()
         conn.close()
-        return ok(_limpiar_nan(perfil))
+        if not fila:
+            return ok({'no_calculado': True,
+                       'mensaje': 'El perfil de este atleta todavía no fue calculado.'})
+        perfil = json.loads(fila[0])
+        perfil['_actualizado'] = fila[1]
+        return ok(perfil)
     except Exception as e:
         return error(str(e))
 
