@@ -4790,7 +4790,7 @@ function SeccionPerfil({ atletaId }) {
     return <div style={{ textAlign:'center', padding:30, color:NOAH_C.ink3, fontSize:13 }}>No hay suficientes datos todavía para armar el perfil.</div>
   }
 
-  const { patron_semanal, distribucion_zonas, carga_actual, mejores_marcas, punto_quiebre_tsb, consistencia } = perfil
+  const { patron_semanal, distribucion_zonas, mejores_marcas, punto_quiebre_tsb, consistencia, predicciones_ml } = perfil
 
   const Tarjeta = ({ titulo, children }) => (
     <div style={{ padding:'14px 16px', background:NOAH_C.cardBg2, borderRadius:12,
@@ -4836,17 +4836,30 @@ function SeccionPerfil({ atletaId }) {
         ) : <Texto color={NOAH_C.ink3}>No hay suficientes datos todavía.</Texto>}
       </Tarjeta>
 
-      <Tarjeta titulo="Carga actual">
-        {carga_actual?.ctl ? (
+      <Tarjeta titulo="Lo que el modelo predice ahora mismo">
+        {predicciones_ml?.disponible ? (
           <>
-            <div style={{ display:'flex', gap:14, marginBottom:8 }}>
-              <Texto size={13} color={NOAH_C.ink3}>CTL <b style={{color:NOAH_C.ink1}}>{carga_actual.ctl}</b></Texto>
-              <Texto size={13} color={NOAH_C.ink3}>ATL <b style={{color:NOAH_C.ink1}}>{carga_actual.atl}</b></Texto>
-              <Texto size={13} color={NOAH_C.ink3}>TSB <b style={{color:NOAH_C.ink1}}>{carga_actual.tsb}</b></Texto>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+              <div style={{ width:10, height:10, borderRadius:'50%',
+                background: predicciones_ml.semaforo==='verde' ? '#22C55E'
+                  : predicciones_ml.semaforo==='rojo' ? '#EF4444' : '#F59E0B' }}/>
+              <Texto weight={700}>{predicciones_ml.interpretacion}</Texto>
             </div>
-            <Texto>{carga_actual.estado}</Texto>
+            <div style={{ display:'flex', gap:14, marginBottom:8, flexWrap:'wrap' }}>
+              {predicciones_ml.prob_riesgo_sobrecarga_pct != null &&
+                <Texto size={13} color="rgba(255,255,255,0.65)">Riesgo de sobrecarga <b style={{color:'#fff'}}>{predicciones_ml.prob_riesgo_sobrecarga_pct}%</b></Texto>}
+              {predicciones_ml.prob_buena_absorcion_pct != null &&
+                <Texto size={13} color="rgba(255,255,255,0.65)">Prob. buena absorción <b style={{color:'#fff'}}>{predicciones_ml.prob_buena_absorcion_pct}%</b></Texto>}
+            </div>
+            {predicciones_ml.tsb_predicho_7d != null &&
+              <Texto size={13} color="rgba(255,255,255,0.65)">TSB proyectado en 7 días: <b style={{color:'#fff'}}>{predicciones_ml.tsb_predicho_7d}</b></Texto>}
+            {predicciones_ml.factores_que_mas_pesan_en_su_riesgo?.length > 0 && (
+              <Texto size={12} color="rgba(255,255,255,0.5)" weight={400}>
+                Lo que más influye en su riesgo: {predicciones_ml.factores_que_mas_pesan_en_su_riesgo.join(', ')}.
+              </Texto>
+            )}
           </>
-        ) : <Texto color={NOAH_C.ink3}>No hay datos de carga todavía.</Texto>}
+        ) : <Texto color="rgba(255,255,255,0.5)">{predicciones_ml?.motivo || 'El modelo de este atleta todavía no está entrenado.'}</Texto>}
       </Tarjeta>
 
       <Tarjeta titulo="Mejores marcas registradas">
