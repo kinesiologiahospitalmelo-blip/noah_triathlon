@@ -3537,6 +3537,34 @@ def auto_sync(atleta_id):
             return ok({'sincronizado': False, 'msg': 'Todo al dia', 'fechas': []})
         sincronizadas = []
         errores = []
+
+        # FIX: elegir el script segun el proveedor real del atleta (Garmin o
+        # Wahoo) -- antes se usaba Garmin siempre, sin importar el atleta,
+        # lo que hacia fallar el sync para atletas que solo usan Wahoo.
+        tiene_wahoo = conn.execute(
+            "SELECT 1 FROM wahoo_tokens WHERE atleta_id=%s", (atleta_id,)
+        ).fetchone()
+
+        if tiene_wahoo:
+            # sincronizar_wahoo.py usa --atleta_id (no --atleta) y no tiene
+            # modo por fecha puntual -- se corre UNA sola vez (no por cada
+            # fecha faltante, seria redundante llamarlo 3 veces igual).
+            script = BASE_DIR / 'sincronizar_wahoo.py'
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(script), '--atleta_id', str(atleta_id)],
+                    capture_output=True, text=True, timeout=60)
+                if result.returncode == 0:
+                    sincronizadas = fechas_sin_datos[:3]
+                else:
+                    errores = fechas_sin_datos[:3]
+            except Exception as e:
+                errores = [str(e)[:30]]
+            conn.close()
+            return ok(_limpiar_nan({'sincronizado': len(sincronizadas) > 0,
+                       'fechas_sync': sincronizadas, 'fechas_error': errores,
+                       'msg': f'Wahoo sync ejecutado ({len(sincronizadas)} dias cubiertos)'}))
+
         script = BASE_DIR / 'sincronizar_garmin.py'
         for fecha in fechas_sin_datos[:3]:
             try:
