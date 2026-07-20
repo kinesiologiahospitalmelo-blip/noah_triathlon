@@ -321,6 +321,12 @@ def _cargar_prompt_asistente():
         return f.read()
 
 
+_RESPUESTA_AMIGABLE_SI_FALLA = (
+    "Perdon, tuve un problema tecnico para responder eso. Proba de nuevo en un "
+    "momento, o si sigue sin andar, avisale a tu entrenador."
+)
+
+
 @app.route('/api/atletas/<int:atleta_id>/asistente', methods=['POST'])
 @requiere_login
 def post_asistente(atleta_id):
@@ -331,37 +337,31 @@ def post_asistente(atleta_id):
     if len(mensaje) > 500:
         return error('El mensaje es demasiado largo (maximo 500 caracteres).')
 
-    groq_key = os.environ.get('GROQ_API_KEY')
-    if not groq_key:
-        return error('Falta configurar GROQ_API_KEY en el servidor')
-
     try:
+        groq_key = os.environ.get('GROQ_API_KEY')
+        if not groq_key:
+            return ok({'respuesta': _RESPUESTA_AMIGABLE_SI_FALLA})
+
         plantilla_prompt = _cargar_prompt_asistente()
-    except Exception as e:
-        return error(f'No se pudo leer prompt_asistente.txt: {e}')
 
-    conn = get_conn()
-    atleta_row = conn.execute("SELECT nombre FROM atletas WHERE id=%s", (atleta_id,)).fetchone()
-    perfil_row = conn.execute("SELECT perfil_json FROM perfil_atleta WHERE atleta_id=%s", (atleta_id,)).fetchone()
-    ultima = conn.execute("""
-        SELECT fecha, sport, tss_total, ctl, atl, tsb FROM sesiones
-        WHERE atleta_id=%s AND ctl IS NOT NULL ORDER BY fecha DESC LIMIT 1
-    """, (atleta_id,)).fetchone()
-    conn.close()
+        conn = get_conn()
+        atleta_row = conn.execute("SELECT nombre FROM atletas WHERE id=%s", (atleta_id,)).fetchone()
+        perfil_row = conn.execute("SELECT perfil_json FROM perfil_atleta WHERE atleta_id=%s", (atleta_id,)).fetchone()
+        ultima = conn.execute("""
+            SELECT fecha, sport, tss_total, ctl, atl, tsb FROM sesiones
+            WHERE atleta_id=%s AND ctl IS NOT NULL ORDER BY fecha DESC LIMIT 1
+        """, (atleta_id,)).fetchone()
+        conn.close()
 
-    nombre_atleta = atleta_row[0] if atleta_row else 'el atleta'
-    contexto = ''
-    if ultima:
-        contexto += f"Ultimo estado conocido ({ultima[0]}): CTL={ultima[3]}, ATL={ultima[4]}, TSB={ultima[5]}.\n"
-    if perfil_row:
-        contexto += f"Perfil calculado de este atleta (JSON, usar solo lo relevante a la pregunta):\n{perfil_row[0][:4000]}\n"
+        nombre_atleta = atleta_row[0] if atleta_row else 'el atleta'
+        contexto = ''
+        if ultima:
+            contexto += f"Ultimo estado conocido ({ultima[0]}): CTL={ultima[3]}, ATL={ultima[4]}, TSB={ultima[5]}.\n"
+        if perfil_row:
+            contexto += f"Perfil calculado de este atleta (JSON, usar solo lo relevante a la pregunta):\n{perfil_row[0][:4000]}\n"
 
-    try:
         system_prompt = plantilla_prompt.format(nombre_atleta=nombre_atleta, contexto=contexto)
-    except Exception as e:
-        return error(f'Error armando el prompt: {e}')
 
-    try:
         import requests as _requests
         r = _requests.post(
             'https://api.groq.com/openai/v1/chat/completions',
@@ -378,11 +378,18 @@ def post_asistente(atleta_id):
             timeout=30,
         )
         if r.status_code != 200:
-            return error(f'Error de Groq: {r.status_code} {r.text[:200]}')
+            print(f"[asistente] Groq devolvio {r.status_code}: {r.text[:300]}")
+            return ok({'respuesta': _RESPUESTA_AMIGABLE_SI_FALLA})
+
         respuesta = r.json()['choices'][0]['message']['content']
+        if not respuesta or not respuesta.strip():
+            return ok({'respuesta': _RESPUESTA_AMIGABLE_SI_FALLA})
+
         return ok({'respuesta': respuesta})
+
     except Exception as e:
-        return error(str(e))
+        print(f"[asistente] Error interno: {type(e).__name__}: {e}")
+        return ok({'respuesta': _RESPUESTA_AMIGABLE_SI_FALLA})
 
 
 def requiere_coach(f):
