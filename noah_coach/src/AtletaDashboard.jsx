@@ -5114,9 +5114,13 @@ function SeccionPerfil({ atletaId }) {
 }
 
 // -- SeccionAsistente -- chat con NOAH (Groq), usando los datos reales del atleta --
+function _horaAhora() {
+  return new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})
+}
+
 function SeccionAsistente({ atletaId }) {
   const [mensajes, setMensajes] = useState([
-    { rol: 'asistente', texto: 'Hola, soy NOAH. Preguntame lo que quieras sobre tu entrenamiento.' }
+    { rol: 'asistente', texto: 'Hola, soy NOAH. Preguntame lo que quieras sobre tu entrenamiento.', hora: _horaAhora() }
   ])
   const [input, setInput] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -5130,7 +5134,7 @@ function SeccionAsistente({ atletaId }) {
     const texto = input.trim()
     if (!texto || enviando) return
     setInput('')
-    setMensajes(m => [...m, { rol: 'usuario', texto }])
+    setMensajes(m => [...m, { rol: 'usuario', texto, hora: _horaAhora() }])
     setEnviando(true)
     try {
       const r = await authFetch(`${API}/atletas/${atletaId}/asistente`, {
@@ -5140,12 +5144,12 @@ function SeccionAsistente({ atletaId }) {
       })
       const data = await r.json()
       if (data.ok) {
-        setMensajes(m => [...m, { rol: 'asistente', texto: data.data.respuesta }])
+        setMensajes(m => [...m, { rol: 'asistente', texto: data.data.respuesta, hora: _horaAhora() }])
       } else {
-        setMensajes(m => [...m, { rol: 'asistente', texto: `No pude responder: ${data.error || 'error desconocido'}` }])
+        setMensajes(m => [...m, { rol: 'asistente', texto: `No pude responder: ${data.error || 'error desconocido'}`, hora: _horaAhora() }])
       }
     } catch (e) {
-      setMensajes(m => [...m, { rol: 'asistente', texto: 'No se pudo conectar con el asistente. Probá de nuevo.' }])
+      setMensajes(m => [...m, { rol: 'asistente', texto: 'No se pudo conectar con el asistente. Probá de nuevo.', hora: _horaAhora() }])
     } finally {
       setEnviando(false)
     }
@@ -5153,27 +5157,89 @@ function SeccionAsistente({ atletaId }) {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'70vh' }}>
+      <style>{`
+        @keyframes pulsoNoah {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(139,92,246,0.55); }
+          50% { box-shadow: 0 0 0 7px rgba(139,92,246,0); }
+        }
+        @keyframes puntitoParpadeo {
+          0%, 100% { opacity: 0.25; }
+          50% { opacity: 1; }
+        }
+        .avatar-noah-wrap { position: relative; flex-shrink: 0; }
+        .avatar-noah {
+          width:36px; height:36px; border-radius:50%; object-fit:cover;
+          border:2px solid rgba(139,92,246,0.6);
+          animation: pulsoNoah 2.2s ease-in-out infinite;
+        }
+        .avatar-noah.pensando { animation: pulsoNoah 0.85s ease-in-out infinite; }
+        .avatar-noah-online {
+          position:absolute; bottom:-1px; right:-1px; width:11px; height:11px;
+          border-radius:50%; background:#22C55E; border:2px solid #0A0F1E;
+        }
+        .punto-pensando { animation: puntitoParpadeo 1.2s ease-in-out infinite; }
+        .punto-pensando:nth-child(2) { animation-delay: 0.2s; }
+        .punto-pensando:nth-child(3) { animation-delay: 0.4s; }
+      `}</style>
+
+      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'2px 4px 10px',
+        borderBottom:'1px solid rgba(255,255,255,0.08)', marginBottom:8 }}>
+        <div style={{ width:7, height:7, borderRadius:'50%', background:'#22C55E' }}/>
+        <span style={{ fontSize:12, color:'rgba(255,255,255,0.55)', fontWeight:600 }}>
+          Online · Tu entrenador IA
+        </span>
+      </div>
+
       <div ref={scrollRef} style={{ flex:1, overflowY:'auto', padding:'8px 4px',
-        display:'flex', flexDirection:'column', gap:10 }}>
+        display:'flex', flexDirection:'column', gap:14 }}>
         {mensajes.map((m, i) => (
           <div key={i} style={{
             alignSelf: m.rol === 'usuario' ? 'flex-end' : 'flex-start',
-            maxWidth: '80%',
-            background: m.rol === 'usuario' ? 'rgba(139,92,246,0.25)' : 'rgba(15,15,28,0.92)',
-            border: `1px solid ${m.rol === 'usuario' ? 'rgba(139,92,246,0.35)' : 'rgba(255,255,255,0.10)'}`,
-            borderRadius: 14,
-            padding: '10px 14px',
-            color: 'rgba(255,255,255,0.92)',
-            fontSize: 14,
-            lineHeight: 1.5,
-            whiteSpace: 'pre-wrap',
+            display: 'flex', gap: 8, alignItems: 'flex-start',
+            flexDirection: m.rol === 'usuario' ? 'row-reverse' : 'row',
+            maxWidth: '85%',
           }}>
-            {m.texto}
+            {m.rol === 'asistente' && (
+              <div className="avatar-noah-wrap">
+                <img src="/assets/noah_avatar_m.png" alt="NOAH" className="avatar-noah"/>
+                <div className="avatar-noah-online"/>
+              </div>
+            )}
+            <div>
+              <div style={{ display:'flex', gap:6, alignItems:'baseline', marginBottom:4,
+                flexDirection: m.rol === 'usuario' ? 'row-reverse' : 'row' }}>
+                <span style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.85)' }}>
+                  {m.rol === 'usuario' ? 'Vos' : 'NOAH'}
+                </span>
+                {m.hora && <span style={{ fontSize:10, color:'rgba(255,255,255,0.35)' }}>{m.hora}</span>}
+              </div>
+              <div style={{
+                background: m.rol === 'usuario' ? 'rgba(139,92,246,0.28)' : 'rgba(15,15,28,0.92)',
+                border: `1px solid ${m.rol === 'usuario' ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.10)'}`,
+                borderRadius: 14,
+                padding: '10px 14px',
+                color: 'rgba(255,255,255,0.92)',
+                fontSize: 14,
+                lineHeight: 1.5,
+                whiteSpace: 'pre-wrap',
+              }}>
+                {m.texto}
+              </div>
+            </div>
           </div>
         ))}
         {enviando && (
-          <div style={{ alignSelf:'flex-start', color:'rgba(255,255,255,0.4)', fontSize:13, padding:'4px 14px' }}>
-            NOAH está pensando...
+          <div style={{ display:'flex', gap:8, alignItems:'center', alignSelf:'flex-start', padding:'4px 0' }}>
+            <div className="avatar-noah-wrap">
+              <img src="/assets/noah_avatar_m.png" alt="NOAH" className="avatar-noah pensando"/>
+              <div className="avatar-noah-online"/>
+            </div>
+            <div style={{ display:'flex', gap:5, alignItems:'center', color:'rgba(255,255,255,0.45)', fontSize:13 }}>
+              <span>NOAH está pensando</span>
+              <span className="punto-pensando" style={{fontSize:16}}>●</span>
+              <span className="punto-pensando" style={{fontSize:16}}>●</span>
+              <span className="punto-pensando" style={{fontSize:16}}>●</span>
+            </div>
           </div>
         )}
       </div>
