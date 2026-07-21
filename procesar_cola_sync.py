@@ -123,10 +123,27 @@ def sync_un_dia(atleta_id, modo, fecha_str):
         return False, f'[{fecha_str}] {e}'
 
 
+def sync_wahoo(atleta_id):
+    """Wahoo no soporta sync por fecha puntual -- una sola llamada de
+    sync general por corrida, no dia por dia como Garmin."""
+    cmd = [sys.executable, 'sincronizar_wahoo.py', '--atleta_id', str(atleta_id)]
+    try:
+        resultado = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=TIMEOUT_SEG * 3,
+            env=os.environ.copy()
+        )
+        salida = (resultado.stdout or '') + (resultado.stderr or '')
+        return resultado.returncode == 0, salida
+    except subprocess.TimeoutExpired:
+        return False, f'Timeout Wahoo despues de {TIMEOUT_SEG*3}s'
+    except Exception as e:
+        return False, str(e)
+
+
 def procesar_pendientes(conn):
     cur = conn.cursor()
     cur.execute(
-        "SELECT id, atleta_id, modo FROM sync_log WHERE status='pendiente' ORDER BY id"
+        "SELECT id, atleta_id, modo, proveedor FROM sync_log WHERE status='pendiente' ORDER BY id"
     )
     pendientes = cur.fetchall()
 
@@ -138,10 +155,22 @@ def procesar_pendientes(conn):
 
     for row in pendientes:
         row_id, atleta_id, modo = row['id'], row['atleta_id'], row['modo'] or 'todo'
+        proveedor = (row['proveedor'] if 'proveedor' in row.keys() else None) or 'garmin'
         marcar(conn, row_id, 'procesando')
 
+        if proveedor == 'wahoo':
+            print(f'  -> id={row_id} atleta_id={atleta_id} modo={modo} -- proveedor=WAHOO')
+            ok, salida = sync_wahoo(atleta_id)
+            if ok:
+                marcar(conn, row_id, 'completado', salida)
+                print(f'     [OK] atleta_id={atleta_id} (Wahoo) completado')
+            else:
+                marcar(conn, row_id, 'parcial', salida)
+                print(f'     [PARCIAL] atleta_id={atleta_id} (Wahoo) -- revisar detalle')
+            continue
+
         fechas = calcular_fechas_faltantes(conn, atleta_id)
-        print(f'  -> id={row_id} atleta_id={atleta_id} modo={modo} '
+        print(f'  -> id={row_id} atleta_id={atleta_id} modo={modo} -- proveedor=GARMIN '
               f'-- {len(fechas)} dia(s) a sincronizar: {fechas[0]} .. {fechas[-1]}')
 
         salidas = []

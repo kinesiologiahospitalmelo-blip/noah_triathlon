@@ -2241,6 +2241,9 @@ def sincronizar_garmin_endpoint(atleta_id):
         conn.execute("""CREATE TABLE IF NOT EXISTS sync_log
             (id SERIAL PRIMARY KEY, atleta_id INTEGER, ts TEXT,
              modo TEXT, status TEXT, detalle TEXT)""")
+        # FIX: columna nueva para que el GitHub Action sepa que proveedor
+        # usar (garmin o wahoo) en vez de correr siempre Garmin.
+        conn.execute("""ALTER TABLE sync_log ADD COLUMN IF NOT EXISTS proveedor TEXT""")
 
         ya_pendiente = conn.execute(
             "SELECT id FROM sync_log WHERE atleta_id=%s AND status='pendiente' "
@@ -2252,9 +2255,14 @@ def sincronizar_garmin_endpoint(atleta_id):
             return ok({'exito': True, 'estado': 'ya_pendiente',
                        'mensaje': 'Ya hay una sincronizacion en curso para este atleta.'})
 
+        tiene_wahoo = conn.execute(
+            "SELECT 1 FROM wahoo_tokens WHERE atleta_id=%s", (atleta_id,)
+        ).fetchone()
+        proveedor = 'wahoo' if tiene_wahoo else 'garmin'
+
         conn.execute(
-            'INSERT INTO sync_log (atleta_id, ts, modo, status, detalle) VALUES (%s,%s,%s,%s,%s)',
-            (atleta_id, datetime.now().isoformat(), modo, 'pendiente', '')
+            'INSERT INTO sync_log (atleta_id, ts, modo, status, detalle, proveedor) VALUES (%s,%s,%s,%s,%s,%s)',
+            (atleta_id, datetime.now().isoformat(), modo, 'pendiente', '', proveedor)
         )
         conn.commit()
     finally:
