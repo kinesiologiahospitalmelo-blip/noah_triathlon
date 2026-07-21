@@ -920,7 +920,7 @@ function SinGrafico({ act, distKm, sport, loading, streamZonas, lthr, sesionId }
         <div style={{ fontSize:12, color:D.text3, padding:'8px 0',
           display:'flex', gap:8, alignItems:'center' }}>
           <div style={{ width:8, height:8, borderRadius:'50%', background:'#38BDF8' }}/>
-          Bajando streams de Garmin...
+          Bajando streams...
         </div>
       ) : (
         <>
@@ -968,8 +968,8 @@ function SinGrafico({ act, distKm, sport, loading, streamZonas, lthr, sesionId }
           </div>
           {!loading && (
             <div style={{ fontSize:10, color:D.text3, fontStyle:'italic', marginTop:12 }}>
-              {sesionId ? 'Bajando streams de Garmin automáticamente...'
-                : 'Activar laps automáticos en Garmin para ver el gráfico detallado.'}
+              {sesionId ? 'Bajando streams automáticamente...'
+                : 'Activar laps automáticos en tu reloj para ver el gráfico detallado.'}
             </div>
           )}
         </>
