@@ -43,29 +43,34 @@ const _streamsModuleCache = {}
 // ── Fetches en vuelo — evita doble request en StrictMode ─────────────────────
 const _streamsPending = {}
 
-// ── Paleta de colores NOAH dark ──────────────────────────────────────────────
+// ── Paleta NOAH — análisis deportivo profesional ────────────────────────────
 const D = {
-  bg:       'rgba(7,9,18,0.98)',
-  bg2:      'rgba(12,14,24,0.95)',
+  bg:       '#080D18',
+  bg2:      '#0B1120',
   glass:    'rgba(255,255,255,0.03)',
   border:   'rgba(255,255,255,0.07)',
   border2:  'rgba(255,255,255,0.13)',
-  text:     'rgba(255,255,255,0.90)',
-  text2:    'rgba(255,255,255,0.50)',
+  text:     '#E2E8F0',
+  text2:    '#94A3B8',
   text3:    'rgba(255,255,255,0.25)',
-  hr:    { line: '#8B5CF6', area: 'rgba(139,92,246,0.22)', dot: '#A78BFA' },
-  power: { line: '#F59E0B', area: 'rgba(245,158,11,0.18)', dot: '#FCD34D' },
-  pace:  { line: '#38BDF8', area: 'rgba(56,189,248,0.18)', dot: '#7DD3FC' },
-  cad:   { line: '#34D399', area: 'rgba(52,211,153,0.14)', dot: '#6EE7B7' },
-  alt:   { line: 'rgba(156,163,175,0.5)', area: 'rgba(156,163,175,0.08)' },
+  hr:    { line: '#A78BFA', area: 'rgba(167,139,250,0.04)', dot: '#A78BFA' },
+  power: { line: '#F59E0B', area: 'rgba(245,158,11,0.04)', dot: '#FCD34D' },
+  pace:  { line: '#22D3EE', area: 'rgba(34,211,238,0.04)', dot: '#22D3EE' },
+  cad:   { line: '#34D399', area: 'rgba(52,211,153,0.04)', dot: '#6EE7B7' },
+  alt:   { line: 'rgba(148,163,175,0.45)', area: 'rgba(148,163,175,0.06)' },
   lthr:  '#F59E0B',
+  grid:  'rgba(255,255,255,0.06)',
+  lapSep:'rgba(255,255,255,0.10)',
+  lapBar:'rgba(255,255,255,0.04)',
+  lapBarHov:'rgba(255,255,255,0.08)',
+  lapBarTop:'rgba(255,255,255,0.15)',
   zone: {
-    Z1: '#94A3B8', Z2: '#22C55E', Z3: '#84CC16',
-    Z4: '#F59E0B', Z5: '#F97316', Z6: '#EF4444',
+    Z1: '#6366F1', Z2: '#3B82F6', Z3: '#22C55E',
+    Z4: '#EAB308', Z5: '#F97316', Z6: '#EF4444',
   },
   sport: {
-    running:  '#8B5CF6',
-    cycling:  '#38BDF8',
+    running:  '#A78BFA',
+    cycling:  '#22D3EE',
     swimming: '#34D399',
   },
 }
@@ -285,7 +290,7 @@ export default function GraficoActividadStreams({
   const altMax  = altVals.length  ? Math.max(...altVals) + 10              : 100
 
   const W = 720, H = height
-  const PT = 22, PB = 34, PL = 52, PR = 52
+  const PT = 22, PB = 40, PL = 52, PR = 52
   const iW = W - PL - PR
   const iH = H - PT - PB
   const n  = series.length
@@ -359,10 +364,11 @@ export default function GraficoActividadStreams({
   const SportIconC = sport === 'cycling' ? BikeIcon : sport === 'swimming' ? Waves : Footprints
   const paceUnit   = sport === 'swimming' ? '/100m' : '/km'
 
-  // FIX: antes el eje izquierdo (principal) estaba hardcodeado a FC siempre.
-  // Para running/swimming, si hay pace real y el canal esta activo, Pace pasa
-  // a ser el eje principal (izquierda) y FC se mueve a la derecha.
-  const mostrarPaceIzq = sport !== 'cycling' && canalesOn.pace && paceVals.length > 0
+  // EJES FIJOS — NO CAMBIAR NUNCA:
+  // Running/swimming: izquierda = Pace, derecha = HR
+  // Cycling: izquierda = Potencia, derecha = HR
+  const ejeIzqPace  = sport !== 'cycling'
+  const ejeIzqPower = sport === 'cycling'
 
   const toggleCanal = key => setCanalesOn(prev => ({ ...prev, [key]: !prev[key] }))
 
@@ -421,21 +427,6 @@ export default function GraficoActividadStreams({
               <div style={{ fontSize:10, color:D.text3, display:'flex', alignItems:'center', gap:4 }}>
                 <div style={{ width:6, height:6, borderRadius:'50%', background:'#38BDF8' }}/>
                 Cargando streams...
-              </div>
-            )}
-            {fuente === 'garmin_api' && !loading && (
-              <div style={{ fontSize:9, padding:'2px 7px', borderRadius:4,
-                background:'rgba(52,211,153,0.12)', color:'#34D399',
-                border:'1px solid rgba(52,211,153,0.25)' }}>GARMIN LIVE</div>
-            )}
-            {fuente === 'db_cache' && (
-              <div style={{ fontSize:9, padding:'2px 7px', borderRadius:4,
-                background:D.glass, color:D.text3, border:`1px solid ${D.border}` }}>CACHE</div>
-            )}
-            {esLaps && (
-              <div style={{ fontSize:9, padding:'2px 7px', borderRadius:4,
-                background:D.glass, color:D.text3, border:`1px solid ${D.border}` }}>
-                {laps.length} LAPS
               </div>
             )}
             {series.length >= 1 && (
@@ -533,76 +524,96 @@ export default function GraficoActividadStreams({
           style={{ display:'block', width:'100%', height:'auto', cursor:'crosshair' }}
           onMouseMove={handleMouse} onMouseLeave={() => setHover(null)}>
           <defs>
-            <linearGradient id={`gHR_${sesionId}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor="#8B5CF6" stopOpacity="0.22"/>
-              <stop offset="100%" stopColor="#8B5CF6" stopOpacity="0.01"/>
-            </linearGradient>
-            <linearGradient id={`gPow_${sesionId}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor="#F59E0B" stopOpacity="0.15"/>
-              <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.01"/>
-            </linearGradient>
-            <linearGradient id={`gAlt_${sesionId}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor="rgba(156,163,175,0.25)" stopOpacity="1"/>
-              <stop offset="100%" stopColor="rgba(156,163,175,0)"    stopOpacity="1"/>
-            </linearGradient>
             <clipPath id={`clip_${sesionId}`}>
               <rect x={PL} y={PT} width={iW} height={iH}/>
             </clipPath>
           </defs>
 
-          {/* Zonas HR fondo */}
-          {[
-            { z:'Z6', min:actLthr*1.06, max:hrMax,          c:'#EF444408' },
-            { z:'Z5', min:actLthr*1.00, max:actLthr*1.06,   c:'#F9731606' },
-            { z:'Z4', min:actLthr*0.94, max:actLthr*1.00,   c:'#F59E0B06' },
-            { z:'Z3', min:actLthr*0.88, max:actLthr*0.94,   c:'#84CC1604' },
-            { z:'Z2', min:actLthr*0.82, max:actLthr*0.88,   c:'#22C55E04' },
-            { z:'Z1', min:hrMin,        max:actLthr*0.82,   c:'rgba(148,163,184,0.03)' },
-          ].map(({ z, min, max, c }) => {
-            const y1 = yHR(Math.min(max, hrMax))
-            const y2 = yHR(Math.max(min, hrMin))
-            if (y1 >= y2) return null
-            return <rect key={z} x={PL} y={y1} width={iW} height={y2-y1} fill={c}/>
-          })}
+          {/* Fondo limpio */}
+          <rect x={PL} y={PT} width={iW} height={iH} fill={D.bg} rx="0"/>
 
-          {/* Grid */}
-          {hrTicks.map(v => (
-            <line key={v} x1={PL} y1={yHR(v)} x2={W-PR} y2={yHR(v)}
-              stroke="rgba(255,255,255,0.04)" strokeWidth="1"/>
-          ))}
+          {/* Grid — casi invisible */}
+          {(ejeIzqPace ? [paceMin, paceMin+(paceMax-paceMin)*0.25, paceMin+(paceMax-paceMin)*0.5, paceMin+(paceMax-paceMin)*0.75, paceMax].map(v => (
+            <line key={v} x1={PL} y1={yPace(v)} x2={W-PR} y2={yPace(v)}
+              stroke={D.grid} strokeWidth="1"/>
+          )) : [0, Math.round(powMax*0.25), Math.round(powMax*0.5), Math.round(powMax*0.75), Math.round(powMax)].map(v => (
+            <line key={v} x1={PL} y1={yPow(v)} x2={W-PR} y2={yPow(v)}
+              stroke={D.grid} strokeWidth="1"/>
+          )))}
           {xTicks.slice(1).map(t => {
             const x = PL + (t/maxT)*iW
             return <line key={t} x1={x} y1={PT} x2={x} y2={PT+iH}
-              stroke="rgba(255,255,255,0.03)" strokeWidth="1"/>
+              stroke={D.grid} strokeWidth="1"/>
           })}
 
-          {/* Altitud */}
-          {canalesOn.alt && altAreaPath && (
-            <path d={altAreaPath} fill={`url(#gAlt_${sesionId})`} clipPath={`url(#clip_${sesionId})`}/>
-          )}
+          {/* ── BLOQUES DE LAPS — barras con color de zona, altura según pace/potencia ── */}
+          {tieneLaps && _lapsNorm.length > 1 && (() => {
+            const totalDurS = _lapsNorm.reduce((acc,l) => acc + (l.duration_min||0)*60, 0)
+            const scaleT = totalDurS > 0 ? maxT / totalDurS : 1
+            const blockBase = PT + iH
+
+            return _lapsNorm.map((lap, i) => {
+              const nextLap = _lapsNorm[i+1]
+              const t1 = lap.t * scaleT
+              const t2 = nextLap ? nextLap.t * scaleT : maxT
+              const x1 = PL + (t1 / Math.max(maxT,1)) * iW
+              const x2 = PL + (t2 / Math.max(maxT,1)) * iW
+              const w  = Math.max(1, x2 - x1)
+
+              // Zona del lap
+              const z = lap.hr ? getZone(lap.hr, actLthr) : 'Z2'
+              const zoneCol = D.zone[z] || D.zone.Z2
+
+              // Altura del bloque según la métrica principal del deporte
+              let blockTop = PT
+              if (sport === 'cycling') {
+                const samplesInLap = series.filter(s => {
+                  const st = s.t * tScale
+                  return st >= t1 && st < t2 && s.power > 0
+                })
+                const lapPow = samplesInLap.length > 0
+                  ? samplesInLap.reduce((a,s)=>a+s.power,0)/samplesInLap.length
+                  : (lap.power || lap.avg_power || 0)
+                blockTop = lapPow > 0 ? yPow(lapPow) : PT + iH * 0.5
+              } else {
+                blockTop = lap.pace ? yPace(lap.pace) : PT + iH * 0.3
+              }
+
+              const blockH = Math.max(4, blockBase - blockTop)
+              const isHov = hover != null && series[hover] &&
+                (series[hover].t * tScale >= t1 && series[hover].t * tScale < t2)
+
+              return (
+                <g key={i}>
+                  {/* Barra con color de zona al 40% */}
+                  <rect x={x1+0.5} y={blockTop} width={w-1} height={blockH}
+                    fill={zoneCol} opacity={isHov ? 0.5 : 0.4} rx="1"/>
+                  {/* Separador entre laps */}
+                  {i > 0 && (
+                    <line x1={x1} y1={PT} x2={x1} y2={PT+iH}
+                      stroke={D.lapSep} strokeWidth="1" strokeDasharray="3,4"/>
+                  )}
+                  {/* Pace/potencia en hover */}
+                  {isHov && w > 20 && (
+                    <text x={x1+w/2} y={Math.max(blockTop - 4, PT + 10)} textAnchor="middle"
+                      fontSize="9" fill={D.text} fontWeight="600" opacity="0.9">
+                      {sport === 'cycling'
+                        ? `${Math.round(lap.power || lap.avg_power || 0)}W`
+                        : (lap.pace ? fmtPace(lap.pace) : '')}
+                    </text>
+                  )}
+                </g>
+              )
+            })
+          })()}
+
+          {/* Altitud — relleno sutil si activado */}
           {canalesOn.alt && altPath && (
-            <path d={altPath} fill="none" stroke={D.alt.line} strokeWidth="1.5"
-              clipPath={`url(#clip_${sesionId})`}/>
-          )}
-
-          {/* Potencia área */}
-          {canalesOn.power && powPath && sport !== 'swimming' && (
-            <path d={powPath + (n>0?` L${xs(n-1)},${PT+iH} L${PL},${PT+iH} Z`:'')}
-              fill={`url(#gPow_${sesionId})`} clipPath={`url(#clip_${sesionId})`}/>
-          )}
-
-          {/* HR área */}
-          {canalesOn.hr && hrAreaPath && (
-            <path d={hrAreaPath} fill={`url(#gHR_${sesionId})`} clipPath={`url(#clip_${sesionId})`}/>
-          )}
-
-          {/* LTHR */}
-          {actLthr >= hrMin && actLthr <= hrMax && canalesOn.hr && (
             <>
-              <line x1={PL} y1={yHR(actLthr)} x2={W-PR} y2={yHR(actLthr)}
-                stroke={D.lthr} strokeWidth="1.5" strokeDasharray="8,5" opacity="0.65"/>
-              <text x={PL-5} y={yHR(actLthr)+4} textAnchor="end"
-                fontSize="9" fill={D.lthr} opacity="0.8">LTHR</text>
+              <path d={altPath + (n>0?` L${xs(n-1)},${PT+iH} L${PL},${PT+iH} Z`:'')}
+                fill={D.alt.area} clipPath={`url(#clip_${sesionId})`}/>
+              <path d={altPath} fill="none" stroke={D.alt.line} strokeWidth="1"
+                clipPath={`url(#clip_${sesionId})`}/>
             </>
           )}
 
@@ -610,226 +621,195 @@ export default function GraficoActividadStreams({
           {canalesOn.cadence && (
             <path d={bezierPath(
               series.map((s,i) => s.cadence ? [xs(i), PT+iH-((s.cadence-0)/300)*iH] : null).filter(Boolean)
-            )} fill="none" stroke={D.cad.line} strokeWidth="1.5"
-              strokeDasharray="3,2" opacity="0.7" clipPath={`url(#clip_${sesionId})`}/>
-          )}
-
-          {/* Pace */}
-          {canalesOn.pace && pacePath && (
-            <path d={pacePath} fill="none" stroke={D.pace.line} strokeWidth="3"
-              strokeDasharray="6,3" clipPath={`url(#clip_${sesionId})`}/>
-          )}
-
-          {/* Potencia línea */}
-          {canalesOn.power && powPath && sport !== 'swimming' && (
-            <path d={powPath} fill="none" stroke={D.power.line} strokeWidth="3"
+            )} fill="none" stroke={D.cad.line} strokeWidth="1" opacity="0.6"
               clipPath={`url(#clip_${sesionId})`}/>
           )}
 
-          {/* HR línea */}
-          {canalesOn.hr && hrPath && (
-            <path d={hrPath} fill="none" stroke={D.hr.line} strokeWidth="3.5"
+          {/* Oscilación vertical */}
+          {canalesOn.vert_osc && vertVals.length > 0 && (() => {
+            const vMin = Math.min(...vertVals) * 0.9, vMax = Math.max(...vertVals) * 1.1
+            const yV = v => PT + iH - ((v - vMin) / (vMax - vMin || 1)) * iH
+            return <path d={bezierPath(
+              series.map((s,i) => s.vert_osc ? [xs(i), yV(s.vert_osc)] : null).filter(Boolean)
+            )} fill="none" stroke="#F472B6" strokeWidth="1" opacity="0.6"
               clipPath={`url(#clip_${sesionId})`}/>
-          )}
-
-          {/* Bloques de laps */}
-          {esLaps && _lapsNorm.length > 1 && (() => {
-            const lapPaces = _lapsNorm.map(l => l.pace).filter(Boolean)
-            const pMin = lapPaces.length ? Math.min(...lapPaces) : 3
-            const pMax = lapPaces.length ? Math.max(...lapPaces) : 8
-            const pRange = pMax - pMin || 1
-            const yPaceBlock = p => PT + iH - ((pMax - p) / pRange) * iH * 0.6
-            const blockBase  = PT + iH
-            return _lapsNorm.map((lap, i) => {
-              const nextLap = _lapsNorm[i+1]
-              const x1  = PL + (lap.t / Math.max(maxT,1)) * iW
-              const x2  = nextLap ? PL + (nextLap.t / Math.max(maxT,1)) * iW : PL + iW
-              const w   = Math.max(2, x2 - x1 - 1)
-              const z   = lap.hr ? getZone(lap.hr, actLthr) : 'Z2'
-              const col = D.zone[z] || '#6366F1'
-              const paceY  = lap.pace ? yPaceBlock(lap.pace) : PT + iH * 0.3
-              const blockH = blockBase - paceY
-              const isHov  = hover === i
-              return (
-                <g key={i}>
-                  <rect x={x1} y={paceY} width={w} height={Math.max(4,blockH)} rx={3}
-                    fill={col} opacity={isHov ? 0.35 : 0.18}/>
-                  <rect x={x1} y={paceY} width={w} height={3} rx={1}
-                    fill={col} opacity={isHov ? 0.9 : 0.6}/>
-                  <line x1={x2} y1={PT} x2={x2} y2={PT+iH}
-                    stroke={col} strokeWidth="0.5" opacity="0.3" strokeDasharray="2,3"/>
-                  {w > 18 && (
-                    <text x={x1+w/2} y={PT+iH-4} textAnchor="middle"
-                      fontSize="8" fill={col} opacity={isHov?1:0.6} fontWeight="600">
-                      {lap._lap_num || i+1}
-                    </text>
-                  )}
-                  {w > 28 && lap.pace && (
-                    <text x={x1+w/2} y={Math.max(paceY-4,PT+10)} textAnchor="middle"
-                      fontSize="8" fill={col} opacity={isHov?0.9:0.5}>
-                      {fmtPace(lap.pace)}
-                    </text>
-                  )}
-                </g>
-              )
-            })
           })()}
 
-          {/* Bloques de laps para BIKE superpuestos sobre streams */}
-          {sport === 'cycling' && !esLaps && tieneLaps && _lapsNorm.length > 1 && (() => {
-            // Calcular posición temporal de cada lap en el gráfico de streams
+          {/* Zancada / stride */}
+          {canalesOn.stride && stridVals.length > 0 && (() => {
+            const sMin = Math.min(...stridVals) * 0.95, sMax = Math.max(...stridVals) * 1.05
+            const yS = v => PT + iH - ((v - sMin) / (sMax - sMin || 1)) * iH
+            return <path d={bezierPath(
+              series.map((s,i) => s.stride ? [xs(i), yS(s.stride)] : null).filter(Boolean)
+            )} fill="none" stroke="#C084FC" strokeWidth="1" opacity="0.6"
+              clipPath={`url(#clip_${sesionId})`}/>
+          })()}
+
+          {/* Temperatura */}
+          {canalesOn.temp && tempVals.length > 0 && (() => {
+            const tMin = Math.min(...tempVals) - 2, tMax = Math.max(...tempVals) + 2
+            const yT = v => PT + iH - ((v - tMin) / (tMax - tMin || 1)) * iH
+            return <path d={bezierPath(
+              series.map((s,i) => s.temp != null ? [xs(i), yT(s.temp)] : null).filter(Boolean)
+            )} fill="none" stroke="#67E8F9" strokeWidth="1" opacity="0.6"
+              clipPath={`url(#clip_${sesionId})`}/>
+          })()}
+
+          {/* Respiración */}
+          {canalesOn.resp && respVals.length > 0 && (() => {
+            const rMin = Math.min(...respVals) * 0.9, rMax = Math.max(...respVals) * 1.1
+            const yR = v => PT + iH - ((v - rMin) / (rMax - rMin || 1)) * iH
+            return <path d={bezierPath(
+              series.map((s,i) => s.resp ? [xs(i), yR(s.resp)] : null).filter(Boolean)
+            )} fill="none" stroke="#FB923C" strokeWidth="1" opacity="0.6"
+              clipPath={`url(#clip_${sesionId})`}/>
+          })()}
+
+          {/* GCT */}
+          {canalesOn.gct && gctVals.length > 0 && (() => {
+            const gMin = Math.min(...gctVals) * 0.9, gMax = Math.max(...gctVals) * 1.1
+            const yG = v => PT + iH - ((v - gMin) / (gMax - gMin || 1)) * iH
+            return <path d={bezierPath(
+              series.map((s,i) => s.gct ? [xs(i), yG(s.gct)] : null).filter(Boolean)
+            )} fill="none" stroke="#FB923C" strokeWidth="1" opacity="0.5"
+              clipPath={`url(#clip_${sesionId})`}/>
+          })()}
+
+          {/* Umbral anaeróbico — línea en PACE (running) o POTENCIA (cycling) */}
+          {sport !== 'cycling' && paceVals.length > 0 && (() => {
+            // Umbral anaeróbico en pace: usar dato del atleta o estimar
+            const umbralPace = act?.pace_umbral || act?.pace_z4_lower || null
+            // Fallback: mediana de paces en Z4 si hay suficientes datos
+            const z4Paces = series.filter(s => s.hr && s.pace && getZone(s.hr, actLthr) === 'Z4').map(s => s.pace)
+            const est = z4Paces.length > 3
+              ? z4Paces.sort((a,b)=>a-b)[Math.floor(z4Paces.length/2)]
+              : umbralPace
+            if (est && est >= paceMin && est <= paceMax) {
+              const yU = yPace(est)
+              return (
+                <>
+                  <line x1={PL} y1={yU} x2={W-PR} y2={yU}
+                    stroke={D.lthr} strokeWidth="1" strokeDasharray="6,4" opacity="0.7"/>
+                  <text x={PL-5} y={yU+3} textAnchor="end"
+                    fontSize="8" fill={D.lthr} opacity="0.6" fontWeight="500">{fmtPace(est)}</text>
+                </>
+              )
+            }
+            return null
+          })()}
+          {sport === 'cycling' && powVals.length > 0 && (act?.ftp_watts || act?.ftp) && (() => {
+            const ftp = act.ftp_watts || act.ftp
+            if (ftp >= powMin && ftp <= powMax) {
+              const yF = yPow(ftp)
+              return (
+                <>
+                  <line x1={PL} y1={yF} x2={W-PR} y2={yF}
+                    stroke={D.lthr} strokeWidth="1" strokeDasharray="6,4" opacity="0.7"/>
+                  <text x={PL-5} y={yF+3} textAnchor="end"
+                    fontSize="8" fill={D.lthr} opacity="0.6" fontWeight="500">FTP</text>
+                </>
+              )
+            }
+            return null
+          })()}
+
+          {/* Pace — línea principal para running */}
+          {canalesOn.pace && pacePath && (
+            <path d={pacePath} fill="none" stroke={D.pace.line} strokeWidth="1.5"
+              clipPath={`url(#clip_${sesionId})`}/>
+          )}
+
+          {/* Potencia línea — principal para cycling */}
+          {canalesOn.power && powPath && sport !== 'swimming' && (
+            <path d={powPath} fill="none" stroke={D.power.line} strokeWidth={sport==='cycling'?2:1.5}
+              clipPath={`url(#clip_${sesionId})`}/>
+          )}
+
+          {/* FC — siempre eje derecho */}
+          {canalesOn.hr && hrPath && (
+            <path d={hrPath} fill="none" stroke={D.hr.line} strokeWidth="2"
+              clipPath={`url(#clip_${sesionId})`}/>
+          )}
+
+          {/* Barra de zonas — banda delgada debajo del gráfico */}
+          {tieneLaps && _lapsNorm.length > 1 && (() => {
             const totalDurS = _lapsNorm.reduce((acc,l) => acc + (l.duration_min||0)*60, 0)
             const scaleT = totalDurS > 0 ? maxT / totalDurS : 1
-
-            const blockBase = PT + iH
+            const barY = PT + iH + 2
+            const barH = 5
             return _lapsNorm.map((lap, i) => {
               const nextLap = _lapsNorm[i+1]
               const t1 = lap.t * scaleT
               const t2 = nextLap ? nextLap.t * scaleT : maxT
               const x1 = PL + (t1 / Math.max(maxT,1)) * iW
               const x2 = PL + (t2 / Math.max(maxT,1)) * iW
-              const w  = Math.max(2, x2 - x1 - 1)
-
-              // Potencia real del lap desde streams
-              const samplesInLap = series.filter(s => {
-                const st = s.t * tScale
-                return st >= t1 && st < t2 && s.power > 0
-              })
-              const lapPow = samplesInLap.length > 0
-                ? Math.round(samplesInLap.reduce((a,s)=>a+s.power,0)/samplesInLap.length)
-                : 0
-
-              // Color por zona de potencia
-              // Si hay FTP: zonas relativas. Si no: zonas absolutas por watts
-              const ftp = act?.ftp_watts || act?.ftp
-              const ifLap = ftp && lapPow ? lapPow/ftp : null
-              const col = ifLap != null
-                // Con FTP — zonas relativas
-                ? (ifLap < 0.55 ? '#94A3B8'    // Z1 recovery
-                  : ifLap < 0.75 ? '#22C55E'   // Z2 endurance
-                  : ifLap < 0.87 ? '#84CC16'   // Z3 tempo
-                  : ifLap < 0.95 ? '#F59E0B'   // Z4 threshold
-                  : ifLap < 1.05 ? '#F97316'   // Z5 VO2max
-                  : '#EF4444')                 // Z6 anaerobic
-                // Sin FTP — zonas absolutas por watts (estimado para atleta recreativo)
-                : (lapPow < 100 ? '#94A3B8'    // Z1
-                  : lapPow < 150 ? '#22C55E'   // Z2
-                  : lapPow < 185 ? '#84CC16'   // Z3
-                  : lapPow < 210 ? '#F59E0B'   // Z4
-                  : lapPow < 240 ? '#F97316'   // Z5
-                  : '#EF4444')                 // Z6
-
-              // Altura desde potencia del lap — mismo patrón que run con pace
-              const powY  = lapPow > 0 ? yPow(lapPow) : PT + iH * 0.4
-              const blockH = blockBase - powY
-              const isHov = hover != null && series[hover] &&
-                series[hover].t * tScale >= t1 && series[hover].t * tScale < t2
-
-              return (
-                <g key={i}>
-                  <rect x={x1} y={powY} width={w} height={Math.max(4,blockH)} rx={3}
-                    fill={col} opacity={isHov ? 0.35 : 0.18}/>
-                  <rect x={x1} y={powY} width={w} height={3} rx={1}
-                    fill={col} opacity={isHov ? 0.9 : 0.6}/>
-                  <line x1={x2} y1={PT} x2={x2} y2={PT+iH}
-                    stroke={col} strokeWidth="0.5" opacity="0.3" strokeDasharray="2,3"/>
-                  {w > 14 && (
-                    <text x={x1+w/2} y={PT+iH-5} textAnchor="middle"
-                      fontSize="8" fill={col} opacity={isHov?1:0.6} fontWeight="700">
-                      {lap._lap_num||i+1}
-                    </text>
-                  )}
-                  {w > 28 && lapPow > 0 && (
-                    <text x={x1+w/2} y={Math.max(powY-4,PT+10)} textAnchor="middle"
-                      fontSize="8" fill={col} opacity={isHov?0.9:0.5} fontWeight="600">
-                      {lapPow}W
-                    </text>
-                  )}
-                </g>
-              )
+              const w  = Math.max(1, x2 - x1 - 0.5)
+              const z  = lap.hr ? getZone(lap.hr, actLthr) : 'Z1'
+              return <rect key={i} x={x1} y={barY} width={w} height={barH}
+                fill={D.zone[z] || D.zone.Z1} opacity="0.75" rx="1"/>
+            })
+          })()}
+          {(!tieneLaps || _lapsNorm.length <= 1) && canalesOn.hr && hrVals.length > 0 && (() => {
+            const barY = PT + iH + 2
+            const barH = 5
+            const step = Math.max(1, Math.floor(n / 120))
+            return series.filter((_,i) => i % step === 0).map((s, idx) => {
+              if (!s.hr) return null
+              const z = getZone(s.hr, actLthr)
+              const i = idx * step
+              const x1 = xs(i)
+              const x2 = i + step < n ? xs(i + step) : PL + iW
+              return <rect key={idx} x={x1} y={barY} width={Math.max(1, x2 - x1)}
+                height={barH} fill={D.zone[z]} opacity="0.7"/>
             })
           })()}
 
-          {/* Puntos HR laps */}
-          {esLaps && canalesOn.hr && hrPoints.map(([x,y], i) => {
-            const s = series[i]
-            if (!s?.hr) return null
-            const z = getZone(s.hr, actLthr)
-            return (
-              <circle key={i} cx={x} cy={y} r={hover===i ? 7 : 4}
-                fill={D.zone[z]}
-                stroke={hover===i ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)'}
-                strokeWidth={hover===i ? 2 : 1}/>
-            )
-          })}
-
-          {/* Hover */}
+          {/* Hover — solo al pasar el mouse */}
           {hover != null && hX != null && (
             <>
               <line x1={hX} y1={PT} x2={hX} y2={PT+iH}
-                stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
+                stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
               {hS?.hr    != null && canalesOn.hr    && yHR(hS.hr)     != null &&
-                <circle cx={hX} cy={yHR(hS.hr)}     r={5} fill={D.hr.dot}    stroke={D.bg} strokeWidth="2"/>}
+                <circle cx={hX} cy={yHR(hS.hr)}     r={3} fill={D.hr.dot}    stroke={D.bg} strokeWidth="1.5"/>}
               {hS?.power != null && canalesOn.power && yPow(hS.power)  != null &&
-                <circle cx={hX} cy={yPow(hS.power)}  r={4} fill={D.power.dot} stroke={D.bg} strokeWidth="2"/>}
+                <circle cx={hX} cy={yPow(hS.power)}  r={3} fill={D.power.dot} stroke={D.bg} strokeWidth="1.5"/>}
               {hS?.pace  != null && canalesOn.pace  && yPace(hS.pace)  != null &&
-                <circle cx={hX} cy={yPace(hS.pace)}  r={4} fill={D.pace.dot}  stroke={D.bg} strokeWidth="2"/>}
+                <circle cx={hX} cy={yPace(hS.pace)}  r={3} fill={D.pace.dot}  stroke={D.bg} strokeWidth="1.5"/>}
             </>
           )}
 
-          {/* Eje Y izquierdo -- Pace si mostrarPaceIzq, sino FC (como antes) */}
-          {mostrarPaceIzq ? (
+          {/* Eje Y izquierdo — Pace (running) o Potencia (cycling) — FIJO */}
+          {ejeIzqPace && (
             <>
-              {[paceMin, (paceMin+paceMax)/2, paceMax].map(v => (
+              {[paceMin, paceMin+(paceMax-paceMin)*0.25, paceMin+(paceMax-paceMin)*0.5, paceMin+(paceMax-paceMin)*0.75, paceMax].map(v => (
                 <text key={v} x={PL-7} y={yPace(v)+4} textAnchor="end"
-                  fontSize="9" fill={D.text3}>{fmtPace(v)}</text>
+                  fontSize="9" fill={D.text2}>{fmtPace(v)}</text>
               ))}
               <text x={14} y={H/2} textAnchor="middle" fontSize="9"
-                fill="rgba(56,189,248,0.55)" transform={`rotate(-90,14,${H/2})`}>Pace {paceUnit}</text>
+                fill={D.pace.line} opacity="0.5" transform={`rotate(-90,14,${H/2})`}>Pace {paceUnit}</text>
             </>
-          ) : (
+          )}
+          {ejeIzqPower && (
             <>
-              {hrTicks.map(v => (
-                <text key={v} x={PL-7} y={yHR(v)+4} textAnchor="end"
-                  fontSize="9" fill={D.text3}>{v}</text>
+              {[0, Math.round(powMax*0.25), Math.round(powMax*0.5), Math.round(powMax*0.75), Math.round(powMax)].map(v => (
+                <text key={v} x={PL-7} y={yPow(v)+4} textAnchor="end"
+                  fontSize="9" fill={D.text2}>{v}W</text>
               ))}
               <text x={14} y={H/2} textAnchor="middle" fontSize="9"
-                fill="rgba(139,92,246,0.5)" transform={`rotate(-90,14,${H/2})`}>FC bpm</text>
+                fill={D.power.line} opacity="0.5" transform={`rotate(-90,14,${H/2})`}>W</text>
             </>
           )}
 
-          {/* Eje Y derecho -- FC si mostrarPaceIzq movio FC ahi, sino Potencia/Pace como antes */}
-          {mostrarPaceIzq ? (
+          {/* Eje Y derecho — HR SIEMPRE */}
+          {hrVals.length > 0 && (
             <>
               {hrTicks.map(v => (
                 <text key={v} x={W-PR+7} y={yHR(v)+4} textAnchor="start"
-                  fontSize="9" fill="rgba(139,92,246,0.4)">{v}</text>
+                  fontSize="9" fill={D.hr.line} opacity="0.35">{v}</text>
               ))}
               <text x={W-12} y={H/2} textAnchor="middle" fontSize="9"
-                fill="rgba(139,92,246,0.4)"
+                fill={D.hr.line} opacity="0.35"
                 transform={`rotate(90,${W-12},${H/2})`}>FC bpm</text>
-            </>
-          ) : (
-            <>
-              {canalesOn.power && powVals.length > 0 && sport !== 'swimming' && (
-                <>
-                  {[0, Math.round(powMax*0.5), Math.round(powMax)].map(v => (
-                    <text key={v} x={W-PR+7} y={yPow(v)+4} textAnchor="start"
-                      fontSize="9" fill="rgba(245,158,11,0.4)">{v}W</text>
-                  ))}
-                  <text x={W-12} y={H/2} textAnchor="middle" fontSize="9"
-                    fill="rgba(245,158,11,0.4)"
-                    transform={`rotate(90,${W-12},${H/2})`}>W</text>
-                </>
-              )}
-              {canalesOn.pace && paceVals.length > 0 && !canalesOn.power && (
-                <>
-                  {[paceMin, (paceMin+paceMax)/2, paceMax].map(v => (
-                    <text key={v} x={W-PR+7} y={yPace(v)+4} textAnchor="start"
-                      fontSize="9" fill="rgba(56,189,248,0.4)">{fmtPace(v)}</text>
-                  ))}
-                </>
-              )}
             </>
           )}
 
@@ -837,53 +817,40 @@ export default function GraficoActividadStreams({
           {xTicks.map(t => {
             const x = PL + (t/maxT)*iW
             return (
-              <text key={t} x={x} y={H-PB+16} textAnchor="middle"
-                fontSize="9" fill={D.text3}>{fmtTime(t)}</text>
+              <text key={t} x={x} y={H-PB+24} textAnchor="middle"
+                fontSize="9" fill={D.text2}>{fmtTime(t)}</text>
             )
           })}
-          <text x={PL+iW/2} y={H-2} textAnchor="middle"
-            fontSize="8" fill={D.text3} opacity="0.5">
-            {esLaps
-              ? `${laps.length} laps · tiempo acumulado (mm:ss)`
-              : `${series.length} puntos GPS · tiempo (mm:ss) · pasá el mouse para ver detalle`}
-          </text>
         </svg>
       ) : (!chartOpen && series.length >= 1) ? null : (
         <SinGrafico act={act} distKm={distKm} sport={sport} loading={loading}
           streamZonas={streamZonas} lthr={actLthr} sesionId={sesionId}/>
       )}
 
-      {/* LEYENDA */}
+      {/* LEYENDA — mínima */}
       {series.length >= 1 && (
         <div style={{
-          padding:'8px 16px 12px', borderTop:`1px solid ${D.border}`,
-          display:'flex', gap:16, alignItems:'center', flexWrap:'wrap',
+          padding:'6px 16px 8px', borderTop:`1px solid ${D.border}`,
+          display:'flex', gap:14, alignItems:'center', flexWrap:'wrap',
         }}>
           {CANALES.filter(c => canalesOn[c.key]).map(c => (
-            <div key={c.key} style={{ display:'flex', alignItems:'center', gap:5 }}>
-              <div style={{ width:18, height:3, borderRadius:2, background:c.color }}/>
-              <span style={{ fontSize:10, color:D.text3 }}>{c.label}</span>
+            <div key={c.key} style={{ display:'flex', alignItems:'center', gap:4 }}>
+              <div style={{ width:14, height:2, borderRadius:1, background:c.color }}/>
+              <span style={{ fontSize:9, color:D.text2 }}>{c.label}</span>
             </div>
           ))}
-          <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-            <div style={{ width:18, height:0, borderTop:`1.5px dashed ${D.lthr}` }}/>
-            <span style={{ fontSize:10, color:D.text3 }}>LTHR {actLthr}</span>
-          </div>
           {streamZonas && (
-            <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:8 }}>
-              <div style={{ height:6, borderRadius:3, overflow:'hidden', display:'flex', width:120 }}>
+            <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:5 }}>
+              <span style={{ fontSize:9, color:D.text3 }}>Zonas</span>
+              <div style={{ height:5, borderRadius:2, overflow:'hidden', display:'flex', width:70 }}>
                 {Object.entries(streamZonas)
                   .filter(([,v]) => v.pct > 0)
                   .map(([z,v]) => (
                     <div key={z} style={{ width:`${v.pct}%`, background:D.zone[z] }}/>
                   ))}
               </div>
-              <span style={{ fontSize:9, color:D.text3 }}>Zonas</span>
             </div>
           )}
-          <span style={{ fontSize:9, color:D.text3, marginLeft:4 }}>
-            {n} pts · hover para detalle
-          </span>
         </div>
       )}
 
@@ -911,7 +878,7 @@ function SinGrafico({ act, distKm, sport, loading, streamZonas, lthr, sesionId }
   const zonasSource = streamZonas
     ? Object.entries(streamZonas).filter(([,v]) => v.pct>0).map(([z,v]) => ({
         z, pct:v.pct,
-        c:{Z1:'#94A3B8',Z2:'#22C55E',Z3:'#84CC16',Z4:'#F59E0B',Z5:'#F97316',Z6:'#EF4444'}[z]
+        c:{Z1:'#6366F1',Z2:'#3B82F6',Z3:'#22C55E',Z4:'#EAB308',Z5:'#F97316',Z6:'#EF4444'}[z]
       }))
     : zonasPct
   return (
@@ -1001,9 +968,9 @@ function LapsColapsable({ laps, sport, lthr, hover, setHover, ftp, defaultOpen }
 function TablaLaps({ laps, sport, lthr, hover, setHover, ftp }) {
   const fmtP    = p => { if(!p) return '--'; const m=Math.floor(p),s=Math.round((p-m)*60); return `${m}:${String(s).padStart(2,'0')} /km` }
   const fmtDur  = min => { if(!min) return '--'; return `${Math.floor(min)}'${String(Math.round((min%1)*60)).padStart(2,'0')}"` }
-  const hrColor = hr => { if(!hr||!lthr) return '#94A3B8'; const r=hr/lthr; return r<0.82?'#94A3B8':r<0.88?'#22C55E':r<0.94?'#84CC16':r<1.00?'#F59E0B':r<1.06?'#F97316':'#EF4444' }
+  const hrColor = hr => { if(!hr||!lthr) return '#6366F1'; const r=hr/lthr; return r<0.82?'#6366F1':r<0.88?'#3B82F6':r<0.94?'#22C55E':r<1.00?'#EAB308':r<1.06?'#F97316':'#EF4444' }
   const hrZone  = hr => { if(!hr||!lthr) return 'Z1'; const r=hr/lthr; return r<0.82?'Z1':r<0.88?'Z2':r<0.94?'Z3':r<1.00?'Z4':r<1.06?'Z5':'Z6' }
-  const pwColor = (w,f) => { if(!w||!f) return '#F59E0B'; const r=w/f; return r<0.55?'#94A3B8':r<0.75?'#22C55E':r<0.87?'#84CC16':r<0.95?'#F59E0B':r<1.05?'#F97316':'#EF4444' }
+  const pwColor = (w,f) => { if(!w||!f) return '#EAB308'; const r=w/f; return r<0.55?'#6366F1':r<0.75?'#3B82F6':r<0.87?'#22C55E':r<0.95?'#EAB308':r<1.05?'#F97316':'#EF4444' }
   const pwZone  = (w,f) => { if(!w||!f) return '--'; const r=w/f; return r<0.55?'Z1':r<0.75?'Z2':r<0.87?'Z3':r<0.95?'Z4':r<1.05?'Z5':'Z6' }
 
   if (sport === 'cycling') {
@@ -1024,7 +991,7 @@ function TablaLaps({ laps, sport, lthr, hover, setHover, ftp }) {
               const np    = l.norm_power || l.avg_power
               const avgW  = l.avg_power
               const ifVal = ftp && np ? (np/ftp) : l.lap_if
-              const ifCol = !ifVal?D.text3:ifVal<0.75?'#94A3B8':ifVal<0.87?'#22C55E':ifVal<0.95?'#F59E0B':ifVal<1.05?'#F97316':'#EF4444'
+              const ifCol = !ifVal?D.text3:ifVal<0.75?'#6366F1':ifVal<0.87?'#22C55E':ifVal<0.95?'#EAB308':ifVal<1.05?'#F97316':'#EF4444'
               const pc    = pwColor(np,ftp)
               const pz    = pwZone(np,ftp)
               const isH   = hover===i
