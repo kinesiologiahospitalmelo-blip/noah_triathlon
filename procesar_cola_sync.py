@@ -124,8 +124,10 @@ def sync_un_dia(atleta_id, modo, fecha_str):
 
 
 def sync_wahoo(atleta_id):
-    """Wahoo no soporta sync por fecha puntual -- una sola llamada de
-    sync general por corrida, no dia por dia como Garmin."""
+    """Wahoo no soporta sync por fecha puntual. Se llama a 2 scripts en
+    secuencia: sincronizar_wahoo.py (actividades basicas) y despues
+    backfill_wahoo_laps_streams.py (streams/laps detallados) -- mismo
+    patron de 2 pasos que se uso todo el dia a mano."""
     cmd = [sys.executable, 'sincronizar_wahoo.py', '--atleta_id', str(atleta_id)]
     try:
         resultado = subprocess.run(
@@ -133,11 +135,29 @@ def sync_wahoo(atleta_id):
             env=os.environ.copy()
         )
         salida = (resultado.stdout or '') + (resultado.stderr or '')
-        return resultado.returncode == 0, salida
+        ok_general = resultado.returncode == 0
     except subprocess.TimeoutExpired:
         return False, f'Timeout Wahoo despues de {TIMEOUT_SEG*3}s'
     except Exception as e:
         return False, str(e)
+
+    try:
+        cmd2 = [sys.executable, 'backfill_wahoo_laps_streams.py', '--atleta_id', str(atleta_id)]
+        resultado2 = subprocess.run(
+            cmd2, capture_output=True, text=True, timeout=TIMEOUT_SEG * 3,
+            env=os.environ.copy()
+        )
+        salida2 = (resultado2.stdout or '') + (resultado2.stderr or '')
+        ok_streams = resultado2.returncode == 0
+    except subprocess.TimeoutExpired:
+        salida2 = f'Timeout backfill streams despues de {TIMEOUT_SEG*3}s'
+        ok_streams = False
+    except Exception as e:
+        salida2 = str(e)
+        ok_streams = False
+
+    salida_total = salida + '\n--- backfill streams ---\n' + salida2
+    return (ok_general and ok_streams), salida_total
 
 
 def procesar_pendientes(conn):
