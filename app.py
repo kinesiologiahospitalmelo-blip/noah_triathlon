@@ -1314,10 +1314,13 @@ def importar_actividades(atleta_id):
 
 # ─── PERFIL MACRO ─────────────────────────────────────────────────────────────
 
-@app.route('/api/atletas/<int:atleta_id>/perfil', methods=['GET'])
+@app.route('/api/atletas/<int:atleta_id>/perfil_macrociclo', methods=['GET'])
 @requiere_login
 def get_perfil(atleta_id):
-    """Retorna el perfil de macrociclo activo."""
+    """Retorna el perfil de macrociclo activo. NOTA: esta ruta se movio de
+    /perfil a /perfil_macrociclo porque competia con get_perfil_atleta
+    (el analisis de 15 puntos con ML) que usa la MISMA URL /perfil --
+    dos rutas no pueden compartir la misma URL+metodo en Flask."""
     conn = get_conn()
     row = conn.execute(
         'SELECT datos_json, fecha_generado FROM perfiles_macro WHERE atleta_id=%s AND activo=1',
