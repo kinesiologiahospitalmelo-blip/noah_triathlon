@@ -200,24 +200,53 @@ def obtener_access_token(conn, atleta_id):
     cur.execute("SELECT access_token, refresh_token, expires_at FROM wahoo_tokens WHERE atleta_id=%s", (atleta_id,))
     row = cur.fetchone()
     if not row:
-        print(f"  Atleta {atleta_id} no tiene Wahoo conectado todavia.")
+        print(f"  [ERROR] Atleta {atleta_id} no tiene Wahoo conectado todavia.")
         return None
 
-    expires_at = datetime.fromisoformat(row['expires_at'])
-    if datetime.utcnow() < expires_at - timedelta(minutes=5):
-        return row['access_token']
+    # Chequear si el token todavia es valido
+    try:
+        expires_at = datetime.fromisoformat(row['expires_at'])
+    except (ValueError, TypeError):
+        expires_at = datetime.utcnow()  # forzar refresh si el formato esta roto
 
-    print("  Token vencido, refrescando...")
+    if datetime.utcnow() < expires_at - timedelta(minutes=5):
+        # Token todavia vigente — verificar que realmente funciona
+        # (puede haber sido invalidado por otra autorizacion)
+        test = requests.get(f'{WAHOO_API_BASE}/user', headers={
+            'Authorization': f'Bearer {row["access_token"]}'
+        }, timeout=10)
+        if test.status_code == 200:
+            return row['access_token']
+        print(f"  [AVISO] Token dice vigente pero Wahoo lo rechazo ({test.status_code}). Refrescando...")
+
+    # Refrescar token
+    print("  Token vencido o invalido, refrescando...")
     client_id = os.environ.get('WAHOO_CLIENT_ID')
     client_secret = os.environ.get('WAHOO_CLIENT_SECRET')
+    if not client_id or not client_secret:
+        print("  [ERROR] Faltan WAHOO_CLIENT_ID o WAHOO_CLIENT_SECRET en las variables de entorno.")
+        return None
+
     r = requests.post(WAHOO_TOKEN_URL, data={
         'client_id': client_id,
         'client_secret': client_secret,
         'grant_type': 'refresh_token',
         'refresh_token': row['refresh_token'],
-    })
+    }, timeout=15)
+
     if r.status_code != 200:
-        print(f"  Error refrescando token: {r.status_code} {r.text}")
+        error_body = r.text[:300]
+        print(f"  [ERROR] Wahoo rechazo el refresh_token: {r.status_code} {error_body}")
+        if 'invalid_grant' in error_body.lower() or r.status_code == 401:
+            print("  [!!] El refresh_token ya no es valido. Probable causa: autorizacion")
+            print("       duplicada en Wahoo, o el atleta revoco el acceso.")
+            print("       -> El atleta debe re-conectar Wahoo desde su perfil en NOAH.")
+            # Marcar el token como invalido para no seguir intentando
+            cur.execute(
+                "UPDATE wahoo_tokens SET access_token='INVALIDO', expires_at=%s WHERE atleta_id=%s",
+                (datetime.utcnow().isoformat(), atleta_id)
+            )
+            conn.commit()
         return None
 
     tok = r.json()
@@ -226,12 +255,16 @@ def obtener_access_token(conn, atleta_id):
     expires_in    = tok.get('expires_in', 7200)
     nueva_exp = (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat()
 
+    if not nuevo_access:
+        print(f"  [ERROR] Wahoo respondio OK pero no devolvio access_token: {tok}")
+        return None
+
     cur.execute(
         "UPDATE wahoo_tokens SET access_token=%s, refresh_token=%s, expires_at=%s, actualizado=%s WHERE atleta_id=%s",
         (nuevo_access, nuevo_refresh, nueva_exp, datetime.utcnow().isoformat(), atleta_id)
     )
     conn.commit()
-    print("  [OK] Token refrescado.")
+    print("  [OK] Token refrescado correctamente.")
     return nuevo_access
 
 

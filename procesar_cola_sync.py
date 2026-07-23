@@ -181,9 +181,24 @@ def procesar_pendientes(conn):
         if proveedor == 'wahoo':
             print(f'  -> id={row_id} atleta_id={atleta_id} modo={modo} -- proveedor=WAHOO')
             ok, salida = sync_wahoo(atleta_id)
+            # Detectar si el problema es el token (no seguir acumulando pedidos)
+            token_muerto = ('INVALIDO' in salida or 'invalid_grant' in salida.lower()
+                            or 're-conectar' in salida.lower()
+                            or 'refresh_token' in salida.lower() and 'rechazo' in salida.lower())
             if ok:
                 marcar(conn, row_id, 'completado', salida)
                 print(f'     [OK] atleta_id={atleta_id} (Wahoo) completado')
+            elif token_muerto:
+                marcar(conn, row_id, 'error', salida)
+                print(f'     [ERROR] atleta_id={atleta_id} (Wahoo) -- TOKEN INVALIDO, '
+                      f'el atleta debe re-conectar Wahoo desde su perfil')
+                # Cancelar todos los demas pedidos pendientes de este atleta
+                cur.execute(
+                    "UPDATE sync_log SET status='error', detalle='Token Wahoo invalido - re-conectar' "
+                    "WHERE atleta_id=%s AND status='pendiente'",
+                    (atleta_id,)
+                )
+                conn.commit()
             else:
                 marcar(conn, row_id, 'parcial', salida)
                 print(f'     [PARCIAL] atleta_id={atleta_id} (Wahoo) -- revisar detalle')
