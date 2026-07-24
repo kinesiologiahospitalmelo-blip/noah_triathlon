@@ -107,6 +107,30 @@ function getZone(hr, lthr) {
   return r < 0.82 ? 'Z1' : r < 0.88 ? 'Z2' : r < 0.94 ? 'Z3'
        : r < 1.00 ? 'Z4' : r < 1.06 ? 'Z5' : 'Z6'
 }
+// Zonas por pace para swimming (basado en CSS) y running (basado en pace umbral)
+function getZoneByPace(pace, umbral, sport) {
+  if (!pace || !umbral) return 'Z1'
+  if (sport === 'swimming') {
+    // Swimming: CSS = umbral Z4. Más lento = zona más baja
+    const r = umbral / pace  // invertido: pace alto = lento
+    return r < 0.78 ? 'Z1' : r < 0.86 ? 'Z2' : r < 0.94 ? 'Z3'
+         : r < 1.00 ? 'Z4' : r < 1.06 ? 'Z5' : 'Z6'
+  }
+  // Running: pace_umbral = umbral Z4. Más rápido (pace menor) = zona más alta
+  const r = umbral / pace
+  return r < 0.78 ? 'Z1' : r < 0.86 ? 'Z2' : r < 0.94 ? 'Z3'
+       : r < 1.00 ? 'Z4' : r < 1.06 ? 'Z5' : 'Z6'
+}
+// Seleccionar la mejor zona disponible para un lap
+function getLapZone(lap, actLthr, sport, paceUmbral) {
+  // Swimming: siempre por pace (no suele tener HR)
+  if (sport === 'swimming' && lap.pace && paceUmbral) return getZoneByPace(lap.pace, paceUmbral, 'swimming')
+  // Si hay HR, usarla
+  if (lap.hr && actLthr) return getZone(lap.hr, actLthr)
+  // Fallback: pace si hay umbral
+  if (lap.pace && paceUmbral) return getZoneByPace(lap.pace, paceUmbral, sport)
+  return 'Z2'
+}
 function bezierPath(points) {
   if (!points || points.length < 2) return ''
   return points.map(([x, y], i) => {
@@ -269,6 +293,10 @@ export default function GraficoActividadStreams({
   const stats  = streamStats || {}
   const distKm = act?.distance_km > 500 ? act.distance_km / 1000 : act?.distance_km
   const actLthr = lthr
+  // Pace umbral: CSS para swimming, pace_umbral_run para running
+  const paceUmbral = sport === 'swimming'
+    ? (act?.css_100m || act?.css || null)
+    : (act?.pace_umbral || act?.pace_umbral_run || act?.sftp_pace || null)
 
   const hrVals   = series.map(s => s.hr).filter(v => v && v > 40 && v < 250)
   const powVals  = series.map(s => s.power).filter(v => v && v > 0 && v < 3000)
@@ -445,14 +473,20 @@ export default function GraficoActividadStreams({
             background:'rgba(255,255,255,0.05)', border:`1px solid ${D.border2}`,
           }}>
             <span style={{ color:D.text3, fontSize:10 }}>{fmtTime(hS.t)}</span>
-            {hS.hr && (
-              <span style={{ color:D.zone[getZone(hS.hr,actLthr)], fontWeight:700, display:'flex', alignItems:'center', gap:3 }}>
-                <HeartPulse size={12}/> {Math.round(hS.hr)} bpm
-                <span style={{ color:D.text3, fontWeight:400, marginLeft:4, fontSize:9 }}>
-                  {getZone(hS.hr,actLthr)}
+            {(() => {
+              const hZone = hS.hr ? getZone(hS.hr, actLthr)
+                : (hS.pace && paceUmbral ? getZoneByPace(hS.pace, paceUmbral, sport) : null)
+              return hZone ? (
+                <span style={{ color:D.zone[hZone], fontWeight:700, display:'flex', alignItems:'center', gap:3 }}>
+                  {hS.hr ? <><HeartPulse size={12}/> {Math.round(hS.hr)} bpm</> : null}
+                  <span style={{ color:D.text3, fontWeight:400, marginLeft:4, fontSize:9 }}>
+                    {hZone}
+                  </span>
                 </span>
-              </span>
-            )}
+              ) : null
+            })()}
+            {!hS.hr && hS.pace && !paceUmbral && null}
+            {hS.hr && !getZone(hS.hr, actLthr) && null}
             {hS.power   && <span style={{ color:D.power.dot, fontWeight:700, display:'flex', alignItems:'center', gap:3 }}><Zap size={12}/> {Math.round(hS.power)}W</span>}
             {hS.pace    && <span style={{ color:D.pace.dot,  fontWeight:700, display:'flex', alignItems:'center', gap:3 }}><Footprints size={12}/> {fmtPace(hS.pace)}{paceUnit}</span>}
             {hS.cadence && <span style={{ color:D.cad.dot,   fontWeight:600, display:'flex', alignItems:'center', gap:3 }}><RotateCw size={11}/> {Math.round(hS.cadence)}</span>}
@@ -547,7 +581,7 @@ export default function GraficoActividadStreams({
           })}
 
           {/* ── BLOQUES DE LAPS — barras con color de zona, altura según pace/potencia ── */}
-          {tieneLaps && _lapsNorm.length > 1 && (() => {
+          {tieneLaps && _lapsNorm.length >= 1 && (() => {
             const totalDurS = _lapsNorm.reduce((acc,l) => acc + (l.duration_min||0)*60, 0)
             const scaleT = totalDurS > 0 ? maxT / totalDurS : 1
             const blockBase = PT + iH
@@ -560,8 +594,8 @@ export default function GraficoActividadStreams({
               const x2 = PL + (t2 / Math.max(maxT,1)) * iW
               const w  = Math.max(1, x2 - x1)
 
-              // Zona del lap
-              const z = lap.hr ? getZone(lap.hr, actLthr) : 'Z2'
+              // Zona del lap — usa pace para swimming, HR para el resto
+              const z = getLapZone(lap, actLthr, sport, paceUmbral)
               const zoneCol = D.zone[z] || D.zone.Z2
 
               // Altura del bloque según la métrica principal del deporte
@@ -732,7 +766,7 @@ export default function GraficoActividadStreams({
           )}
 
           {/* Barra de zonas — banda delgada debajo del gráfico */}
-          {tieneLaps && _lapsNorm.length > 1 && (() => {
+          {tieneLaps && _lapsNorm.length >= 1 && (() => {
             const totalDurS = _lapsNorm.reduce((acc,l) => acc + (l.duration_min||0)*60, 0)
             const scaleT = totalDurS > 0 ? maxT / totalDurS : 1
             const barY = PT + iH + 2
@@ -744,12 +778,12 @@ export default function GraficoActividadStreams({
               const x1 = PL + (t1 / Math.max(maxT,1)) * iW
               const x2 = PL + (t2 / Math.max(maxT,1)) * iW
               const w  = Math.max(1, x2 - x1 - 0.5)
-              const z  = lap.hr ? getZone(lap.hr, actLthr) : 'Z1'
+              const z  = getLapZone(lap, actLthr, sport, paceUmbral)
               return <rect key={i} x={x1} y={barY} width={w} height={barH}
                 fill={D.zone[z] || D.zone.Z1} opacity="0.75" rx="1"/>
             })
           })()}
-          {(!tieneLaps || _lapsNorm.length <= 1) && canalesOn.hr && hrVals.length > 0 && (() => {
+          {(!tieneLaps || _lapsNorm.length < 1) && canalesOn.hr && hrVals.length > 0 && (() => {
             const barY = PT + iH + 2
             const barH = 5
             const step = Math.max(1, Math.floor(n / 120))
