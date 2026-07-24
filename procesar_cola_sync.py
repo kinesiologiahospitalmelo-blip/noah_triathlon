@@ -232,13 +232,30 @@ def procesar_pendientes(conn):
 
 
 def limpiar_viejos(conn, dias=7):
-    """Borra registros de sync_log completados/con error de hace mas de N dias
-    (housekeeping simple, para que la tabla no crezca sin limite)."""
+    """Housekeeping de sync_log:
+    - Completados/ok: borrar despues de 7 dias
+    - Error/parcial con detalle vacio o SALTEADO: borrar despues de 2 dias
+    - Error/parcial con detalle real: borrar despues de 7 dias
+    """
     cur = conn.cursor()
-    limite = (datetime.now() - timedelta(days=dias)).isoformat()
+    limite_7d = (datetime.now() - timedelta(days=dias)).isoformat()
+    limite_2d = (datetime.now() - timedelta(days=2)).isoformat()
+
+    # Completados y ok viejos
     cur.execute(
-        "DELETE FROM sync_log WHERE status IN ('completado','error','parcial') AND ts < %s",
-        (limite,)
+        "DELETE FROM sync_log WHERE status IN ('completado','ok') AND ts < %s",
+        (limite_7d,)
+    )
+    # Error/parcial vacios o con puro SALTEADO — no sirven, borrar rapido
+    cur.execute(
+        "DELETE FROM sync_log WHERE status IN ('error','parcial') AND ts < %s "
+        "AND (detalle IS NULL OR detalle = '' OR detalle LIKE '%%SALTEADO%%')",
+        (limite_2d,)
+    )
+    # Error/parcial con detalle real — mantener un poco mas
+    cur.execute(
+        "DELETE FROM sync_log WHERE status IN ('error','parcial') AND ts < %s",
+        (limite_7d,)
     )
     conn.commit()
 

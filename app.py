@@ -2258,6 +2258,19 @@ def sincronizar_garmin_endpoint(atleta_id):
             return ok({'exito': True, 'estado': 'ya_pendiente',
                        'mensaje': 'Ya hay una sincronizacion en curso para este atleta.'})
 
+        # Evitar acumulacion: no crear pedido nuevo si ya hay uno reciente
+        # (cualquier estado) de los ultimos 10 minutos
+        reciente = conn.execute(
+            "SELECT id FROM sync_log WHERE atleta_id=%s AND ts > %s "
+            "ORDER BY id DESC LIMIT 1",
+            (atleta_id, (datetime.now() - timedelta(minutes=10)).isoformat())
+        ).fetchone()
+
+        if reciente:
+            conn.close()
+            return ok({'exito': True, 'estado': 'reciente',
+                       'mensaje': 'Sincronizacion reciente, no se encola otra.'})
+
         tiene_wahoo = conn.execute(
             "SELECT 1 FROM wahoo_tokens WHERE atleta_id=%s", (atleta_id,)
         ).fetchone()
