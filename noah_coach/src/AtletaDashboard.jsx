@@ -943,7 +943,7 @@ function ActividadRealizada({ sesionPresc, atletaId }) {
 // Eje Y izq: FC (bpm) — curva violeta bezier, Eje Y der: pace/watts/swolf
 // Columnas de fondo coloreadas por zona, línea LTHR amber, hover tooltip
 // ── GraficoActividad → GraficoActividadStreams ────────────────────────────────
-const GraficoActividad = memo(function GraficoActividad({ act, laps, sport, lthr = 162, sesionId, atletaId }) {
+const GraficoActividad = memo(function GraficoActividad({ act, laps, sport, lthr = 162, sesionId, atletaId, css, paceUmbral }) {
   return (
     <GraficoActividadStreams
       act={act}
@@ -953,10 +953,11 @@ const GraficoActividad = memo(function GraficoActividad({ act, laps, sport, lthr
       sesionId={sesionId || act?.sesion_id}
       atletaId={atletaId}
       height={210}
+      css={css}
+      paceUmbral={paceUmbral}
     />
   )
 }, (prev, next) => (
-  // Solo re-renderiza si cambia sesionId, atletaId, lthr o sport — no por re-renders del padre
   prev.sesionId === next.sesionId &&
   prev.atletaId === next.atletaId &&
   prev.lthr     === next.lthr     &&
@@ -972,6 +973,9 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
   const sport = (act.sport || 'running').toLowerCase()
   const s     = SPORT[sport] || SPORT.running
   const LTHR  = sesionPresc?.lthr || (sport==='cycling' ? 155 : 162)
+  const zonas = useZonasAtletaDash(atletaId, sport)
+  const cssVal = sport === 'swimming' ? zonas?.css : null
+  const paceUmbralVal = sport === 'running' ? zonas?.pace_umbral : null
 
   const distKm = act.distance_km > 500 ? act.distance_km/1000 : act.distance_km
 
@@ -1042,7 +1046,8 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
       {/* Gráfico premium */}
       <div style={{padding:'12px 4px',borderBottom:`1px solid ${NOAH_C.border}`}}>
         <GraficoActividad act={act} laps={laps} sport={sport} lthr={LTHR}
-          sesionId={act.sesion_id || act.id} atletaId={atletaId}/>
+          sesionId={act.sesion_id || act.id} atletaId={atletaId}
+          css={cssVal} paceUmbral={paceUmbralVal}/>
       </div>
 
       {/* Torque y W'bal — solo para ciclismo, bajo demanda */}
@@ -1458,26 +1463,29 @@ function ZonasSwimTable({ zonas }) {
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:0}}>
-      {lista.map((z,i)=>(
+      {lista.map((z,i)=>{
+        const ZCOLS = ['#6366F1','#3B82F6','#22C55E','#EAB308','#F97316','#EF4444']; const zColor = z.color || ZCOLS[i] || NOAH_C.swim
+        return (
         <div key={i} style={{
           padding:'13px 16px', borderBottom:`1px solid ${NOAH_C.border}`,
           display:'flex', justifyContent:'space-between', alignItems:'center',
-          borderLeft:`4px solid ${NOAH_C.swim}`,
-          background:`${NOAH_C.swim}12`,
+          borderLeft:`4px solid ${zColor}`,
+          background:`${zColor}12`,
         }}>
           <div>
-            <span style={{fontWeight:800, color:NOAH_C.swim, marginRight:8, fontSize:14}}>{z.zona}</span>
+            <span style={{fontWeight:800, color:zColor, marginRight:8, fontSize:14}}>{z.zona}</span>
             <span style={{fontWeight:600, color:'rgba(255,255,255,0.9)'}}>{z.nombre}</span>
             <div style={{fontSize:11, color:'rgba(255,255,255,0.5)', marginTop:3}}>{z.descripcion}</div>
           </div>
           <div style={{textAlign:'right'}}>
-            <div style={{fontSize:14, fontWeight:700, color:NOAH_C.swim}}>
+            <div style={{fontSize:14, fontWeight:700, color:zColor}}>
               {z.pace_rango || ((z.pace_100m_min||z.pace_min) ? `${z.pace_100m_min||z.pace_min} – ${z.pace_100m_max||z.pace_max}` : '--')}
             </div>
             <div style={{fontSize:11, color:NOAH_C.ink3}}>HR {z.hr_min||'--'}–{z.hr_max||'--'} bpm</div>
           </div>
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -2682,13 +2690,12 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
       </div>
 
       {/* Cabecera días */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr) 60px',
+      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',
         padding:'0 6px',borderBottom:`1px solid ${T.border}`}}>
         {DIAS.map(d=>(
           <div key={d} style={{padding:'6px 4px',textAlign:'center',fontSize:9,
             fontWeight:600,color:T.week,textTransform:'uppercase',letterSpacing:0.5}}>{d}</div>
         ))}
-        <div style={{padding:'6px 4px',textAlign:'center',fontSize:9,fontWeight:600,color:T.week}}>TSS</div>
       </div>
 
       {/* Cargando */}
@@ -2696,7 +2703,7 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
 
       {/* Semanas */}
       {!cargando && semanas.map((sem,si)=>(
-        <div key={si} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr) 60px',
+        <div key={si} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',
           padding:'2px 6px',gap:2,borderBottom:`1px solid ${T.border}`}}>
           {sem.map((fecha,di)=>{
             if(!fecha) return <div key={di}/>
@@ -2742,13 +2749,6 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
               </div>
             )
           })}
-          {/* TSS semanal */}
-          <div style={{display:'flex',flexDirection:'column',justifyContent:'center',
-            alignItems:'center',padding:'4px',background:T.tss,borderRadius:7,
-            border:`1px solid ${T.tssBorder}`}}>
-            <div style={{fontSize:13,fontWeight:800,color:T.tssText}}>{Math.round(tssSem(sem))}</div>
-            <div style={{fontSize:7,color:T.dim,textTransform:'uppercase',letterSpacing:0.5}}>TSS</div>
-          </div>
         </div>
       ))}
 
@@ -3966,25 +3966,24 @@ export default function AtletaDashboard({ atletaId }) {
         actLoading={syncLoading}
       />
 
-      {/* Conectar con Wahoo */}
-      <div style={{ padding:'0 16px 12px' }}>
-        <button onClick={async () => {
-          try {
-            const r = await axios.get(`${API}/atletas/${id}/wahoo/authorize_url`)
-            const url = r.data?.data?.url
-            if (url) window.location.href = url
-            else alert('No se pudo generar el link de conexión con Wahoo.')
-          } catch {
-            alert('No se pudo conectar con Wahoo. Probá de nuevo.')
-          }
-        }} style={{
-          width:'100%', padding:'9px 14px', borderRadius:9, fontSize:12, fontWeight:700,
-          background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.75)',
-          border:'1px solid rgba(255,255,255,0.15)', cursor:'pointer',
-        }}>
-          🔗 Conectar con Wahoo
-        </button>
-      </div>
+      {/* Wahoo sync — solo atleta 4 */}
+      {String(id) === '4' && (
+        <div style={{ padding:'0 16px 6px', textAlign:'right' }}>
+          <button onClick={async () => {
+            try {
+              const r = await axios.get(`${API}/atletas/${id}/wahoo/authorize_url`)
+              const url = r.data?.data?.url
+              if (url) window.location.href = url
+              else alert('No se pudo generar el link de Wahoo.')
+            } catch { alert('Error conectando Wahoo.') }
+          }} style={{
+            background:'#fff', border:'none', cursor:'pointer', borderRadius:6,
+            fontSize:12, color:'#111', padding:'5px 14px', fontWeight:700,
+          }}>
+            Wahoo
+          </button>
+        </div>
+      )}
 
       {/* SYNC RESULT */}
       {syncResult && (

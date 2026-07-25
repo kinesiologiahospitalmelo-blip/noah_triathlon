@@ -155,6 +155,7 @@ export default function GraficoActividadStreams({
   act, laps, sport, lthr = 162,
   sesionId, atletaId,
   height = 280,
+  css: cssProp, paceUmbral: paceUmbralProp,
 }) {
   const svgRef = useRef(null)
   // Inicializar desde cache si ya existe — evita parpadeo al re-montar
@@ -263,14 +264,20 @@ export default function GraficoActividadStreams({
   }))
 
   const lapsComoSeries = _lapsNorm.length === 1
-    ? [
-        { ..._lapsNorm[0], t: 0,
-          hr:    _lapsNorm[0].hr    ? _lapsNorm[0].hr    * 0.88 : null,
-          pace:  _lapsNorm[0].pace  ? _lapsNorm[0].pace  * 1.05 : null,
-          power: _lapsNorm[0].power ? _lapsNorm[0].power * 0.75 : null,
-        },
-        _lapsNorm[0],
-      ]
+    ? (() => {
+        // 1 lap sin streams: generar puntos a lo largo del tiempo para que
+        // la curva de pace y FC se vea como linea horizontal real
+        const lap = _lapsNorm[0]
+        const durS = (lap.duration_min || 1) * 60
+        const nPts = 20
+        return Array.from({length: nPts}, (_, i) => ({
+          ...lap,
+          t: (i / (nPts - 1)) * durS,
+          hr:    lap.hr,
+          pace:  lap.pace,
+          power: lap.power,
+        }))
+      })()
     : _lapsNorm
 
   // FIX: antes, mientras los streams todavia cargaban (tieneStreams=false
@@ -280,23 +287,62 @@ export default function GraficoActividadStreams({
   // esta cargando, no se usa ese relleno -- se espera a que termine.
   const _rawSeries = usarLaps ? lapsComoSeries
     : (tieneStreams ? streams : (loading ? [] : (tieneLaps ? lapsComoSeries : [])))
-  const series = _rawSeries.map(s => ({
-    ...s,
-    pace:  s.pace  != null ? s.pace  : (s.speed_ms && s.speed_ms > 0.3
-      ? parseFloat((sport==='swimming' ? 100/(s.speed_ms*60) : 1000/(s.speed_ms*60)).toFixed(3))
-      : null),
-    power: s.power != null ? s.power : s.power_w,
-    alt:   s.alt   != null ? s.alt   : s.altitude_m,
-  }))
+  const series = _rawSeries.map((s, idx) => {
+    let pace = s.pace
+    if (pace == null && s.speed_ms && s.speed_ms > 0.01) {
+      // speed_ms en la DB de Garmin esta 10x mas chico (factor 0.1 en sincronizar_garmin)
+      const spd = s.speed_ms < 0.5 ? s.speed_ms * 10 : s.speed_ms
+      if (spd > 0.3) {
+        pace = parseFloat((sport==='swimming' ? 100/(spd*60) : 1000/(spd*60)).toFixed(3))
+      }
+    }
+    // Fallback: calcular pace desde distancia acumulada si no hay speed_ms
+    if (pace == null && s.distance_m != null && idx > 0) {
+      const prev = _rawSeries[idx - 1]
+      if (prev?.distance_m != null && prev?.t != null && s.t != null) {
+        const dDist = s.distance_m - prev.distance_m
+        const dTime = (s.t - prev.t) || 1
+        if (dDist > 0.5) {
+          const speedMs = dDist / dTime
+          if (speedMs > 0.3) {
+            pace = parseFloat((sport==='swimming' ? 100/(speedMs*60) : 1000/(speedMs*60)).toFixed(3))
+          }
+        }
+      }
+    }
+    return {
+      ...s,
+      pace,
+      power: s.power != null ? s.power : s.power_w,
+      alt:   s.alt   != null ? s.alt   : s.altitude_m,
+    }
+  })
 
   const esLaps = usarLaps
   const stats  = streamStats || {}
   const distKm = act?.distance_km > 500 ? act.distance_km / 1000 : act?.distance_km
   const actLthr = lthr
-  // Pace umbral: CSS para swimming, pace_umbral_run para running
+
+  // Fetch CSS/pace_umbral directo desde la API de zonas
+  const [_zonasData, _setZonasData] = useState(null)
+  useEffect(() => {
+    if (!atletaId || !sport) return
+    const k = `zonas_${atletaId}_${sport}`
+    if (window._noahZonasCache?.[k]) { _setZonasData(window._noahZonasCache[k]); return }
+    authFetch(`${API}/atletas/${atletaId}/zonas/${sport}`)
+      .then(r => r.json())
+      .then(r => {
+        console.log('[NOAH zonas]', sport, r.data); if (r.data) {
+          if (!window._noahZonasCache) window._noahZonasCache = {}
+          window._noahZonasCache[k] = r.data
+          _setZonasData(r.data)
+        }
+      }).catch(() => {})
+  }, [atletaId, sport])
+
   const paceUmbral = sport === 'swimming'
-    ? (act?.css_100m || act?.css || null)
-    : (act?.pace_umbral || act?.pace_umbral_run || act?.sftp_pace || null)
+    ? (_zonasData?.css || cssProp || act?.css_100m || act?.css || null)
+    : (_zonasData?.pace_umbral || paceUmbralProp || act?.pace_umbral || act?.pace_umbral_run || null)
 
   const hrVals   = series.map(s => s.hr).filter(v => v && v > 40 && v < 250)
   const powVals  = series.map(s => s.power).filter(v => v && v > 0 && v < 3000)
@@ -594,8 +640,21 @@ export default function GraficoActividadStreams({
               const x2 = PL + (t2 / Math.max(maxT,1)) * iW
               const w  = Math.max(1, x2 - x1)
 
-              // Zona del lap — usa pace para swimming, HR para el resto
-              const z = getLapZone(lap, actLthr, sport, paceUmbral)
+              // Si swimming y no hay paceUmbral, estimar CSS desde mediana de paces
+              const _pu = paceUmbral || (sport==='swimming' ? (() => {
+                const wPaces = _lapsNorm.map(l=>l.pace).filter(Boolean).map(p=>p>5?p/10:p).sort((a,b)=>a-b)
+                return wPaces.length > 0 ? wPaces[Math.floor(wPaces.length*0.4)] : null
+              })() : null)
+              const _css = paceUmbral || _pu
+              let z = 'Z2'
+              if (sport === 'swimming' && lap.pace && _css) {
+                const p100 = lap.pace > 5 ? lap.pace / 10 : lap.pace
+                const r = _css / p100
+                z = r < 0.78 ? 'Z1' : r < 0.86 ? 'Z2' : r < 0.94 ? 'Z3' : r < 1.00 ? 'Z4' : r < 1.06 ? 'Z5' : 'Z6'
+              } else if (lap.hr && actLthr) {
+                const r = lap.hr / actLthr
+                z = r < 0.82 ? 'Z1' : r < 0.88 ? 'Z2' : r < 0.94 ? 'Z3' : r < 1.00 ? 'Z4' : r < 1.06 ? 'Z5' : 'Z6'
+              }
               const zoneCol = D.zone[z] || D.zone.Z2
 
               // Altura del bloque según la métrica principal del deporte
@@ -619,9 +678,9 @@ export default function GraficoActividadStreams({
 
               return (
                 <g key={i}>
-                  {/* Barra con color de zona al 40% */}
+                  {/* Barra con color de zona */}
                   <rect x={x1+0.5} y={blockTop} width={w-1} height={blockH}
-                    fill={zoneCol} opacity={isHov ? 0.5 : 0.4} rx="1"/>
+                    fill={zoneCol} opacity={isHov ? 0.6 : (_lapsNorm.length <= 1 ? 0.15 : 0.5)} rx="1"/>
                   {/* Separador entre laps */}
                   {i > 0 && (
                     <line x1={x1} y1={PT} x2={x1} y2={PT+iH}
@@ -817,7 +876,7 @@ export default function GraficoActividadStreams({
             <>
               {[paceMin, paceMin+(paceMax-paceMin)*0.25, paceMin+(paceMax-paceMin)*0.5, paceMin+(paceMax-paceMin)*0.75, paceMax].map(v => (
                 <text key={v} x={PL-7} y={yPace(v)+4} textAnchor="end"
-                  fontSize="9" fill={D.text2}>{fmtPace(v)}</text>
+                  fontSize="9" fill={D.text2}>{sport==='swimming' ? (()=>{const sv=v>5?v/10:v; return sv<1?Math.round(sv*60)+'"':Math.floor(sv)+"'"+String(Math.round((sv%1)*60)).padStart(2,'0')+'"'})() : fmtPace(v)}</text>
               ))}
               <text x={14} y={H/2} textAnchor="middle" fontSize="9"
                 fill={D.pace.line} opacity="0.5" transform={`rotate(-90,14,${H/2})`}>Pace {paceUnit}</text>
@@ -848,11 +907,20 @@ export default function GraficoActividadStreams({
           )}
 
           {/* Eje X */}
-          {xTicks.map(t => {
+          {sport === 'swimming' ? (() => {
+            const totalDist = _lapsNorm.reduce((acc,l) => acc + ((l.dist_km||l.distance_km||0)*1000), 0) || (act?.distance_km||0)*1000
+            const nT = 6
+            return Array.from({length: nT+1}, (_,k) => {
+              const m = Math.round(totalDist * k / nT)
+              const x = PL + (k / nT) * iW
+              return <text key={k} x={x} y={H-PB+24} textAnchor='middle'
+                fontSize='9' fill={D.text2}>{m}m</text>
+            })
+          })() : xTicks.map(t => {
             const x = PL + (t/maxT)*iW
             return (
-              <text key={t} x={x} y={H-PB+24} textAnchor="middle"
-                fontSize="9" fill={D.text2}>{fmtTime(t)}</text>
+              <text key={t} x={x} y={H-PB+24} textAnchor='middle'
+                fontSize='9' fill={D.text2}>{fmtTime(t)}</text>
             )
           })}
         </svg>
@@ -893,7 +961,7 @@ export default function GraficoActividadStreams({
         <LapsColapsable laps={laps} sport={sport} lthr={actLthr}
           hover={hover} setHover={setHover}
           ftp={act?.ftp_watts || act?.ftp}
-          defaultOpen={esLaps}/>
+          defaultOpen={esLaps} paceUmbral={paceUmbral}/>
       )}
     </div>
   )
@@ -979,7 +1047,7 @@ function SinGrafico({ act, distKm, sport, loading, streamZonas, lthr, sesionId }
   )
 }
 
-function LapsColapsable({ laps, sport, lthr, hover, setHover, ftp, defaultOpen }) {
+function LapsColapsable({ laps, sport, lthr, hover, setHover, ftp, defaultOpen, paceUmbral }) {
   const [open, setOpen] = useState(defaultOpen !== false)
   return (
     <div style={{ borderTop:`1px solid ${D.border}` }}>
@@ -994,16 +1062,23 @@ function LapsColapsable({ laps, sport, lthr, hover, setHover, ftp, defaultOpen }
           transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
       </button>
       {open && <TablaLaps laps={laps} sport={sport} lthr={lthr}
-        hover={hover} setHover={setHover} ftp={ftp}/>}
+        hover={hover} setHover={setHover} ftp={ftp} paceUmbral={paceUmbral}/>}
     </div>
   )
 }
 
-function TablaLaps({ laps, sport, lthr, hover, setHover, ftp }) {
+function TablaLaps({ laps, sport, lthr, hover, setHover, ftp, paceUmbral }) {
   const fmtP    = p => { if(!p) return '--'; const m=Math.floor(p),s=Math.round((p-m)*60); return `${m}:${String(s).padStart(2,'0')} /km` }
   const fmtDur  = min => { if(!min) return '--'; return `${Math.floor(min)}'${String(Math.round((min%1)*60)).padStart(2,'0')}"` }
   const hrColor = hr => { if(!hr||!lthr) return '#6366F1'; const r=hr/lthr; return r<0.82?'#6366F1':r<0.88?'#3B82F6':r<0.94?'#22C55E':r<1.00?'#EAB308':r<1.06?'#F97316':'#EF4444' }
   const hrZone  = hr => { if(!hr||!lthr) return 'Z1'; const r=hr/lthr; return r<0.82?'Z1':r<0.88?'Z2':r<0.94?'Z3':r<1.00?'Z4':r<1.06?'Z5':'Z6' }
+  const swimZone = pace => {
+    if (!pace || !paceUmbral) return 'Z1'
+    const p100 = pace > 5 ? pace / 10 : pace
+    const r = paceUmbral / p100
+    return r < 0.78 ? 'Z1' : r < 0.86 ? 'Z2' : r < 0.94 ? 'Z3' : r < 1.00 ? 'Z4' : r < 1.06 ? 'Z5' : 'Z6'
+  }
+  const swimColor = pace => D.zone[swimZone(pace)] || '#6366F1'
   const pwColor = (w,f) => { if(!w||!f) return '#EAB308'; const r=w/f; return r<0.55?'#6366F1':r<0.75?'#3B82F6':r<0.87?'#22C55E':r<0.95?'#EAB308':r<1.05?'#F97316':'#EF4444' }
   const pwZone  = (w,f) => { if(!w||!f) return '--'; const r=w/f; return r<0.55?'Z1':r<0.75?'Z2':r<0.87?'Z3':r<0.95?'Z4':r<1.05?'Z5':'Z6' }
 
@@ -1073,8 +1148,8 @@ function TablaLaps({ laps, sport, lthr, hover, setHover, ftp }) {
         </thead>
         <tbody>
           {laps.map((l,i) => {
-            const zc  = hrColor(l.hr_avg)
-            const zn  = hrZone(l.hr_avg)
+            const zc  = sport === 'swimming' ? swimColor(l.pace) : hrColor(l.hr_avg)
+            const zn  = sport === 'swimming' ? swimZone(l.pace) : hrZone(l.hr_avg)
             const isH = hover===i
             const metrica = sport==='swimming'&&l.swolf?l.swolf.toFixed(1)
               :(l.avg_power||l.watts)?`${Math.round(l.avg_power||l.watts)}W`
