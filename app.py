@@ -2165,6 +2165,7 @@ def get_zonas_deporte(atleta_id, deporte):
         conn.close()
         return ok({'deporte':'running','referencia':lthr_run,
                    'zonas':z.calcular(), 'tsb':tsb, 'ctl':ctl,
+                   'pace_umbral': pace_umbral_run or z.pace_umbral,
                    'recomendacion':recomendacion})
 
     elif deporte == 'cycling':
@@ -3705,12 +3706,35 @@ def get_activity_streams(atleta_id):
                     if lthr_row:
                         lthr_local = (lthr_row[1] if sport_local == 'cycling' else lthr_row[0]) or 162
 
-                    series = [{
-                        't': m[0], 'ts_s': m[0], 'hr': m[1], 'pace': None, 'power': m[4],
-                        'power_w': m[4], 'cadence': m[3], 'speed_ms': m[2],
-                        'altitude_m': m[5], 'distance_m': m[6],
+                    is_swim = sport_local == 'swimming'
+                    def _calc_pace(spd):
+                        if spd and spd > 0.3:
+                            return round(100/(spd*60) if is_swim else 1000/(spd*60), 3)
+                        return None
+
+                    series_raw = [{
+                        't': m[0], 'ts_s': m[0], 'hr': m[1],
+                        'pace': _calc_pace(m[2]),
+                        'power': m[4], 'power_w': m[4], 'cadence': m[3],
+                        'speed_ms': m[2], 'altitude_m': m[5], 'distance_m': m[6],
                         'temperature': m[7], 'left_right_pct': m[8],
                     } for m in muestras]
+
+                    # Fallback: calcular pace desde distancia si speed_ms es null
+                    for i in range(1, len(series_raw)):
+                        if series_raw[i]['pace'] is None:
+                            d0 = series_raw[i-1].get('distance_m')
+                            d1 = series_raw[i].get('distance_m')
+                            t0 = series_raw[i-1].get('t')
+                            t1 = series_raw[i].get('t')
+                            if d0 is not None and d1 is not None and t0 is not None and t1 is not None:
+                                dd = d1 - d0
+                                dt = (t1 - t0) or 1
+                                if dd > 0.1:
+                                    spd = dd / dt
+                                    if spd > 0.3:
+                                        series_raw[i]['pace'] = round(100/(spd*60) if is_swim else 1000/(spd*60), 3)
+                    series = series_raw
 
                     hrs   = [m[1] for m in muestras if m[1]]
                     pows  = [m[4] for m in muestras if m[4]]
