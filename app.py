@@ -2791,6 +2791,241 @@ def get_velocidad_critica(atleta_id):
         conn.close()
 
 
+
+
+@app.route('/api/atletas/<int:atleta_id>/sesiones/<int:sesion_id>/dbal_running', methods=['GET'])
+@requiere_login
+def get_dbal_running(atleta_id, sesion_id):
+    """D'bal por sesion de running — vaciado de energia anaerobica.
+    Mismo modelo que W'bal en ciclismo pero con velocidad y Critical Speed."""
+    import math
+    conn = get_conn()
+    try:
+        # 1. Obtener CS y D' del atleta
+        cs_data = _calcular_cs_dprime(conn, atleta_id)
+        if cs_data is None:
+            return ok({'disponible': False,
+                       'msg': 'Faltan marcas historicas para calcular CS y D\' (necesita al menos 2 de: mejor 1k, 5k, 10k)'})
+
+        cs_ms = cs_data['cs_ms']           # m/s
+        d_prime = cs_data['d_prime_m']     # metros
+
+        if cs_ms <= 0 or d_prime <= 0:
+            return ok({'disponible': False, 'msg': 'CS o D\' calculados son invalidos'})
+
+        # 2. Leer streams de la sesion
+        rows = conn.execute(
+            "SELECT ts_s, speed_ms, hr, distance_m FROM activity_samples "
+            "WHERE sesion_id=%s AND atleta_id=%s ORDER BY ts_s",
+            (sesion_id, atleta_id)
+        ).fetchall()
+
+        if not rows:
+            return ok({'disponible': False, 'msg': 'Sin datos de stream para esta sesion'})
+
+        # 3. Calcular D'bal sample por sample
+        dbal = d_prime  # arranca lleno (100%)
+        samples = []
+        vaciados = 0
+        ya_critico = False
+        min_dbal_pct = 100.0
+        tiempo_rojo = 0.0
+        tiempo_naranja = 0.0
+
+        for i, row in enumerate(rows):
+            ts_s = float(row[0] or 0)
+            speed = float(row[1] or 0)
+
+            # Correccion: speed_ms guardado con factor 0.1 (bug conocido de sincronizar_garmin)
+            if speed > 0 and speed < 0.5:
+                speed = speed * 10
+
+            hr = float(row[2] or 0) if row[2] else None
+            dt = max(0.5, min(float(rows[i][0] - rows[i-1][0]) if i > 0 else 1.0, 5.0))
+
+            if speed > cs_ms:
+                # Deplecion: v > CS
+                dbal = max(0, dbal - (speed - cs_ms) * dt)
+            elif speed > 0:
+                # Recuperacion: v <= CS (formula exponencial de Skiba adaptada)
+                deficit = d_prime - dbal
+                if deficit > 0:
+                    # tau para running: calibracion propia (basada en Skiba ciclismo adaptada)
+                    dcp = cs_ms - speed  # diferencia con CS en m/s
+                    tau = 300 * math.exp(-0.5 * dcp) + 200  # tau en segundos
+                    dbal = min(d_prime, dbal + deficit * (1 - math.exp(-dt / tau)))
+
+            dbal_pct = (dbal / d_prime) * 100
+            min_dbal_pct = min(min_dbal_pct, dbal_pct)
+
+            if dbal_pct < 10:
+                tiempo_rojo += dt
+                if not ya_critico:
+                    vaciados += 1
+                    ya_critico = True
+            elif dbal_pct < 25:
+                tiempo_naranja += dt
+                ya_critico = False
+            else:
+                ya_critico = False
+
+            # Calcular pace para el tooltip
+            pace = None
+            if speed > 0.3:
+                pace = round(1000 / (speed * 60), 3)  # min/km
+
+            samples.append({
+                'ts_s': round(ts_s, 1),
+                'speed_ms': round(speed, 2),
+                'dbal_m': round(dbal, 1),
+                'dbal_pct': round(dbal_pct, 1),
+                'pace': pace,
+                'hr': int(hr) if hr else None,
+            })
+
+        # Downsampling para no mandar demasiados puntos
+        MAX_PUNTOS = 800
+        if len(samples) > MAX_PUNTOS:
+            paso = max(1, len(samples) // MAX_PUNTOS)
+            samples = samples[::paso]
+
+        return ok({
+            'disponible': True,
+            'samples': samples,
+            'metricas': {
+                'cs_ms': cs_ms,
+                'cs_pace': cs_data['cs_pace_min_km'],
+                'd_prime_m': d_prime,
+                'dbal_min_pct': round(min_dbal_pct, 1),
+                'vaciados_criticos': vaciados,
+                'tiempo_rojo_s': round(tiempo_rojo, 0),
+                'tiempo_naranja_s': round(tiempo_naranja, 0),
+            }
+        })
+    finally:
+        conn.close()
+
+
+
+
+
+
+@app.route('/api/atletas/<int:atleta_id>/sesiones/<int:sesion_id>/dbal_swimming', methods=['GET'])
+@requiere_login
+def get_dbal_swimming(atleta_id, sesion_id):
+    """D-bal por sesion de swimming — vaciado de energia anaerobica.
+    Usa CSS (Critical Swim Speed) y calcula por lap/largo, no segundo a segundo."""
+    import math
+    conn = get_conn()
+    try:
+        # 1. Obtener CSS del atleta (min/100m)
+        atleta = conn.execute("SELECT css_100m FROM atletas WHERE id=%s", (atleta_id,)).fetchone()
+        if not atleta or not atleta[0]:
+            return ok({'disponible': False, 'msg': 'El atleta no tiene CSS configurado'})
+
+        css_min100 = float(atleta[0])  # ej: 1.85 (min/100m)
+        css_speed = 100.0 / (css_min100 * 60)  # m/s
+
+        # 2. D prima para swim: estimar desde CSS (no hay test directo)
+        # Valor tipico: 15-25 metros para recreativo, 25-40 para avanzado
+        d_prime = 20.0  # metros (default conservador)
+
+        # 3. Obtener laps de la sesion
+        laps = conn.execute(
+            "SELECT lap_num, duration_min, distance_km, pace, hr_avg, cadence "
+            "FROM laps WHERE sesion_id=%s AND atleta_id=%s ORDER BY lap_num",
+            (sesion_id, atleta_id)
+        ).fetchall()
+
+        if not laps:
+            return ok({'disponible': False, 'msg': 'Sin laps para esta sesion'})
+
+        # 4. Calcular D-bal por lap
+        dbal = d_prime
+        samples = []
+        vaciados = 0
+        ya_critico = False
+        min_dbal_pct = 100.0
+        tiempo_rojo = 0.0
+        tiempo_acum = 0.0
+
+        for lap in laps:
+            lap_num = lap[0] or len(samples) + 1
+            dur_min = float(lap[1] or 0)
+            dist_km = float(lap[2] or 0)
+            pace_raw = float(lap[3] or 0) if lap[3] else None
+            hr = float(lap[4] or 0) if lap[4] else None
+            cad = float(lap[5] or 0) if lap[5] else None
+            dur_s = dur_min * 60
+
+            if dur_s <= 0:
+                continue
+
+            # Calcular velocidad del lap
+            if dist_km > 0:
+                speed = (dist_km * 1000) / dur_s  # m/s
+            elif pace_raw and pace_raw > 0:
+                # pace en min/km, convertir a speed
+                speed = 1000.0 / (pace_raw * 60)
+            else:
+                speed = 0
+
+            # Pace en min/100m para display
+            pace_100m = (100.0 / (speed * 60)) if speed > 0 else None
+
+            # D-bal calculo
+            if speed > css_speed and speed > 0:
+                # Deplecion: nada mas rapido que CSS
+                dbal = max(0, dbal - (speed - css_speed) * dur_s)
+            elif speed > 0:
+                # Recuperacion
+                deficit = d_prime - dbal
+                if deficit > 0:
+                    dcp = css_speed - speed
+                    tau = 200 * math.exp(-0.8 * dcp) + 150
+                    dbal = min(d_prime, dbal + deficit * (1 - math.exp(-dur_s / tau)))
+
+            dbal_pct = (dbal / d_prime) * 100
+            min_dbal_pct = min(min_dbal_pct, dbal_pct)
+
+            if dbal_pct < 10:
+                tiempo_rojo += dur_s
+                if not ya_critico:
+                    vaciados += 1
+                    ya_critico = True
+            else:
+                ya_critico = False
+
+            tiempo_acum += dur_s
+
+            samples.append({
+                'lap': int(lap_num),
+                'ts_s': round(tiempo_acum, 1),
+                'speed_ms': round(speed, 3),
+                'pace_100m': round(pace_100m, 2) if pace_100m else None,
+                'dbal_m': round(dbal, 1),
+                'dbal_pct': round(dbal_pct, 1),
+                'hr': int(hr) if hr else None,
+                'dist_m': round(dist_km * 1000) if dist_km else None,
+                'cadence': int(cad) if cad else None,
+            })
+
+        return ok({
+            'disponible': True,
+            'samples': samples,
+            'metricas': {
+                'css_min100': css_min100,
+                'css_speed_ms': round(css_speed, 3),
+                'd_prime_m': d_prime,
+                'dbal_min_pct': round(min_dbal_pct, 1),
+                'vaciados_criticos': vaciados,
+                'tiempo_rojo_s': round(tiempo_rojo, 0),
+                'total_laps': len(samples),
+            }
+        })
+    finally:
+        conn.close()
+
 @app.route('/api/atletas/<int:atleta_id>/sync_status', methods=['GET'])
 @requiere_login
 def get_sync_status(atleta_id):
