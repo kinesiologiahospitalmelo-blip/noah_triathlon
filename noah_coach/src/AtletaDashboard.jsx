@@ -1060,9 +1060,12 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
         />
       )}
 
-      {/* Velocidad Critica (CS) y D' — solo para running */}
       {sport === 'running' && (
-        <VelocidadCriticaBotones atletaId={atletaId} />
+        <EnergyReserveTimeline atletaId={atletaId} sesionId={act.sesion_id || act.id} />
+      )}
+
+      {sport === 'swimming' && (
+        <SwimEnergyTimeline atletaId={atletaId} sesionId={act.sesion_id || act.id} />
       )}
 
 
@@ -4626,154 +4629,238 @@ function ProyeccionMultideporte({ atletaId }) {
 }
 
 
-function VelocidadCriticaBotones({ atletaId }) {
-  const [data, setData]       = useState(null)
-  const [abierto, setAbierto] = useState(false)
-  const [cargando, setCargando] = useState(false)
 
-  const cargar = async () => {
+// -- Energy Reserve Timeline -- D-bal premium para running
+
+// -- SwimEnergyTimeline -- D-bal para swimming por vuelta/largo
+function SwimEnergyTimeline({ atletaId, sesionId }) {
+  const [open, setOpen] = useState(false)
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [hIdx, setHIdx] = useState(null)
+
+  const load = async () => {
     if (data) return
-    setCargando(true)
+    setLoading(true)
     try {
-      const r = await authFetch(`${API}/atletas/${atletaId}/velocidad_critica`)
+      const r = await authFetch(`${API}/atletas/${atletaId}/sesiones/${sesionId}/dbal_swimming`)
       const d = await r.json()
       setData(d.data || d)
     } catch {}
-    setCargando(false)
+    setLoading(false)
   }
 
-  const toggle = () => {
-    setAbierto(o => !o)
-    if (!data) cargar()
+  const toggle = () => { setOpen(o => !o); if (!data) load() }
+  const { samples=[], metricas={} } = data || {}
+  const fP = p => { if(!p) return '--'; return `${Math.floor(p)}:${String(Math.round((p%1)*60)).padStart(2,'0')}` }
+
+  const W=580, H=200, PL=42, PR=8, PT=16, PB=22
+  const iW=W-PL-PR, iH=H-PT-PB
+  const maxLap = samples.length || 1
+  const xL = i => PL + (i/(maxLap-1||1))*iW
+  const yD = p => PT + iH - (Math.max(0,Math.min(100,p))/100)*iH
+
+  const dPath = samples.length>1 ? samples.map((s,i)=>`${i?'L':'M'}${xL(i).toFixed(1)},${yD(s.dbal_pct).toFixed(1)}`).join(' ') : ''
+  const dArea = dPath ? dPath+` L${xL(samples.length-1).toFixed(1)},${yD(0)} L${xL(0).toFixed(1)},${yD(0)} Z` : ''
+  const hP = hIdx!=null && hIdx<samples.length ? samples[hIdx] : null
+
+  const onMouse = e => {
+    const r = e.currentTarget.getBoundingClientRect()
+    const ratio = (e.clientX-r.left-(PL*(r.width/W))) / (iW*(r.width/W))
+    const idx = Math.round(ratio*(samples.length-1))
+    if(idx>=0 && idx<samples.length) setHIdx(idx); else setHIdx(null)
   }
+
+  const tRojo = Math.round((metricas.tiempo_rojo_s||0)/60)
 
   return (
-    <div style={{ padding:'16px 4px' }}>
+    <div style={{padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
       <button onClick={toggle} style={{
-        width:'100%', padding:'14px 0', borderRadius:12, fontSize:16, fontWeight:800,
-        background: abierto ? '#007AFF' : 'rgba(0,122,255,0.12)',
-        color: abierto ? '#fff' : '#007AFF',
-        border:`1.5px solid ${abierto ? '#007AFF' : 'rgba(0,122,255,0.3)'}`,
-        cursor:'pointer',
-      }}>{cargando && !data ? '⏳' : '🏃 Velocidad Crítica'}</button>
+        width:'100%',padding:'11px 0',borderRadius:10,fontSize:13,fontWeight:700,
+        background:open?'rgba(52,211,153,0.15)':'rgba(52,211,153,0.06)',
+        color:'#34D399',border:`1px solid ${open?'rgba(52,211,153,0.35)':'rgba(52,211,153,0.12)'}`,
+        cursor:'pointer',letterSpacing:'0.5px'
+      }}>Energy Reserve (Swim)</button>
 
-      {abierto && (
-        <div style={{ marginTop:16 }}>
-          {!data && cargando && (
-            <div style={{ textAlign:'center', padding:20, color:NOAH_C.ink3, fontSize:14 }}>
-              Calculando...
+      {open && data && data.disponible && (
+        <div style={{marginTop:14,background:'#0D1117',borderRadius:12,padding:'14px 10px',border:'1px solid rgba(255,255,255,0.06)'}}>
+          <div style={{display:'flex',gap:14}}>
+            <div style={{flex:7}}>
+              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'1px',marginBottom:6}}>RESERVA ENERGETICA (%) POR VUELTA</div>
+              <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{display:'block'}}
+                onMouseMove={onMouse} onMouseLeave={()=>setHIdx(null)}>
+                <defs>
+                  <clipPath id="cES"><rect x={PL} y={PT} width={iW} height={iH}/></clipPath>
+                </defs>
+                <rect x={PL} y={yD(100)} width={iW} height={yD(50)-yD(100)} fill="rgba(52,211,153,0.07)"/>
+                <rect x={PL} y={yD(50)} width={iW} height={yD(25)-yD(50)} fill="rgba(234,179,8,0.06)"/>
+                <rect x={PL} y={yD(25)} width={iW} height={yD(10)-yD(25)} fill="rgba(249,115,22,0.06)"/>
+                <rect x={PL} y={yD(10)} width={iW} height={yD(0)-yD(10)} fill="rgba(239,68,68,0.07)"/>
+                {[100,50,25,10,0].map(v=><line key={v} x1={PL} y1={yD(v)} x2={W-PR} y2={yD(v)} stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>)}
+                {dArea && <path d={dArea} fill="rgba(52,211,153,0.06)" clipPath="url(#cES)"/>}
+                {dPath && <path d={dPath} fill="none" stroke="#34D399" strokeWidth="2.5" strokeLinejoin="round" clipPath="url(#cES)"/>}
+                {samples.map((s,i)=><circle key={i} cx={xL(i)} cy={yD(s.dbal_pct)} r={hIdx===i?5:3} fill={s.dbal_pct>50?'#34D399':s.dbal_pct>25?'#EAB308':s.dbal_pct>10?'#F97316':'#EF4444'} stroke="#0D1117" strokeWidth="1.5" style={{cursor:'pointer'}} onMouseEnter={()=>setHIdx(i)}/>)}
+                {[100,50,25,10,0].map(v=><text key={v} x={PL-5} y={yD(v)+3} textAnchor="end" fontSize="8" fill="rgba(255,255,255,0.25)">{v}%</text>)}
+                {samples.filter((_,i)=>i%(Math.ceil(samples.length/8)||1)===0||i===samples.length-1).map((s,_,arr)=>{const i=samples.indexOf(s); return <text key={i} x={xL(i)} y={H-3} textAnchor="middle" fontSize="7" fill="rgba(255,255,255,0.25)">{s.lap}</text>})}
+                {hP && (
+                  <>
+                    <line x1={xL(hIdx)} y1={PT} x2={xL(hIdx)} y2={PT+iH} stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
+                    <rect x={xL(hIdx)-55} y={yD(hP.dbal_pct)-22} width={110} height={18} rx={4} fill="rgba(0,0,0,0.85)"/>
+                    <text x={xL(hIdx)} y={yD(hP.dbal_pct)-10} textAnchor="middle" fontSize="8" fill="#fff" fontWeight="600">
+                      {Math.round(hP.dbal_pct)}% | {fP(hP.pace_100m)}/100m | L{hP.lap}
+                    </text>
+                  </>
+                )}
+              </svg>
             </div>
-          )}
-          {data && !data.disponible && (
-            <div style={{ textAlign:'center', padding:16, color:NOAH_C.ink3, fontSize:14 }}>
-              📡 {data.msg}
-            </div>
-          )}
-          {data && data.disponible && (
-            <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
-              <div style={{ flex:1, minWidth:140, padding:'4px 2px' }}>
-                <div style={{ fontSize:13, color:NOAH_C.ink3, fontWeight:600 }}>CS (Velocidad Crítica)</div>
-                <div style={{ fontSize:28, fontWeight:800, color:'#F97316' }}>
-                  {data.cs_pace_min_km ? `${Math.floor(data.cs_pace_min_km)}:${String(Math.round((data.cs_pace_min_km%1)*60)).padStart(2,'0')}/km` : '--'}
-                </div>
+            <div style={{flex:3,display:'flex',flexDirection:'column',gap:14,paddingTop:8}}>
+              <div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>RESERVA ACTUAL</div>
+                <div style={{fontSize:28,fontWeight:800,color:'#34D399',lineHeight:1}}>{samples.length?`${Math.round(samples[samples.length-1].dbal_pct)}%`:'--'}</div>
               </div>
-              <div style={{ flex:1, minWidth:140, padding:'4px 2px' }}>
-                <div style={{ fontSize:13, color:NOAH_C.ink3, fontWeight:600 }}>D' (capacidad anaeróbica)</div>
-                <div style={{ fontSize:28, fontWeight:800, color:'#A855F7' }}>
-                  {data.d_prime_m ? `${Math.round(data.d_prime_m)}m` : '--'}
-                </div>
+              <div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>RESERVA MIN.</div>
+                <div style={{fontSize:24,fontWeight:800,color:(metricas.dbal_min_pct||0)>25?'#EAB308':'#EF4444',lineHeight:1}}>{metricas.dbal_min_pct!=null?`${metricas.dbal_min_pct}%`:'--'}</div>
+              </div>
+              <div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>ZONA ROJA</div>
+                <div style={{fontSize:20,fontWeight:700,color:'#EF4444',lineHeight:1}}>{tRojo?`${tRojo}min`:'0'}</div>
+              </div>
+              <div style={{borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:10}}>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>CSS</div>
+                <div style={{fontSize:18,fontWeight:700,color:'#34D399',lineHeight:1}}>{fP(metricas.css_min100)}/100m</div>
+              </div>
+              <div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>VUELTAS</div>
+                <div style={{fontSize:18,fontWeight:700,color:'#A855F7',lineHeight:1}}>{metricas.total_laps||'--'}</div>
               </div>
             </div>
-          )}
-          {data && data.disponible && <ExplicacionCS data={data} />}
+          </div>
         </div>
       )}
+      {open && data && !data.disponible && <div style={{marginTop:12,padding:14,color:'rgba(255,255,255,0.35)',fontSize:12,textAlign:'center'}}>{data.msg}</div>}
+      {open && !data && loading && <div style={{marginTop:12,padding:16,color:'rgba(255,255,255,0.35)',fontSize:12,textAlign:'center'}}>Calculando...</div>}
     </div>
   )
 }
 
+function EnergyReserveTimeline({ atletaId, sesionId }) {
+  const [open, setOpen] = useState(false)
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [hIdx, setHIdx] = useState(null)
 
-function ExplicacionCS({ data }) {
-  const puntos = [
-    data.fastest_1k  && { label:'1k',  km:1,  seg:data.fastest_1k  },
-    data.fastest_5k  && { label:'5k',  km:5,  seg:data.fastest_5k  },
-    data.fastest_10k && { label:'10k', km:10, seg:data.fastest_10k },
-  ].filter(Boolean).map(p => ({ ...p, pace: (p.seg/p.km)/60 }))
-
-  if (!data.cs_pace_min_km || puntos.length === 0) return null
-
-  const csPace = data.cs_pace_min_km
-  const todos = [...puntos, { label:'CS', pace:csPace, esCS:true }]
-  const paceMin = Math.min(...todos.map(p=>p.pace)) - 0.06
-  const paceMax = Math.max(...todos.map(p=>p.pace)) + 0.06
-
-  const CX=150, CY=118, R=88
-  const anguloDe = (pace) => 180 - ((pace-paceMin)/(paceMax-paceMin))*180
-  const puntoArco = (pace, r=R) => {
-    const a = anguloDe(pace) * Math.PI/180
-    return { x: CX + r*Math.cos(a), y: CY - r*Math.sin(a) }
+  const load = async () => {
+    if (data) return
+    setLoading(true)
+    try {
+      const r = await authFetch(`${API}/atletas/${atletaId}/sesiones/${sesionId}/dbal_running`)
+      const d = await r.json()
+      setData(d.data || d)
+    } catch {}
+    setLoading(false)
   }
-  const fmtP = (p) => `${Math.floor(p)}:${String(Math.round((p%1)*60)).padStart(2,'0')}`
 
-  const inicio = puntoArco(paceMin)
-  const fin    = puntoArco(paceMax)
-  const csPos  = puntoArco(csPace)
-  const csIn   = puntoArco(csPace, R-13)
-  const csOut  = puntoArco(csPace, R+13)
+  const toggle = () => { setOpen(o => !o); if (!data) load() }
+  const { samples=[], metricas={} } = data || {}
+  const step = Math.max(1, Math.floor(samples.length / 500))
+  const pts = samples.filter((_,i) => i % step === 0)
+  const maxT = pts.length > 0 ? pts[pts.length-1].ts_s : 1
+  const fmtT = s => { const m=Math.floor(s/60); return `${m}:${String(Math.round(s%60)).padStart(2,'0')}` }
+  const fP = p => { if(!p) return '--'; return `${Math.floor(p)}:${String(Math.round((p%1)*60)).padStart(2,'0')}` }
+
+  const W=580, H1=200, H2=55, PL=42, PR=8, PT=16, PB=22
+  const iW=W-PL-PR, iH=H1-PT-PB, iH2=H2-8-18
+  const x = t => PL + (t/maxT)*iW
+  const yD = p => PT + iH - (Math.max(0,Math.min(100,p))/100)*iH
+  const pVals = pts.map(p=>p.pace).filter(Boolean)
+  const pMn = pVals.length ? Math.min(...pVals)*0.95 : 3
+  const pMx = pVals.length ? Math.max(...pVals)*1.05 : 8
+  const yP = p => 8 + iH2 - ((pMx-p)/(pMx-pMn||1))*iH2
+
+  const dPath = pts.length>1 ? pts.map((p,i)=>`${i?'L':'M'}${x(p.ts_s).toFixed(1)},${yD(p.dbal_pct).toFixed(1)}`).join(' ') : ''
+  const dArea = dPath ? dPath+` L${x(pts[pts.length-1].ts_s).toFixed(1)},${yD(0)} L${x(0).toFixed(1)},${yD(0)} Z` : ''
+  const pPath = pts.filter(p=>p.pace).length>1 ? pts.filter(p=>p.pace).map((p,i)=>`${i?'L':'M'}${x(p.ts_s).toFixed(1)},${yP(p.pace).toFixed(1)}`).join(' ') : ''
+  const ticks = Array.from({length:7},(_,i)=>Math.round(maxT*i/6))
+  const hP = hIdx!=null && hIdx<pts.length ? pts[hIdx] : null
+
+  const onMouse = e => {
+    const r = e.currentTarget.getBoundingClientRect()
+    const ratio = (e.clientX-r.left-(PL*(r.width/W))) / (iW*(r.width/W))
+    const idx = Math.round(ratio*(pts.length-1))
+    if(idx>=0 && idx<pts.length) setHIdx(idx); else setHIdx(null)
+  }
+
+  const tRojo = Math.round((metricas.tiempo_rojo_s||0)/60)
+  const tNar = Math.round((metricas.tiempo_naranja_s||0)/60)
 
   return (
-    <div style={{ marginTop:14, padding:'14px 4px 10px', borderTop:`1px solid ${NOAH_C.border}` }}>
-      <div style={{ fontSize:10.5, color:NOAH_C.ink3, marginBottom:4, lineHeight:1.5, textAlign:'center' }}>
-        Cuanto más lejos del rojo (esfuerzo corto/anaeróbico), más cerca del límite sostenible
-        {puntos.length < 3 && <span style={{display:'block',fontSize:9,marginTop:2,opacity:0.7}}>
-          (faltan marcas históricas para completar el gráfico — {3-puntos.length} distancia{puntos.length===2?'':'s'} sin datos)
-        </span>}
-      </div>
-      <svg viewBox="0 0 300 175" style={{ width:'100%', maxWidth:440, display:'block', margin:'0 auto' }}>
-        <defs>
-          <linearGradient id="gaugeCS" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%"  stopColor="#EF4444"/>
-            <stop offset="35%" stopColor="#F97316"/>
-            <stop offset="65%" stopColor="#FACC15"/>
-            <stop offset="100%" stopColor="#38BDF8"/>
-          </linearGradient>
-        </defs>
+    <div style={{padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+      <button onClick={toggle} style={{
+        width:'100%',padding:'11px 0',borderRadius:10,fontSize:13,fontWeight:700,
+        background:open?'rgba(74,222,128,0.15)':'rgba(74,222,128,0.06)',
+        color:'#4ADE80',border:`1px solid ${open?'rgba(74,222,128,0.35)':'rgba(74,222,128,0.12)'}`,
+        cursor:'pointer',letterSpacing:'0.5px'
+      }}>Energy Reserve Timeline</button>
 
-        {/* Arco base */}
-        <path d={`M ${inicio.x} ${inicio.y} A ${R} ${R} 0 0 1 ${fin.x} ${fin.y}`}
-          stroke="url(#gaugeCS)" strokeWidth="13" fill="none" strokeLinecap="round" opacity="0.9"/>
-
-        {/* Marca de CS -- estilo "redline" de tacómetro */}
-        <line x1={csIn.x} y1={csIn.y} x2={csOut.x} y2={csOut.y}
-          stroke="#fff" strokeWidth="3.5" strokeLinecap="round"/>
-        <circle cx={csPos.x} cy={csPos.y} r="5" fill="#38BDF8" stroke="#fff" strokeWidth="1.5"/>
-
-        {/* Puntos de cada distancia */}
-        {puntos.map((p,i) => {
-          const pos = puntoArco(p.pace)
-          const arriba = pos.y < CY - 20
-          return (
-            <g key={i}>
-              <circle cx={pos.x} cy={pos.y} r="5" fill={NOAH_C.cardBg2} stroke="#EF4444" strokeWidth="2.5"/>
-              <text x={pos.x} y={arriba ? pos.y-12 : pos.y+20} textAnchor="middle"
-                fontSize="9" fontWeight="700" fill={NOAH_C.ink3}>{p.label}</text>
-              <text x={pos.x} y={arriba ? pos.y-2 : pos.y+30} textAnchor="middle"
-                fontSize="8.5" fill={NOAH_C.ink4}>{fmtP(p.pace)}</text>
-            </g>
-          )
-        })}
-
-        {/* Lectura central tipo velocímetro digital */}
-        <text x={CX} y={CY+2} textAnchor="middle" fontSize="30" fontWeight="800" fill="#38BDF8">
-          {fmtP(csPace)}
-        </text>
-        <text x={CX} y={CY+18} textAnchor="middle" fontSize="9" fontWeight="700" fill={NOAH_C.ink3} letterSpacing="1">
-          CS · min/km
-        </text>
-      </svg>
+      {open && data && data.disponible && (
+        <div style={{marginTop:14,background:'#0D1117',borderRadius:12,padding:'14px 10px',border:'1px solid rgba(255,255,255,0.06)'}}>
+          <div style={{display:'flex',gap:14}}>
+            <div style={{flex:7}}>
+              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'1px',marginBottom:6}}>RESERVA ENERGETICA (%)</div>
+              <svg width="100%" viewBox={`0 0 ${W} ${H1}`} style={{display:'block'}}
+                onMouseMove={onMouse} onMouseLeave={()=>setHIdx(null)}>
+                <defs>
+                  <clipPath id="cER"><rect x={PL} y={PT} width={iW} height={iH}/></clipPath>
+                </defs>
+                <rect x={PL} y={yD(100)} width={iW} height={yD(50)-yD(100)} fill="rgba(34,197,94,0.07)"/>
+                <rect x={PL} y={yD(50)} width={iW} height={yD(25)-yD(50)} fill="rgba(234,179,8,0.06)"/>
+                <rect x={PL} y={yD(25)} width={iW} height={yD(10)-yD(25)} fill="rgba(249,115,22,0.06)"/>
+                <rect x={PL} y={yD(10)} width={iW} height={yD(0)-yD(10)} fill="rgba(239,68,68,0.07)"/>
+                {[100,50,25,10,0].map(v=><line key={v} x1={PL} y1={yD(v)} x2={W-PR} y2={yD(v)} stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>)}
+                {ticks.map(t=><line key={t} x1={x(t)} y1={PT} x2={x(t)} y2={PT+iH} stroke="rgba(255,255,255,0.04)" strokeWidth="1"/>)}
+                {dArea && <path d={dArea} fill="rgba(74,222,128,0.06)" clipPath="url(#cER)"/>}
+                {dPath && <path d={dPath} fill="none" stroke="#4ADE80" strokeWidth="2" strokeLinejoin="round" clipPath="url(#cER)"/>}
+                {[100,50,25,10,0].map(v=><text key={v} x={PL-5} y={yD(v)+3} textAnchor="end" fontSize="8" fill="rgba(255,255,255,0.25)">{v}%</text>)}
+                {ticks.map(t=><text key={t} x={x(t)} y={H1-3} textAnchor="middle" fontSize="8" fill="rgba(255,255,255,0.25)">{fmtT(t)}</text>)}
+                {hP && <>
+                  <line x1={x(hP.ts_s)} y1={PT} x2={x(hP.ts_s)} y2={PT+iH} stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
+                  <circle cx={x(hP.ts_s)} cy={yD(hP.dbal_pct)} r={3.5} fill="#4ADE80" stroke="#0D1117" strokeWidth="2"/>
+                  <text x={x(hP.ts_s)} y={PT-4} textAnchor="middle" fontSize="9" fill="#fff" fontWeight="600">{Math.round(hP.dbal_pct)}% | {fP(hP.pace)}/km</text>
+                </>}
+              </svg>
+            </div>
+            <div style={{flex:3,display:'flex',flexDirection:'column',gap:14,paddingTop:8}}>
+              <div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>RESERVA ACTUAL</div>
+                <div style={{fontSize:28,fontWeight:800,color:'#4ADE80',lineHeight:1}}>{samples.length?`${Math.round(samples[samples.length-1].dbal_pct)}%`:'--'}</div>
+              </div>
+              <div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>RESERVA MIN.</div>
+                <div style={{fontSize:24,fontWeight:800,color:(metricas.dbal_min_pct||0)>25?'#EAB308':'#EF4444',lineHeight:1}}>{metricas.dbal_min_pct!=null?`${metricas.dbal_min_pct}%`:'--'}</div>
+              </div>
+              <div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>ZONA ROJA</div>
+                <div style={{fontSize:20,fontWeight:700,color:'#EF4444',lineHeight:1}}>{tRojo?`${tRojo}min`:'0'}</div>
+              </div>
+              <div style={{borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:10}}>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>CS</div>
+                <div style={{fontSize:18,fontWeight:700,color:'#F97316',lineHeight:1}}>{fP(metricas.cs_pace)}/km</div>
+              </div>
+              <div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>D PRIMA</div>
+                <div style={{fontSize:18,fontWeight:700,color:'#A855F7',lineHeight:1}}>{metricas.d_prime_m?`${Math.round(metricas.d_prime_m)}m`:'--'}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {open && data && !data.disponible && <div style={{marginTop:12,padding:14,color:'rgba(255,255,255,0.35)',fontSize:12,textAlign:'center'}}>{data.msg}</div>}
+      {open && !data && loading && <div style={{marginTop:12,padding:16,color:'rgba(255,255,255,0.35)',fontSize:12,textAlign:'center'}}>Calculando...</div>}
     </div>
   )
 }
+
 
 // ── SeccionPerfil -- todo lo que NOAH aprendio del atleta, en texto/tarjetas ──
 function SeccionPerfil({ atletaId }) {
