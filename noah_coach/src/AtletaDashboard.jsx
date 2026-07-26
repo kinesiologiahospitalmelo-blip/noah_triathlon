@@ -4632,117 +4632,69 @@ function ProyeccionMultideporte({ atletaId }) {
 
 // -- Energy Reserve Timeline -- D-bal premium para running
 
-// -- SwimEnergyTimeline -- D-bal para swimming por vuelta/largo
+// -- SwimEnergyTimeline v2 -- 3 curvas
 function SwimEnergyTimeline({ atletaId, sesionId }) {
   const [open, setOpen] = useState(false)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [hIdx, setHIdx] = useState(null)
-
   const load = async () => {
-    if (data) return
-    setLoading(true)
-    try {
-      const r = await authFetch(`${API}/atletas/${atletaId}/sesiones/${sesionId}/dbal_swimming`)
-      const d = await r.json()
-      setData(d.data || d)
-    } catch {}
+    if (data) return; setLoading(true)
+    try { const r = await authFetch(`${API}/atletas/${atletaId}/sesiones/${sesionId}/dbal_swimming`); const d = await r.json(); setData(d.data || d) } catch {}
     setLoading(false)
   }
-
+  useEffect(() => { setData(null); setOpen(false) }, [sesionId])
   const toggle = () => { setOpen(o => !o); if (!data) load() }
   const { samples=[], metricas={} } = data || {}
   const fP = p => { if(!p) return '--'; return `${Math.floor(p)}:${String(Math.round((p%1)*60)).padStart(2,'0')}` }
-
-  const W=580, H=200, PL=42, PR=8, PT=16, PB=22
-  const iW=W-PL-PR, iH=H-PT-PB
-  const maxLap = samples.length || 1
-  const xL = i => PL + (i/(maxLap-1||1))*iW
-  const yD = p => PT + iH - (Math.max(0,Math.min(100,p))/100)*iH
-
-  const dPath = samples.length>1 ? samples.map((s,i)=>`${i?'L':'M'}${xL(i).toFixed(1)},${yD(s.dbal_pct).toFixed(1)}`).join(' ') : ''
-  const dArea = dPath ? dPath+` L${xL(samples.length-1).toFixed(1)},${yD(0)} L${xL(0).toFixed(1)},${yD(0)} Z` : ''
-  const hP = hIdx!=null && hIdx<samples.length ? samples[hIdx] : null
-
-  const onMouse = e => {
-    const r = e.currentTarget.getBoundingClientRect()
-    const ratio = (e.clientX-r.left-(PL*(r.width/W))) / (iW*(r.width/W))
-    const idx = Math.round(ratio*(samples.length-1))
-    if(idx>=0 && idx<samples.length) setHIdx(idx); else setHIdx(null)
-  }
-
-  const tRojo = Math.round((metricas.tiempo_rojo_s||0)/60)
-
+  const W=580, H=200, PL=42, PR=8, PT=16, PB=22, iW=580-42-8, iH=200-16-22, n=samples.length||1
+  const xL = i => PL+(i/(n-1||1))*iW
+  const yD = p => PT+iH-(Math.max(0,Math.min(100,p))/100)*iH
+  const dP = n>1?samples.map((s,i)=>`${i?'L':'M'}${xL(i).toFixed(1)},${yD(s.dbal_pct).toFixed(1)}`).join(' '):''
+  const gP = n>1?samples.map((s,i)=>`${i?'L':'M'}${xL(i).toFixed(1)},${yD(s.glyc_pct||100).toFixed(1)}`).join(' '):''
+  const eP = n>1?samples.map((s,i)=>`${i?'L':'M'}${xL(i).toFixed(1)},${yD(s.energia_pct!=null?s.energia_pct:100).toFixed(1)}`).join(' '):''
+  const hP = hIdx!=null&&hIdx<n?samples[hIdx]:null
+  const onM = e => {const r=e.currentTarget.getBoundingClientRect();const ratio=(e.clientX-r.left-(PL*(r.width/W)))/(iW*(r.width/W));const idx=Math.round(ratio*(n-1));if(idx>=0&&idx<n)setHIdx(idx);else setHIdx(null)}
   return (
     <div style={{padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-      <button onClick={toggle} style={{
-        width:'100%',padding:'11px 0',borderRadius:10,fontSize:13,fontWeight:700,
-        background:open?'rgba(52,211,153,0.15)':'rgba(52,211,153,0.06)',
-        color:'#34D399',border:`1px solid ${open?'rgba(52,211,153,0.35)':'rgba(52,211,153,0.12)'}`,
-        cursor:'pointer',letterSpacing:'0.5px'
-      }}>Energy Reserve (Swim)</button>
-
+      <button onClick={toggle} style={{width:'100%',padding:'11px 0',borderRadius:10,fontSize:13,fontWeight:700,background:open?'rgba(52,211,153,0.15)':'rgba(52,211,153,0.06)',color:'#34D399',border:`1px solid ${open?'rgba(52,211,153,0.35)':'rgba(52,211,153,0.12)'}`,cursor:'pointer',letterSpacing:'0.5px'}}>Energy Reserve (Swim)</button>
       {open && data && data.disponible && (
         <div style={{marginTop:14,background:'#0D1117',borderRadius:12,padding:'14px 10px',border:'1px solid rgba(255,255,255,0.06)'}}>
           <div style={{display:'flex',gap:14}}>
             <div style={{flex:7}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'1px',marginBottom:6}}>RESERVA ENERGETICA — <span style={{color:'#4ADE80'}}>Anaerobica</span> / <span style={{color:'#EAB308'}}>Glucogeno</span> POR VUELTA</div>
-              <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{display:'block'}}
-                onMouseMove={onMouse} onMouseLeave={()=>setHIdx(null)}>
-                <defs>
-                  <clipPath id="cES"><rect x={PL} y={PT} width={iW} height={iH}/></clipPath>
-                </defs>
+              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'1px',marginBottom:6}}>RESERVA — <span style={{color:'#34D399'}}>D-bal</span> / <span style={{color:'#EAB308'}}>Glucogeno</span> / <span style={{color:'#F472B6'}}>Energia</span></div>
+              <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{display:'block'}} onMouseMove={onM} onMouseLeave={()=>setHIdx(null)}>
+                <defs><clipPath id="cES"><rect x={PL} y={PT} width={iW} height={iH}/></clipPath></defs>
                 <rect x={PL} y={yD(100)} width={iW} height={yD(50)-yD(100)} fill="rgba(52,211,153,0.07)"/>
                 <rect x={PL} y={yD(50)} width={iW} height={yD(25)-yD(50)} fill="rgba(234,179,8,0.06)"/>
                 <rect x={PL} y={yD(25)} width={iW} height={yD(10)-yD(25)} fill="rgba(249,115,22,0.06)"/>
                 <rect x={PL} y={yD(10)} width={iW} height={yD(0)-yD(10)} fill="rgba(239,68,68,0.07)"/>
                 {[100,50,25,10,0].map(v=><line key={v} x1={PL} y1={yD(v)} x2={W-PR} y2={yD(v)} stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>)}
-                {dArea && <path d={dArea} fill="rgba(52,211,153,0.06)" clipPath="url(#cES)"/>}
-                {dPath && <path d={dPath} fill="none" stroke="#34D399" strokeWidth="2.5" strokeLinejoin="round" clipPath="url(#cES)"/>}
+                {gP&&<path d={gP} fill="none" stroke="#EAB308" strokeWidth="1.5" strokeDasharray="4 2" clipPath="url(#cES)"/>}
+                {eP&&<path d={eP} fill="none" stroke="#F472B6" strokeWidth="2" clipPath="url(#cES)"/>}
+                {dP&&<path d={dP} fill="none" stroke="#34D399" strokeWidth="2.5" clipPath="url(#cES)"/>}
                 {samples.map((s,i)=><circle key={i} cx={xL(i)} cy={yD(s.dbal_pct)} r={hIdx===i?5:3} fill={s.dbal_pct>50?'#34D399':s.dbal_pct>25?'#EAB308':s.dbal_pct>10?'#F97316':'#EF4444'} stroke="#0D1117" strokeWidth="1.5" style={{cursor:'pointer'}} onMouseEnter={()=>setHIdx(i)}/>)}
                 {[100,50,25,10,0].map(v=><text key={v} x={PL-5} y={yD(v)+3} textAnchor="end" fontSize="8" fill="rgba(255,255,255,0.25)">{v}%</text>)}
-                {samples.filter((_,i)=>i%(Math.ceil(samples.length/8)||1)===0||i===samples.length-1).map((s,_,arr)=>{const i=samples.indexOf(s); return <text key={i} x={xL(i)} y={H-3} textAnchor="middle" fontSize="7" fill="rgba(255,255,255,0.25)">{s.lap}</text>})}
-                {hP && (
-                  <>
-                    <line x1={xL(hIdx)} y1={PT} x2={xL(hIdx)} y2={PT+iH} stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
-                    <rect x={xL(hIdx)-55} y={yD(hP.dbal_pct)-22} width={110} height={18} rx={4} fill="rgba(0,0,0,0.85)"/>
-                    <text x={xL(hIdx)} y={yD(hP.dbal_pct)-10} textAnchor="middle" fontSize="8" fill="#fff" fontWeight="600">
-                      {Math.round(hP.dbal_pct)}% | {fP(hP.pace_100m)}/100m | L{hP.lap}
-                    </text>
-                  </>
-                )}
+                {samples.filter((_,i)=>i%(Math.ceil(n/8)||1)===0||i===n-1).map(s=>{const idx=samples.indexOf(s);return <text key={idx} x={xL(idx)} y={H-3} textAnchor="middle" fontSize="7" fill="rgba(255,255,255,0.25)">{s.lap}</text>})}
+                {hP&&<><line x1={xL(hIdx)} y1={PT} x2={xL(hIdx)} y2={PT+iH} stroke="rgba(255,255,255,0.15)" strokeWidth="1"/><rect x={xL(hIdx)-60} y={yD(hP.dbal_pct)-22} width={120} height={18} rx={4} fill="rgba(0,0,0,0.85)"/><text x={xL(hIdx)} y={yD(hP.dbal_pct)-10} textAnchor="middle" fontSize="8" fill="#fff" fontWeight="600">{Math.round(hP.dbal_pct)}%D {Math.round(hP.glyc_pct||100)}%G {Math.round(hP.energia_pct||100)}%E L{hP.lap}</text></>}
               </svg>
             </div>
-            <div style={{flex:3,display:'flex',flexDirection:'column',gap:14,paddingTop:8}}>
-              <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>ANAEROBICA (D-bal)</div>
-                <div style={{fontSize:24,fontWeight:800,color:'#4ADE80',lineHeight:1}}>{samples.length?`${Math.round(samples[samples.length-1].dbal_pct)}%`:'--'}</div>
-              </div>
-              <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>MIN. ANAEROBICA</div>
-                <div style={{fontSize:24,fontWeight:800,color:(metricas.dbal_min_pct||0)>25?'#EAB308':'#EF4444',lineHeight:1}}>{metricas.dbal_min_pct!=null?`${metricas.dbal_min_pct}%`:'--'}</div>
-              </div>
-              <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>ZONA ROJA</div>
-                <div style={{fontSize:20,fontWeight:700,color:'#EF4444',lineHeight:1}}>{tRojo?`${tRojo}min`:'0'}</div>
-              </div>
-              <div style={{borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:10}}>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>CSS</div>
-                <div style={{fontSize:18,fontWeight:700,color:'#34D399',lineHeight:1}}>{fP(metricas.css_min100)}/100m</div>
-              </div>
-              <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>VUELTAS</div>
-                <div style={{fontSize:18,fontWeight:700,color:'#A855F7',lineHeight:1}}>{metricas.total_laps||'--'}</div>
-              </div>
+            <div style={{flex:3,display:'flex',flexDirection:'column',gap:12,paddingTop:8}}>
+              <div><div style={{fontSize:8,color:'rgba(255,255,255,0.3)',marginBottom:2}}>D-BAL</div><div style={{fontSize:22,fontWeight:800,color:'#34D399'}}>{n>0?`${Math.round(samples[n-1].dbal_pct)}%`:'--'}</div></div>
+              <div><div style={{fontSize:8,color:'rgba(255,255,255,0.3)',marginBottom:2}}>GLUCOGENO</div><div style={{fontSize:22,fontWeight:800,color:'#EAB308'}}>{n>0?`${Math.round(samples[n-1].glyc_pct||100)}%`:'--'}</div>{metricas.glyc_consumido_g?<div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{metricas.glyc_consumido_g}g</div>:null}</div>
+              <div><div style={{fontSize:8,color:'rgba(255,255,255,0.3)',marginBottom:2}}>ENERGIA</div><div style={{fontSize:22,fontWeight:800,color:'#F472B6'}}>{n>0?`${Math.round(samples[n-1].energia_pct||100)}%`:'--'}</div></div>
+              <div style={{borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:8}}><div style={{fontSize:8,color:'rgba(255,255,255,0.3)',marginBottom:2}}>CSS</div><div style={{fontSize:16,fontWeight:700,color:'#34D399'}}>{fP(metricas.css_min100)}/100m</div></div>
+              {metricas.readiness&&metricas.readiness<100?<div><div style={{fontSize:8,color:'rgba(255,255,255,0.3)',marginBottom:2}}>READINESS</div><div style={{fontSize:16,fontWeight:700,color:metricas.readiness>70?'#34D399':metricas.readiness>40?'#EAB308':'#EF4444'}}>{Math.round(metricas.readiness)}%</div></div>:null}
             </div>
           </div>
         </div>
       )}
-      {open && data && !data.disponible && <div style={{marginTop:12,padding:14,color:'rgba(255,255,255,0.35)',fontSize:12,textAlign:'center'}}>{data.msg}</div>}
-      {open && !data && loading && <div style={{marginTop:12,padding:16,color:'rgba(255,255,255,0.35)',fontSize:12,textAlign:'center'}}>Calculando...</div>}
+      {open&&data&&!data.disponible&&<div style={{marginTop:12,padding:14,color:'rgba(255,255,255,0.35)',fontSize:12,textAlign:'center'}}>{data.msg}</div>}
+      {open&&!data&&loading&&<div style={{marginTop:12,padding:16,color:'rgba(255,255,255,0.35)',fontSize:12,textAlign:'center'}}>Calculando...</div>}
     </div>
   )
 }
+
 
 function EnergyReserveTimeline({ atletaId, sesionId }) {
   const [open, setOpen] = useState(false)
@@ -4761,6 +4713,7 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
     setLoading(false)
   }
 
+  useEffect(() => { setData(null); setOpen(false) }, [sesionId])
   const toggle = () => { setOpen(o => !o); if (!data) load() }
   const { samples=[], metricas={} } = data || {}
   const step = Math.max(1, Math.floor(samples.length / 500))
