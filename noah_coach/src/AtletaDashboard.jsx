@@ -4686,7 +4686,7 @@ function SwimEnergyTimeline({ atletaId, sesionId }) {
         <div style={{marginTop:14,background:'#0D1117',borderRadius:12,padding:'14px 10px',border:'1px solid rgba(255,255,255,0.06)'}}>
           <div style={{display:'flex',gap:14}}>
             <div style={{flex:7}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'1px',marginBottom:6}}>RESERVA ENERGETICA (%) POR VUELTA</div>
+              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'1px',marginBottom:6}}>RESERVA ENERGETICA — <span style={{color:'#4ADE80'}}>Anaerobica</span> / <span style={{color:'#EAB308'}}>Glucogeno</span> POR VUELTA</div>
               <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{display:'block'}}
                 onMouseMove={onMouse} onMouseLeave={()=>setHIdx(null)}>
                 <defs>
@@ -4715,11 +4715,11 @@ function SwimEnergyTimeline({ atletaId, sesionId }) {
             </div>
             <div style={{flex:3,display:'flex',flexDirection:'column',gap:14,paddingTop:8}}>
               <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>RESERVA ACTUAL</div>
-                <div style={{fontSize:28,fontWeight:800,color:'#34D399',lineHeight:1}}>{samples.length?`${Math.round(samples[samples.length-1].dbal_pct)}%`:'--'}</div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>ANAEROBICA (D-bal)</div>
+                <div style={{fontSize:24,fontWeight:800,color:'#4ADE80',lineHeight:1}}>{samples.length?`${Math.round(samples[samples.length-1].dbal_pct)}%`:'--'}</div>
               </div>
               <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>RESERVA MIN.</div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>MIN. ANAEROBICA</div>
                 <div style={{fontSize:24,fontWeight:800,color:(metricas.dbal_min_pct||0)>25?'#EAB308':'#EF4444',lineHeight:1}}>{metricas.dbal_min_pct!=null?`${metricas.dbal_min_pct}%`:'--'}</div>
               </div>
               <div>
@@ -4780,6 +4780,10 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
 
   const dPath = pts.length>1 ? pts.map((p,i)=>`${i?'L':'M'}${x(p.ts_s).toFixed(1)},${yD(p.dbal_pct).toFixed(1)}`).join(' ') : ''
   const dArea = dPath ? dPath+` L${x(pts[pts.length-1].ts_s).toFixed(1)},${yD(0)} L${x(0).toFixed(1)},${yD(0)} Z` : ''
+  const gPath = pts.length>1 ? pts.map((p,j)=>`${j?'L':'M'}${x(p.ts_s).toFixed(1)},${yD(p.glyc_pct||100).toFixed(1)}`).join(' ') : ''
+  const gArea = gPath ? gPath+` L${x(pts[pts.length-1].ts_s).toFixed(1)},${yD(0)} L${x(0).toFixed(1)},${yD(0)} Z` : ''
+  const rFactor = (data?.metricas?.readiness || 100) / 100
+  const ePath = pts.length>1 ? pts.map((p,j)=>`${j?'L':'M'}${x(p.ts_s).toFixed(1)},${yD(p.energia_pct!=null?p.energia_pct:(p.glyc_pct||100)*rFactor).toFixed(1)}`).join(' ') : ''
   const pPath = pts.filter(p=>p.pace).length>1 ? pts.filter(p=>p.pace).map((p,i)=>`${i?'L':'M'}${x(p.ts_s).toFixed(1)},${yP(p.pace).toFixed(1)}`).join(' ') : ''
   const ticks = Array.from({length:7},(_,i)=>Math.round(maxT*i/6))
   const hP = hIdx!=null && hIdx<pts.length ? pts[hIdx] : null
@@ -4807,7 +4811,7 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
         <div style={{marginTop:14,background:'#0D1117',borderRadius:12,padding:'14px 10px',border:'1px solid rgba(255,255,255,0.06)'}}>
           <div style={{display:'flex',gap:14}}>
             <div style={{flex:7}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'1px',marginBottom:6}}>RESERVA ENERGETICA (%)</div>
+              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'1px',marginBottom:6}}>RESERVA ENERGETICA — <span style={{color:'#4ADE80'}}>Anaerobica</span> / <span style={{color:'#EAB308'}}>Glucogeno</span> / <span style={{color:'#F472B6'}}>Energia</span></div>
               <svg width="100%" viewBox={`0 0 ${W} ${H1}`} style={{display:'block'}}
                 onMouseMove={onMouse} onMouseLeave={()=>setHIdx(null)}>
                 <defs>
@@ -4819,6 +4823,9 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
                 <rect x={PL} y={yD(10)} width={iW} height={yD(0)-yD(10)} fill="rgba(239,68,68,0.07)"/>
                 {[100,50,25,10,0].map(v=><line key={v} x1={PL} y1={yD(v)} x2={W-PR} y2={yD(v)} stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>)}
                 {ticks.map(t=><line key={t} x1={x(t)} y1={PT} x2={x(t)} y2={PT+iH} stroke="rgba(255,255,255,0.04)" strokeWidth="1"/>)}
+                {gArea && <path d={gArea} fill="rgba(234,179,8,0.06)" clipPath="url(#cER)"/>}
+                {gPath && <path d={gPath} fill="none" stroke="#EAB308" strokeWidth="1.5" strokeDasharray="4 2" strokeLinejoin="round" clipPath="url(#cER)"/>}
+                {ePath && <path d={ePath} fill="none" stroke="#F472B6" strokeWidth="2" strokeLinejoin="round" clipPath="url(#cER)"/>}
                 {dArea && <path d={dArea} fill="rgba(74,222,128,0.06)" clipPath="url(#cER)"/>}
                 {dPath && <path d={dPath} fill="none" stroke="#4ADE80" strokeWidth="2" strokeLinejoin="round" clipPath="url(#cER)"/>}
                 {[100,50,25,10,0].map(v=><text key={v} x={PL-5} y={yD(v)+3} textAnchor="end" fontSize="8" fill="rgba(255,255,255,0.25)">{v}%</text>)}
@@ -4826,17 +4833,17 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
                 {hP && <>
                   <line x1={x(hP.ts_s)} y1={PT} x2={x(hP.ts_s)} y2={PT+iH} stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
                   <circle cx={x(hP.ts_s)} cy={yD(hP.dbal_pct)} r={3.5} fill="#4ADE80" stroke="#0D1117" strokeWidth="2"/>
-                  <text x={x(hP.ts_s)} y={PT-4} textAnchor="middle" fontSize="9" fill="#fff" fontWeight="600">{Math.round(hP.dbal_pct)}% | {fP(hP.pace)}/km</text>
+                  <text x={x(hP.ts_s)} y={PT-4} textAnchor="middle" fontSize="9" fill="#fff" fontWeight="600">{Math.round(hP.dbal_pct)}% D | {Math.round(hP.glyc_pct||100)}% G{` | ${Math.round(hP.energia_pct!=null?hP.energia_pct:(hP.glyc_pct||100)*rFactor)}% E`} | {fP(hP.pace)}/km</text>
                 </>}
               </svg>
             </div>
             <div style={{flex:3,display:'flex',flexDirection:'column',gap:14,paddingTop:8}}>
               <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>RESERVA ACTUAL</div>
-                <div style={{fontSize:28,fontWeight:800,color:'#4ADE80',lineHeight:1}}>{samples.length?`${Math.round(samples[samples.length-1].dbal_pct)}%`:'--'}</div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>ANAEROBICA (D-bal)</div>
+                <div style={{fontSize:24,fontWeight:800,color:'#4ADE80',lineHeight:1}}>{samples.length?`${Math.round(samples[samples.length-1].dbal_pct)}%`:'--'}</div>
               </div>
               <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>RESERVA MIN.</div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>MIN. ANAEROBICA</div>
                 <div style={{fontSize:24,fontWeight:800,color:(metricas.dbal_min_pct||0)>25?'#EAB308':'#EF4444',lineHeight:1}}>{metricas.dbal_min_pct!=null?`${metricas.dbal_min_pct}%`:'--'}</div>
               </div>
               <div>
@@ -4848,6 +4855,11 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
                 <div style={{fontSize:18,fontWeight:700,color:'#F97316',lineHeight:1}}>{fP(metricas.cs_pace)}/km</div>
               </div>
               <div>
+              {metricas.readiness && metricas.readiness < 100 ? <div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>READINESS</div>
+                <div style={{fontSize:18,fontWeight:700,color:metricas.readiness>70?'#4ADE80':metricas.readiness>40?'#EAB308':'#EF4444',lineHeight:1}}>{Math.round(metricas.readiness)}%</div>
+                {metricas.hanna_life ? <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:2}}>Hanna {metricas.hanna_life}</div> : null}
+              </div> : null}
                 <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>D PRIMA</div>
                 <div style={{fontSize:18,fontWeight:700,color:'#A855F7',lineHeight:1}}>{metricas.d_prime_m?`${Math.round(metricas.d_prime_m)}m`:'--'}</div>
               </div>
