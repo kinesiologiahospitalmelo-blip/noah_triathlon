@@ -2793,97 +2793,168 @@ def get_velocidad_critica(atleta_id):
 
 
 
+
+
+
 @app.route('/api/atletas/<int:atleta_id>/sesiones/<int:sesion_id>/dbal_running', methods=['GET'])
 @requiere_login
 def get_dbal_running(atleta_id, sesion_id):
-    """D'bal por sesion de running — vaciado de energia anaerobica.
-    Mismo modelo que W'bal en ciclismo pero con velocidad y Critical Speed."""
+    """Dos curvas de energia por sesion:
+    1. Glucogeno (Romijn 1993 / Coyle 1986) — baja siempre, tasa segun zona
+    2. D-bal anaerobico (Skiba 2012) — solo por encima del umbral
+    Ambas ajustadas por Hanna Life (readiness)."""
     import math
     conn = get_conn()
     try:
-        # 1. Obtener CS y D' del atleta
-        cs_data = _calcular_cs_dprime(conn, atleta_id)
-        if cs_data is None:
-            return ok({'disponible': False,
-                       'msg': 'Faltan marcas historicas para calcular CS y D\' (necesita al menos 2 de: mejor 1k, 5k, 10k)'})
+        # Datos del atleta
+        atleta = conn.execute(
+            "SELECT pace_umbral_run, lthr_run, peso_kg FROM atletas WHERE id=%s", (atleta_id,)
+        ).fetchone()
 
-        cs_ms = cs_data['cs_ms']           # m/s
-        d_prime = cs_data['d_prime_m']     # metros
+        pace_umbral = float(atleta[0]) if atleta and atleta[0] else None
+        peso_kg = float(atleta[2]) if atleta and atleta[2] else 70.0
 
-        if cs_ms <= 0 or d_prime <= 0:
-            return ok({'disponible': False, 'msg': 'CS o D\' calculados son invalidos'})
+        if not pace_umbral:
+            try:
+                cs_data = _calcular_cs_dprime(conn, atleta_id)
+                if cs_data:
+                    pace_umbral = cs_data.get('cs_pace_min_km')
+            except Exception:
+                pass
 
-        # 2. Leer streams de la sesion
+        if not pace_umbral or pace_umbral <= 0:
+            return ok({'disponible': False, 'msg': 'Sin umbral de ritmo configurado'})
+
+        umbral_speed = 1000.0 / (pace_umbral * 60)
+
+        # D prima
+        d_prime = 150.0
+        try:
+            cs_data = _calcular_cs_dprime(conn, atleta_id)
+            if cs_data and cs_data.get('d_prime_m', 0) > 10:
+                d_prime = cs_data['d_prime_m']
+        except Exception:
+            pass
+
+        # Glucogeno total (Romijn 1993): ~7g por kg peso corporal
+        glyc_total = peso_kg * 7.0  # gramos
+
+        # Hanna Life
+        sesion = conn.execute("SELECT fecha FROM sesiones WHERE id=%s", (sesion_id,)).fetchone()
+        fecha = sesion[0][:10] if sesion and sesion[0] else None
+
+        r_norm = 1.0
+        hanna_hoy = None
+        hanna_baseline = None
+
+        if fecha:
+            hl = conn.execute(
+                "SELECT hanna_life FROM sleep_hrv WHERE atleta_id=%s AND fecha::date=%s::date",
+                (atleta_id, fecha)
+            ).fetchone()
+            hanna_hoy = float(hl[0]) if hl and hl[0] else None
+
+            bl = conn.execute(
+                "SELECT AVG(hanna_life), STDDEV(hanna_life) FROM sleep_hrv "
+                "WHERE atleta_id=%s AND hanna_life IS NOT NULL "
+                "AND fecha::date >= (%s::date - INTERVAL '21 days') AND fecha::date < %s::date",
+                (atleta_id, fecha, fecha)
+            ).fetchone()
+            if bl and bl[0] and bl[1] and float(bl[1]) > 0:
+                hanna_baseline = float(bl[0])
+                z = (hanna_hoy - hanna_baseline) / float(bl[1]) if hanna_hoy else 0
+                r_norm = 1.0 / (1.0 + math.exp(-z))
+            elif hanna_hoy is not None:
+                r_norm = min(1.0, max(0.2, hanna_hoy / 100.0))
+
+        # Ajustar inicio por readiness
+        dbal_inicio = d_prime * r_norm
+        glyc_inicio = glyc_total * (0.85 + 0.15 * r_norm)  # 85-100% segun readiness
+        tau_factor = 1.0 + 0.5 * (1.0 - r_norm)
+
+        # Streams
         rows = conn.execute(
             "SELECT ts_s, speed_ms, hr, distance_m FROM activity_samples "
             "WHERE sesion_id=%s AND atleta_id=%s ORDER BY ts_s",
             (sesion_id, atleta_id)
         ).fetchall()
-
         if not rows:
-            return ok({'disponible': False, 'msg': 'Sin datos de stream para esta sesion'})
+            return ok({'disponible': False, 'msg': 'Sin streams'})
 
-        # 3. Calcular D'bal sample por sample
-        dbal = d_prime  # arranca lleno (100%)
+        # Consumo glucogeno por zona (Romijn 1993, g/min)
+        # Basado en % del umbral (proxy de %VO2max)
+        def glyc_rate(ratio):
+            if ratio < 0.70:   return 1.0   # Z1: ~1.0 g/min
+            elif ratio < 0.82: return 1.5   # Z2: ~1.5 g/min
+            elif ratio < 0.94: return 2.5   # Z3: ~2.5 g/min
+            elif ratio < 1.00: return 3.0   # Z4: ~3.0 g/min
+            elif ratio < 1.06: return 3.5   # Z5: ~3.5 g/min
+            else:              return 4.0   # Z6: ~4.0 g/min
+
+        dbal = dbal_inicio
+        glyc = glyc_inicio
         samples = []
         vaciados = 0
         ya_critico = False
         min_dbal_pct = 100.0
-        tiempo_rojo = 0.0
-        tiempo_naranja = 0.0
+        min_glyc_pct = 100.0
+        t_rojo_dbal = 0.0
+        t_rojo_glyc = 0.0
+        tiempo_total = 0.0
 
         for i, row in enumerate(rows):
             ts_s = float(row[0] or 0)
             speed = float(row[1] or 0)
-
-            # Correccion: speed_ms guardado con factor 0.1 (bug conocido de sincronizar_garmin)
-            if speed > 0 and speed < 0.5:
+            if 0 < speed < 0.5:
                 speed = speed * 10
-
             hr = float(row[2] or 0) if row[2] else None
             dt = max(0.5, min(float(rows[i][0] - rows[i-1][0]) if i > 0 else 1.0, 5.0))
+            tiempo_total += dt
+            dt_min = dt / 60.0
 
-            if speed > cs_ms:
-                # Deplecion: v > CS
-                dbal = max(0, dbal - (speed - cs_ms) * dt)
-            elif speed > 0:
-                # Recuperacion: v <= CS (formula exponencial de Skiba adaptada)
-                deficit = d_prime - dbal
+            ratio = speed / umbral_speed if umbral_speed > 0 and speed > 0.3 else 0
+
+            # --- D-bal (Skiba 2012) --- solo encima del umbral
+            if speed > umbral_speed:
+                dbal = max(0, dbal - (speed - umbral_speed) * dt)
+            elif speed > 0.3:
+                deficit = dbal_inicio - dbal
                 if deficit > 0:
-                    # tau para running: calibracion propia (basada en Skiba ciclismo adaptada)
-                    dcp = cs_ms - speed  # diferencia con CS en m/s
-                    tau = 300 * math.exp(-0.5 * dcp) + 200  # tau en segundos
-                    dbal = min(d_prime, dbal + deficit * (1 - math.exp(-dt / tau)))
+                    dcp = umbral_speed - speed
+                    tau = (546 * math.exp(-0.01 * dcp * 100) + 316) * tau_factor
+                    dbal = min(dbal_inicio, dbal + deficit * (1 - math.exp(-dt / tau)))
 
-            dbal_pct = (dbal / d_prime) * 100
+            # --- Glucogeno (Romijn 1993) --- siempre baja
+            if ratio > 0:
+                consumo = glyc_rate(ratio) * dt_min  # gramos
+                glyc = max(0, glyc - consumo)
+
+            dbal_pct = (dbal / dbal_inicio) * 100 if dbal_inicio > 0 else 100
+            glyc_pct = (glyc / glyc_inicio) * 100 if glyc_inicio > 0 else 100
             min_dbal_pct = min(min_dbal_pct, dbal_pct)
+            min_glyc_pct = min(min_glyc_pct, glyc_pct)
 
             if dbal_pct < 10:
-                tiempo_rojo += dt
+                t_rojo_dbal += dt
                 if not ya_critico:
                     vaciados += 1
                     ya_critico = True
-            elif dbal_pct < 25:
-                tiempo_naranja += dt
-                ya_critico = False
             else:
                 ya_critico = False
+            if glyc_pct < 15:
+                t_rojo_glyc += dt
 
-            # Calcular pace para el tooltip
-            pace = None
-            if speed > 0.3:
-                pace = round(1000 / (speed * 60), 3)  # min/km
+            pace = round(1000 / (speed * 60), 3) if speed > 0.3 else None
 
             samples.append({
                 'ts_s': round(ts_s, 1),
-                'speed_ms': round(speed, 2),
-                'dbal_m': round(dbal, 1),
                 'dbal_pct': round(dbal_pct, 1),
+                'energia_pct': round((dbal / d_prime) * 100, 1),
+                'glyc_pct': round(glyc_pct, 1),
                 'pace': pace,
                 'hr': int(hr) if hr else None,
             })
 
-        # Downsampling para no mandar demasiados puntos
         MAX_PUNTOS = 800
         if len(samples) > MAX_PUNTOS:
             paso = max(1, len(samples) // MAX_PUNTOS)
@@ -2893,22 +2964,25 @@ def get_dbal_running(atleta_id, sesion_id):
             'disponible': True,
             'samples': samples,
             'metricas': {
-                'cs_ms': cs_ms,
-                'cs_pace': cs_data['cs_pace_min_km'],
-                'd_prime_m': d_prime,
+                'umbral_pace': pace_umbral,
+                'd_prime_m': round(d_prime, 1),
+                'glyc_total_g': round(glyc_total, 0),
+                'dbal_inicio_pct': round(r_norm * 100, 1),
+                'glyc_inicio_pct': round((glyc_inicio / glyc_total) * 100, 1),
                 'dbal_min_pct': round(min_dbal_pct, 1),
+                'glyc_min_pct': round(min_glyc_pct, 1),
                 'vaciados_criticos': vaciados,
-                'tiempo_rojo_s': round(tiempo_rojo, 0),
-                'tiempo_naranja_s': round(tiempo_naranja, 0),
+                'tiempo_rojo_dbal_s': round(t_rojo_dbal, 0),
+                'tiempo_rojo_glyc_s': round(t_rojo_glyc, 0),
+                'hanna_life': round(hanna_hoy, 1) if hanna_hoy else None,
+                'hanna_baseline': round(hanna_baseline, 1) if hanna_baseline else None,
+                'readiness': round(r_norm * 100, 1),
+                'duracion_min': round(tiempo_total / 60, 1),
+                'glyc_consumido_g': round(glyc_inicio - glyc, 0),
             }
         })
     finally:
         conn.close()
-
-
-
-
-
 
 @app.route('/api/atletas/<int:atleta_id>/sesiones/<int:sesion_id>/dbal_swimming', methods=['GET'])
 @requiere_login
