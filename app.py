@@ -2984,46 +2984,89 @@ def get_dbal_running(atleta_id, sesion_id):
     finally:
         conn.close()
 
+
+
+
 @app.route('/api/atletas/<int:atleta_id>/sesiones/<int:sesion_id>/dbal_swimming', methods=['GET'])
 @requiere_login
 def get_dbal_swimming(atleta_id, sesion_id):
-    """D-bal por sesion de swimming — vaciado de energia anaerobica.
-    Usa CSS (Critical Swim Speed) y calcula por lap/largo, no segundo a segundo."""
+    """Vaciado de energia swimming: glucogeno + D-bal por vuelta.
+    Usa CSS como umbral. Ref: Skiba 2012, Romijn 1993."""
     import math
     conn = get_conn()
     try:
-        # 1. Obtener CSS del atleta (min/100m)
-        atleta = conn.execute("SELECT css_100m FROM atletas WHERE id=%s", (atleta_id,)).fetchone()
+        atleta = conn.execute(
+            "SELECT css_100m, peso_kg FROM atletas WHERE id=%s", (atleta_id,)
+        ).fetchone()
+
         if not atleta or not atleta[0]:
-            return ok({'disponible': False, 'msg': 'El atleta no tiene CSS configurado'})
+            return ok({'disponible': False, 'msg': 'Sin CSS configurado'})
 
-        css_min100 = float(atleta[0])  # ej: 1.85 (min/100m)
-        css_speed = 100.0 / (css_min100 * 60)  # m/s
+        css_min100 = float(atleta[0])
+        css_speed = 100.0 / (css_min100 * 60)
+        peso_kg = float(atleta[1]) if atleta[1] else 65.0
+        d_prime = 20.0
+        glyc_total = peso_kg * 7.0
 
-        # 2. D prima para swim: estimar desde CSS (no hay test directo)
-        # Valor tipico: 15-25 metros para recreativo, 25-40 para avanzado
-        d_prime = 20.0  # metros (default conservador)
+        # Hanna Life
+        sesion = conn.execute("SELECT fecha FROM sesiones WHERE id=%s", (sesion_id,)).fetchone()
+        fecha = sesion[0][:10] if sesion and sesion[0] else None
+        r_norm = 1.0
+        hanna_hoy = None
+        hanna_baseline = None
 
-        # 3. Obtener laps de la sesion
-        laps = conn.execute(
+        if fecha:
+            hl = conn.execute(
+                "SELECT hanna_life FROM sleep_hrv WHERE atleta_id=%s AND fecha::date=%s::date",
+                (atleta_id, fecha)
+            ).fetchone()
+            hanna_hoy = float(hl[0]) if hl and hl[0] else None
+            bl = conn.execute(
+                "SELECT AVG(hanna_life), STDDEV(hanna_life) FROM sleep_hrv "
+                "WHERE atleta_id=%s AND hanna_life IS NOT NULL "
+                "AND fecha::date >= (%s::date - INTERVAL '21 days') AND fecha::date < %s::date",
+                (atleta_id, fecha, fecha)
+            ).fetchone()
+            if bl and bl[0] and bl[1] and float(bl[1]) > 0:
+                hanna_baseline = float(bl[0])
+                z = (hanna_hoy - hanna_baseline) / float(bl[1]) if hanna_hoy else 0
+                r_norm = 1.0 / (1.0 + math.exp(-z))
+            elif hanna_hoy is not None:
+                r_norm = min(1.0, max(0.2, hanna_hoy / 100.0))
+
+        dbal_inicio = d_prime * r_norm
+        glyc_inicio = glyc_total * (0.85 + 0.15 * r_norm)
+        tau_factor = 1.0 + 0.5 * (1.0 - r_norm)
+
+        # Laps
+        laps_rows = conn.execute(
             "SELECT lap_num, duration_min, distance_km, pace, hr_avg, cadence "
             "FROM laps WHERE sesion_id=%s AND atleta_id=%s ORDER BY lap_num",
             (sesion_id, atleta_id)
         ).fetchall()
 
-        if not laps:
-            return ok({'disponible': False, 'msg': 'Sin laps para esta sesion'})
+        if not laps_rows:
+            return ok({'disponible': False, 'msg': 'Sin laps'})
 
-        # 4. Calcular D-bal por lap
-        dbal = d_prime
+        def glyc_rate(ratio):
+            if ratio < 0.70:   return 0.8
+            elif ratio < 0.82: return 1.2
+            elif ratio < 0.94: return 2.0
+            elif ratio < 1.00: return 2.5
+            elif ratio < 1.06: return 3.0
+            else:              return 3.5
+
+        dbal = dbal_inicio
+        glyc = glyc_inicio
         samples = []
         vaciados = 0
         ya_critico = False
         min_dbal_pct = 100.0
-        tiempo_rojo = 0.0
+        min_glyc_pct = 100.0
+        t_rojo = 0.0
         tiempo_acum = 0.0
 
-        for lap in laps:
+        for lap in laps_rows:
             lap_num = lap[0] or len(samples) + 1
             dur_min = float(lap[1] or 0)
             dist_km = float(lap[2] or 0)
@@ -3031,54 +3074,56 @@ def get_dbal_swimming(atleta_id, sesion_id):
             hr = float(lap[4] or 0) if lap[4] else None
             cad = float(lap[5] or 0) if lap[5] else None
             dur_s = dur_min * 60
-
             if dur_s <= 0:
                 continue
 
-            # Calcular velocidad del lap
             if dist_km > 0:
-                speed = (dist_km * 1000) / dur_s  # m/s
+                speed = (dist_km * 1000) / dur_s
             elif pace_raw and pace_raw > 0:
-                # pace en min/km, convertir a speed
                 speed = 1000.0 / (pace_raw * 60)
             else:
                 speed = 0
 
-            # Pace en min/100m para display
             pace_100m = (100.0 / (speed * 60)) if speed > 0 else None
+            ratio = speed / css_speed if css_speed > 0 and speed > 0 else 0
 
-            # D-bal calculo
-            if speed > css_speed and speed > 0:
-                # Deplecion: nada mas rapido que CSS
+            # D-bal (Skiba)
+            if speed > css_speed:
                 dbal = max(0, dbal - (speed - css_speed) * dur_s)
             elif speed > 0:
-                # Recuperacion
-                deficit = d_prime - dbal
+                deficit = dbal_inicio - dbal
                 if deficit > 0:
                     dcp = css_speed - speed
-                    tau = 200 * math.exp(-0.8 * dcp) + 150
-                    dbal = min(d_prime, dbal + deficit * (1 - math.exp(-dur_s / tau)))
+                    tau = (200 * math.exp(-0.8 * dcp) + 150) * tau_factor
+                    dbal = min(dbal_inicio, dbal + deficit * (1 - math.exp(-dur_s / tau)))
 
-            dbal_pct = (dbal / d_prime) * 100
+            # Glucogeno (Romijn)
+            if ratio > 0:
+                consumo = glyc_rate(ratio) * dur_min
+                glyc = max(0, glyc - consumo)
+
+            tiempo_acum += dur_s
+            dbal_pct = (dbal / dbal_inicio) * 100 if dbal_inicio > 0 else 100
+            glyc_pct = (glyc / glyc_inicio) * 100 if glyc_inicio > 0 else 100
+            energia_pct = (dbal / d_prime) * 100 if d_prime > 0 else 100
             min_dbal_pct = min(min_dbal_pct, dbal_pct)
+            min_glyc_pct = min(min_glyc_pct, glyc_pct)
 
             if dbal_pct < 10:
-                tiempo_rojo += dur_s
+                t_rojo += dur_s
                 if not ya_critico:
                     vaciados += 1
                     ya_critico = True
             else:
                 ya_critico = False
 
-            tiempo_acum += dur_s
-
             samples.append({
                 'lap': int(lap_num),
                 'ts_s': round(tiempo_acum, 1),
-                'speed_ms': round(speed, 3),
                 'pace_100m': round(pace_100m, 2) if pace_100m else None,
-                'dbal_m': round(dbal, 1),
                 'dbal_pct': round(dbal_pct, 1),
+                'glyc_pct': round(glyc_pct, 1),
+                'energia_pct': round(energia_pct, 1),
                 'hr': int(hr) if hr else None,
                 'dist_m': round(dist_km * 1000) if dist_km else None,
                 'cadence': int(cad) if cad else None,
@@ -3091,10 +3136,18 @@ def get_dbal_swimming(atleta_id, sesion_id):
                 'css_min100': css_min100,
                 'css_speed_ms': round(css_speed, 3),
                 'd_prime_m': d_prime,
+                'glyc_total_g': round(glyc_total, 0),
+                'dbal_inicio_pct': round(r_norm * 100, 1),
                 'dbal_min_pct': round(min_dbal_pct, 1),
+                'glyc_min_pct': round(min_glyc_pct, 1),
                 'vaciados_criticos': vaciados,
-                'tiempo_rojo_s': round(tiempo_rojo, 0),
+                'tiempo_rojo_s': round(t_rojo, 0),
+                'hanna_life': round(hanna_hoy, 1) if hanna_hoy else None,
+                'hanna_baseline': round(hanna_baseline, 1) if hanna_baseline else None,
+                'readiness': round(r_norm * 100, 1),
                 'total_laps': len(samples),
+                'glyc_consumido_g': round(glyc_inicio - glyc, 0),
+                'duracion_min': round(tiempo_acum / 60, 1),
             }
         })
     finally:
