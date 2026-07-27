@@ -131,7 +131,7 @@ def sync_wahoo(atleta_id):
     cmd = [sys.executable, 'sincronizar_wahoo.py', '--atleta_id', str(atleta_id)]
     try:
         resultado = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=TIMEOUT_SEG * 3,
+            cmd, capture_output=True, text=True, timeout=TIMEOUT_SEG * 5,
             env=os.environ.copy()
         )
         salida = (resultado.stdout or '') + (resultado.stderr or '')
