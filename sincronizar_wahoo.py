@@ -227,6 +227,18 @@ def obtener_access_token(conn, atleta_id):
         print("  [ERROR] Faltan WAHOO_CLIENT_ID o WAHOO_CLIENT_SECRET en las variables de entorno.")
         return None
 
+    # --- Revocar token viejo antes de pedir uno nuevo ---
+    try:
+        _old_tk = row['access_token']
+        if _old_tk and _old_tk != 'INVALIDO':
+            requests.post(
+                'https://api.wahooligan.com/oauth/token/revoke',
+                data={'token': _old_tk, 'client_id': client_id, 'client_secret': client_secret},
+                timeout=10)
+            print('  [OK] Token viejo revocado')
+    except Exception as _e_rev:
+        print(f'  [AVISO] No se pudo revocar token viejo: {_e_rev}')
+
     r = requests.post(WAHOO_TOKEN_URL, data={
         'client_id': client_id,
         'client_secret': client_secret,
