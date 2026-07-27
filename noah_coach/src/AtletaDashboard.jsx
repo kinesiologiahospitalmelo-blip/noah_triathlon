@@ -3675,8 +3675,18 @@ export default function AtletaDashboard({ atletaId }) {
   const metricaTouchRef = useRef(null)
   const [actReal, setActReal]           = useState(null)  // actividad real del día
   const [ultimaAct, setUltimaAct] = useState(null)
+  const [wahooStatus, setWahooStatus] = useState(null) // 'ok'|'error'|null
 
   const id = atletaId || 1
+
+  // --- Wahoo connection status ---
+  useEffect(() => {
+    if (String(id) !== '4') return
+    fetch(`${API}/atletas/4/wahoo/status`)
+      .then(r => r.ok ? r.json() : { status:'error' })
+      .then(d => setWahooStatus(d.status === 'ok' ? 'ok' : 'error'))
+      .catch(() => setWahooStatus('error'))
+  }, [id])
 
   // Refrescar la prescripción cada vez que el atleta cambia de pestaña —
   // si el coach editó algo mientras el atleta tenía el dashboard abierto,
@@ -3983,7 +3993,7 @@ export default function AtletaDashboard({ atletaId }) {
             background:'#fff', border:'none', cursor:'pointer', borderRadius:6,
             fontSize:12, color:'#111', padding:'5px 14px', fontWeight:700,
           }}>
-            Wahoo
+            {wahooStatus && <span style={{color:wahooStatus==='ok'?'#22C55E':'#EF4444',fontSize:10,marginRight:4}}>●</span>}Wahoo
           </button>
         </div>
       )}
