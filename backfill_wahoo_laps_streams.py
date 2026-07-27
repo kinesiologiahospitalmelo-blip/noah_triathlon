@@ -85,6 +85,12 @@ def main():
         r = requests.get(f'{WAHOO_API_BASE}/workouts/{wahoo_id}', headers=headers, timeout=20)
         if r.status_code != 200:
             print(f"    [AVISO] No se pudo re-consultar el workout: {r.status_code}")
+            # Token o workout invalido: forzar has_streams=0 para reintento
+            try:
+                conn2.execute('UPDATE sesiones SET has_streams=0 WHERE id=%s', (sesion_id,))
+                conn2.commit()
+            except Exception:
+                pass
             continue
 
         w = r.json()
@@ -94,7 +100,17 @@ def main():
             print("    [AVISO] Ese workout no tiene archivo .FIT disponible.")
             continue
 
-        _bajar_laps_y_streams_wahoo(conn2, db, args.atleta_id, sesion_id, fecha, file_url, headers)
+        try:
+            _bajar_laps_y_streams_wahoo(conn2, db, args.atleta_id, sesion_id, fecha, file_url, headers)
+        except Exception as _e_streams:
+            print(f'    [ERROR] Fallo bajando streams: {_e_streams}')
+            # Forzar has_streams=0 para que se reintente en la proxima corrida
+            try:
+                conn2.execute('UPDATE sesiones SET has_streams=0 WHERE id=%s', (sesion_id,))
+                conn2.commit()
+            except Exception:
+                pass
+            continue
 
         # FIX: calcular biomarcadores de la sesion (decoupling, EF, curva de
         # potencia, etc.) -- esto ya estaba conectado para Garmin pero NO
