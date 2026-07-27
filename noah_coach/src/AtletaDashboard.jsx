@@ -3684,7 +3684,7 @@ export default function AtletaDashboard({ atletaId }) {
     if (String(id) !== '4') return
     fetch(`${API}/atletas/4/wahoo/status`)
       .then(r => r.ok ? r.json() : { status:'error' })
-      .then(d => setWahooStatus(d.status === 'ok' ? 'ok' : 'error'))
+      .then(d => setWahooStatus(d.data?.status === 'ok' ? 'ok' : 'error'))
       .catch(() => setWahooStatus('error'))
   }, [id])
 
