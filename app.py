@@ -219,6 +219,29 @@ def wahoo_callback():
     return ok({'conectado': True})
 
 
+@app.route('/api/atletas/<int:atleta_id>/wahoo/status', methods=['GET'])
+def wahoo_status(atleta_id):
+    """Devuelve si la conexion Wahoo del atleta esta activa o rota."""
+    conn = get_conn()
+    row = conn.execute(
+        'SELECT access_token, expires_at FROM wahoo_tokens WHERE atleta_id=%s',
+        (atleta_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return ok({'status': 'disconnected'})
+    if row['access_token'] == 'INVALIDO':
+        return ok({'status': 'error'})
+    try:
+        from datetime import datetime
+        exp = datetime.fromisoformat(row['expires_at'])
+        if datetime.utcnow() > exp:
+            return ok({'status': 'expired'})
+    except Exception:
+        pass
+    return ok({'status': 'ok'})
+
+
 
 
 
