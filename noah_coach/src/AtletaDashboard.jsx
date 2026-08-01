@@ -4375,7 +4375,7 @@ export default function AtletaDashboard({ atletaId }) {
       )}
 
       {tab==='asistente' && (
-        <SeccionAsistente atletaId={atletaId} />
+        <SeccionAsistente atletaId={atletaId} nombre={atleta?.nombre} />
       )}
 
       {tab==='zonas' && (
@@ -5179,13 +5179,29 @@ function _horaAhora() {
   return new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'})
 }
 
-function SeccionAsistente({ atletaId }) {
+function _saludoInicial(nombre) {
+  return nombre
+    ? `Hola ${nombre}! ¿Cómo va tu entrenamiento? Contame qué necesitás.`
+    : 'Hola, soy NOAH. Preguntame lo que quieras sobre tu entrenamiento.'
+}
+
+function SeccionAsistente({ atletaId, nombre }) {
   const [mensajes, setMensajes] = useState([
-    { rol: 'asistente', texto: 'Hola, soy NOAH. Preguntame lo que quieras sobre tu entrenamiento.', hora: _horaAhora() }
+    { rol: 'asistente', texto: _saludoInicial(nombre), hora: _horaAhora() }
   ])
   const [input, setInput] = useState('')
   const [enviando, setEnviando] = useState(false)
   const scrollRef = useRef(null)
+
+  // El nombre llega despues del primer render (fetch async del atleta) --
+  // en cuanto este disponible, actualiza el saludo inicial (solo si el
+  // atleta todavia no interactuo, para no pisar la conversacion).
+  useEffect(() => {
+    if (!nombre) return
+    setMensajes(m => (m.length === 1 && m[0].rol === 'asistente')
+      ? [{ ...m[0], texto: _saludoInicial(nombre) }]
+      : m)
+  }, [nombre])
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
