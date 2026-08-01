@@ -402,6 +402,15 @@ def sincronizar(atleta_id, max_paginas=5):
             break
 
     print(f"\n  Total guardadas: {guardadas}")
+
+    # Recalcular CTL/ATL/TSB (igual que Garmin)
+    if guardadas > 0:
+        try:
+            db.actualizar_ctl_atl_tsb(atleta_id)
+            db.actualizar_umbrales(atleta_id)
+            print(f'  [OK] CTL/ATL/TSB recalculado')
+        except Exception as _e_ctl:
+            print(f'  [AVISO] No se pudo recalcular CTL/ATL: {_e_ctl}')
     conn.close()
 
 

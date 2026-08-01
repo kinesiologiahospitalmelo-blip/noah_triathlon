@@ -591,7 +591,7 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
         row = {
             'Tipo de actividad':          tipo_garmin,
             'Tiempo':                     _seg_a_hms(act.get('duration', 0)),
-            'Distancia':                  str(act.get('distance', 0)),
+            'Distancia':                  str(act.get('distance', 0) / 1000),  # FIX: Garmin API da metros, no km
             'Frecuencia cardiaca media':  str(act.get('averageHR', '')),
             'FC máxima':                  str(act.get('maxHR', '')),
             'Ritmo medio':                _pace_a_str(act.get('averageSpeed', 0), sport),
@@ -675,6 +675,7 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
     if sesiones_nuevas:
         conn.commit()
         db.actualizar_ctl_atl_tsb(atleta_id)
+        db.actualizar_umbrales(atleta_id)
 
     return sesiones_nuevas
 
@@ -728,6 +729,21 @@ def _bajar_streams(client, activity_id, atleta_id, sesion_id, sport, conn):
         if samples:
             n = _guardar_streams(conn, atleta_id, sesion_id, activity_id, samples)
             print(f'    [OK] Streams: {n} samples ({sport})')
+
+            # FIX: calcular biomarcadores (decoupling, efficiency factor,
+            # W' consumido, etc) ahora que los streams estan disponibles --
+            # antes de que se borren a los 1.5 meses.
+            try:
+                from guardar_biomarcadores import calcular_y_guardar_biomarcadores
+                ftp_watts = None
+                if sport == 'cycling':
+                    row_ftp = conn.execute(
+                        'SELECT ftp_watts FROM atletas WHERE id=%s', (atleta_id,)
+                    ).fetchone()
+                    ftp_watts = row_ftp[0] if row_ftp else None
+                calcular_y_guardar_biomarcadores(conn, sesion_id, sport, samples, ftp_watts=ftp_watts)
+            except Exception as e_bio:
+                print(f'    [AVISO] No se pudieron calcular biomarcadores: {e_bio}')
         else:
             print(f'    Streams: sin datos válidos ({sport})')
     except Exception as e:

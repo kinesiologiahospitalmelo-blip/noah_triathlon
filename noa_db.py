@@ -525,6 +525,242 @@ class NOADatabase:
         print(f'  [NOAH] CTL={ctl_f}  ATL={atl_f}  TSB={tsb_f}')
         return {'ctl': ctl_f, 'atl': atl_f, 'tsb': tsb_f}
 
+
+    def actualizar_umbrales(self, atleta_id: int):
+        """
+        Recalcula FTP y pace_umbral_run basado en eventos fisiologicos.
+
+        Modelo:
+          Mujika (2000): detraining -0.7%/sem inactiva
+          Coyle (1988): cambios en umbral requieren >= 3 semanas
+          Impellizzeri (2005): HR-potencia estable dentro del mesociclo
+
+        Dispara recalculo solo cuando:
+          - Paso suficiente tiempo desde el ultimo (21-28 dias segun patron)
+          - Se detecta test o carrera (recalculo inmediato)
+          - Atleta inactivo (aplica decay sin recalcular)
+        """
+        from datetime import date, timedelta
+        conn = self._conn()
+        try:
+            cur = conn.cursor()
+
+            # Asegurar columna
+            try:
+                cur.execute("ALTER TABLE atletas ADD COLUMN IF NOT EXISTS umbral_recalculado_el TEXT")
+                conn.commit()
+            except Exception:
+                try: conn.rollback()
+                except: pass
+
+            cur.execute("""
+                SELECT lthr_run, lthr_bike, pace_umbral_run, ftp_watts,
+                       umbral_recalculado_el
+                FROM atletas WHERE id=%s
+            """, (atleta_id,))
+            atleta = cur.fetchone()
+            if not atleta:
+                conn.close()
+                return
+
+            lthr = float(atleta[0] or 0)
+            lthr_bike = float(atleta[1] or 0)
+            pace_actual = float(atleta[2]) if atleta[2] else None
+            ftp_actual = float(atleta[3]) if atleta[3] else None
+            ultimo_recalculo = atleta[4]
+
+            hoy = date.today()
+
+            # Dias desde ultimo recalculo
+            if ultimo_recalculo:
+                try:
+                    dias_desde = (hoy - date.fromisoformat(ultimo_recalculo[:10])).days
+                except Exception:
+                    dias_desde = 999
+            else:
+                dias_desde = 999  # nunca se recalculo
+
+            # ── Detectar patron de entrenamiento (ultimos 28 dias) ──
+            hace_28d = (hoy - timedelta(days=28)).isoformat()
+            cur.execute("""
+                SELECT COUNT(*) FROM sesiones
+                WHERE atleta_id=%s AND fecha >= %s
+            """, (atleta_id, hace_28d))
+            n_sesiones_28d = cur.fetchone()[0]
+
+            # ── Detectar test o carrera reciente (ultimos 7 dias) ──
+            hace_7d = (hoy - timedelta(days=7)).isoformat()
+            cur.execute("""
+                SELECT id, sport, bio_potencia_20min FROM sesiones
+                WHERE atleta_id=%s AND fecha >= %s
+                AND (tipo_sesion ILIKE '%%test%%' OR tipo_sesion ILIKE '%%race%%'
+                     OR tipo_sesion ILIKE '%%carrera%%' OR tipo_sesion ILIKE '%%competencia%%')
+                ORDER BY fecha DESC LIMIT 1
+            """, (atleta_id, hace_7d))
+            test_reciente = cur.fetchone()
+
+            # ── Determinar si toca recalcular ──
+            if n_sesiones_28d >= 12:
+                # Consistente: cada 21 dias (Coyle: 3 semanas minimo)
+                intervalo = 21
+                patron = 'consistente'
+            elif n_sesiones_28d >= 5:
+                # Intermitente: cada 28 dias
+                intervalo = 28
+                patron = 'intermitente'
+            else:
+                # Inactivo: aplicar decay
+                patron = 'inactivo'
+                intervalo = 28
+
+            recalcular = (dias_desde >= intervalo) or (test_reciente is not None)
+
+            if not recalcular and patron != 'inactivo':
+                conn.close()
+                return
+
+            updates = {}
+            hace_90d = (hoy - timedelta(days=90)).isoformat()
+            hace_60d = (hoy - timedelta(days=60)).isoformat()
+
+            # ══════════════════════════════════════════════════════
+            # TEST/RACE: usar datos inmediatamente
+            # ══════════════════════════════════════════════════════
+            if test_reciente:
+                t_sport = test_reciente[1] or ''
+                t_p20 = test_reciente[2]
+                if 'cycl' in t_sport.lower() and t_p20 and float(t_p20) > 30:
+                    ftp_new = round(float(t_p20) * 0.95)
+                    updates['ftp_watts'] = ftp_new
+                    print(f'  [UMBRAL] Test/Race cycling detectado: FTP = {ftp_new}W')
+                if 'run' in t_sport.lower():
+                    # Usar pace de la sesion como nuevo umbral
+                    cur.execute("""
+                        SELECT AVG(1000.0 / NULLIF(speed_ms, 0) / 60.0)
+                        FROM activity_samples
+                        WHERE sesion_id=%s AND speed_ms > 0.01 AND speed_ms < 10
+                    """, (test_reciente[0],))
+                    rp = cur.fetchone()
+                    if rp and rp[0]:
+                        pace_new = float(rp[0])
+                        if pace_new > 15: pace_new /= 10
+                        if 3.0 < pace_new < 10.0:
+                            updates['pace_umbral_run'] = round(pace_new, 2)
+                            print(f'  [UMBRAL] Test/Race running: pace = {round(pace_new,2)}')
+
+            # ══════════════════════════════════════════════════════
+            # INACTIVO: decay de Mujika (-0.7%/sem)
+            # ══════════════════════════════════════════════════════
+            elif patron == 'inactivo':
+                semanas_inactivo = max(1, (28 - n_sesiones_28d * 2) // 7)
+                decay = 1.0 - (0.007 * semanas_inactivo)  # 0.7% por semana
+
+                if ftp_actual and ftp_actual > 80:
+                    ftp_decayed = round(ftp_actual * decay)
+                    if ftp_decayed != ftp_actual:
+                        updates['ftp_watts'] = ftp_decayed
+                        print(f'  [UMBRAL] Decay FTP (inactividad {semanas_inactivo}sem): {ftp_actual:.0f} -> {ftp_decayed}W')
+
+                if pace_actual and pace_actual > 3:
+                    # Pace sube (mas lento) con inactividad
+                    pace_decayed = round(pace_actual / decay, 2)
+                    if pace_decayed != pace_actual:
+                        updates['pace_umbral_run'] = pace_decayed
+                        print(f'  [UMBRAL] Decay pace (inactividad): {pace_actual} -> {pace_decayed}')
+
+            # ══════════════════════════════════════════════════════
+            # RECALCULO NORMAL (consistente/intermitente, >= intervalo dias)
+            # ══════════════════════════════════════════════════════
+            elif recalcular:
+                # ── PACE UMBRAL RUNNING ──
+                if lthr > 0:
+                    cur.execute("""
+                        SELECT AVG(1000.0 / NULLIF(speed_ms, 0) / 60.0), COUNT(*)
+                        FROM activity_samples
+                        WHERE atleta_id=%s
+                        AND sesion_id IN (SELECT id FROM sesiones WHERE atleta_id=%s AND sport ILIKE '%%run%%' AND fecha >= %s)
+                        AND hr BETWEEN %s AND %s
+                        AND speed_ms > 0.01 AND speed_ms < 10
+                    """, (atleta_id, atleta_id, hace_60d, lthr * 0.92, lthr * 1.00))
+                    r = cur.fetchone()
+                    if r and r[0] and r[1] >= 30:
+                        pace_new = float(r[0])
+                        if pace_new > 15: pace_new /= 10
+                        if 3.0 < pace_new < 10.0:
+                            # Cap ±5% (Coyle: cambios graduales)
+                            if pace_actual:
+                                cambio_pct = abs(pace_new - pace_actual) / pace_actual
+                                if cambio_pct > 0.05:
+                                    pace_new = pace_actual * (1.05 if pace_new > pace_actual else 0.95)
+                                if cambio_pct > 0.02:
+                                    updates['pace_umbral_run'] = round(pace_new, 2)
+                            else:
+                                updates['pace_umbral_run'] = round(pace_new, 2)
+
+                # ── FTP CYCLING ──
+                cur.execute("SELECT COUNT(*) FROM sesiones WHERE atleta_id=%s AND sport ILIKE '%%cycl%%' AND fecha >= %s", (atleta_id, hace_90d))
+                n_bike = cur.fetchone()[0]
+                if n_bike >= 2:
+                    cur.execute("""
+                        SELECT MAX(bio_potencia_20min) FROM sesiones
+                        WHERE atleta_id=%s AND sport ILIKE '%%cycl%%'
+                        AND fecha >= %s AND bio_potencia_20min > 30
+                    """, (atleta_id, hace_90d))
+                    r = cur.fetchone()
+                    if r and r[0]:
+                        ftp_new = round(float(r[0]) * 0.95)
+                        if ftp_actual:
+                            cambio_pct = abs(ftp_new - ftp_actual) / max(ftp_actual, 1)
+                            if cambio_pct > 0.05:
+                                ftp_new = round(ftp_actual * (1.05 if ftp_new > ftp_actual else 0.95))
+                            if cambio_pct > 0.02:
+                                updates['ftp_watts'] = ftp_new
+                        else:
+                            updates['ftp_watts'] = ftp_new
+                    elif lthr_bike > 0:
+                        cur.execute("""
+                            SELECT AVG(power_w) FROM activity_samples
+                            WHERE atleta_id=%s AND power_w > 30 AND power_w < 800
+                            AND sesion_id IN (SELECT id FROM sesiones WHERE atleta_id=%s AND sport ILIKE '%%cycl%%' AND fecha >= %s)
+                            AND hr BETWEEN %s AND %s
+                        """, (atleta_id, atleta_id, hace_90d, lthr_bike * 0.92, lthr_bike * 1.00))
+                        r2 = cur.fetchone()
+                        if r2 and r2[0]:
+                            ftp_new = round(float(r2[0]))
+                            if ftp_actual:
+                                cambio_pct = abs(ftp_new - ftp_actual) / max(ftp_actual, 1)
+                                if cambio_pct > 0.05:
+                                    ftp_new = round(ftp_actual * (1.05 if ftp_new > ftp_actual else 0.95))
+                                if cambio_pct > 0.02:
+                                    updates['ftp_watts'] = ftp_new
+                            else:
+                                updates['ftp_watts'] = ftp_new
+
+                if patron == 'intermitente' and not updates.get('ftp_watts') and ftp_actual and n_bike < 3:
+                    # Decay leve por entrenamiento intermitente (0.3%/sem)
+                    decay = 1.0 - 0.003 * max(1, (28 - n_bike * 7) // 7)
+                    ftp_decayed = round(ftp_actual * decay)
+                    if ftp_decayed != round(ftp_actual):
+                        updates['ftp_watts'] = ftp_decayed
+
+            # ── GUARDAR ──
+            if updates:
+                updates['umbral_recalculado_el'] = hoy.isoformat()
+                sets = ', '.join(f"{k}=%s" for k in updates)
+                cur.execute(f"UPDATE atletas SET {sets} WHERE id=%s", list(updates.values()) + [atleta_id])
+                conn.commit()
+                print(f'  [UMBRAL] {patron}: {updates}')
+            elif recalcular:
+                # Marcar que se intento recalcular aunque no haya cambios
+                cur.execute("UPDATE atletas SET umbral_recalculado_el=%s WHERE id=%s", (hoy.isoformat(), atleta_id))
+                conn.commit()
+
+            conn.close()
+        except Exception as e:
+            print(f'  [UMBRAL] Error: {e}')
+            try: conn.close()
+            except: pass
+
     # ── SLEEP / HRV ───────────────────────────────────────────────────────────
 
     def get_sleep_hrv(self, atleta_id: int,

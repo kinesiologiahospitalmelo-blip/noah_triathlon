@@ -278,7 +278,7 @@ def main():
     perfil = json.loads(row[0])
 
     # ── Estado actual ─────────────────────────────────────────
-    resultado_ctl = db.actualizar_ctl_atl_tsb(atleta_id)
+    resultado_ctl = None  # CTL ya calculado, no recalcular (tarda demasiado con 9000+ dias)
     estado   = db.get_estado_actual(atleta_id)
     ctl      = resultado_ctl.get('ctl') if resultado_ctl else estado.get('ctl') or 0.0
     atl      = resultado_ctl.get('atl') if resultado_ctl else estado.get('atl') or 0.0
@@ -298,14 +298,30 @@ def main():
     print(f'  HRV: [{hrv_flag}]  Sueño: {sleep_h}h  Tendencia 7d: {hrv_tendencia}')
 
     # ── Fase A/T/R/Taper ─────────────────────────────────────
-    carrera           = date.fromisoformat(perfil['carrera_fecha'])
-    hoy               = date.today()
-    semanas_a_carrera = (carrera - hoy).days / 7
-    fase              = calcular_fase(semanas_a_carrera, perfil)
-    z12, z34, z56     = zonas_fase(fase, perfil)
-    semana_macro      = max(1, perfil.get('f1_semanas', 11) - round(semanas_a_carrera) + 1)
+    # ── Fase A/T/R/Taper ─────────────────────────────────────
+    hoy = date.today()
+    if perfil.get('carrera_fecha'):
+        carrera = date.fromisoformat(perfil['carrera_fecha'])
+        semanas_a_carrera = (carrera - hoy).days / 7
+        fase = calcular_fase(semanas_a_carrera, perfil)
+        z12, z34, z56 = zonas_fase(fase, perfil)
+        semana_macro = max(1, perfil.get('f1_semanas', 11) - round(semanas_a_carrera) + 1)
+        print(f'\n  Fase: {fase}  ({semanas_a_carrera:.1f} sem hasta {perfil.get("carrera_nombre","")})')
+    else:
+        # Sin carrera: detectar fase desde datos (Issurin/Banister)
+        semanas_a_carrera = None
+        try:
+            from noah_vector_semanal import detectar_fase_mesociclo
+            fase_info = detectar_fase_mesociclo(conn, atleta_id, hoy)
+            fase_detectada = fase_info.get('fase', 'A')
+            fase = fase_detectada
+            print(f'\n  Fase: {fase} (detectada, mejora general, confianza {fase_info.get("confianza",0)})')
+        except Exception as _e_fase:
+            fase = perfil.get('fase_actual', 'A')
+            print(f'\n  Fase: {fase} (desde perfil, mejora general)')
+        z12, z34, z56 = zonas_fase(fase, perfil)
+        semana_macro = (perfil.get('semana_actual', 1))
 
-    print(f'\n  Fase: {fase}  ({semanas_a_carrera:.1f} sem hasta {perfil.get("carrera_nombre","")})')
     print(f'  Semana {semana_macro}  |  Z1-Z2={z12}%  Z3-Z4={z34}%  Z5={z56}%')
 
     # ── Pace Z2 / FTP / CSS ───────────────────────────────────
@@ -413,7 +429,7 @@ def main():
             # Entrenar con timeout implícito — si sklearn tarda demasiado
             # o falla (datos insuficientes, cross_val error) se salta sin romper
             try:
-                mind.entrenar()
+                mind.cargar_modelos()  # Usar modelos ya entrenados, no reentrenar
                 tss_rec = mind.tss_recomendado({
                     'ctl': ctl, 'atl': atl, 'tsb': tsb,
                     'hrv_ms': estado.get('hrv_ms'),

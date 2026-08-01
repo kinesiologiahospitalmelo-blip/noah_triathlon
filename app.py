@@ -381,7 +381,7 @@ def post_asistente(atleta_id):
         if ultima:
             contexto += f"Ultimo estado conocido ({ultima[0]}): CTL={ultima[3]}, ATL={ultima[4]}, TSB={ultima[5]}.\n"
         if perfil_row:
-            contexto += f"Perfil calculado de este atleta (JSON, usar solo lo relevante a la pregunta):\n{perfil_row[0][:4000]}\n"
+            contexto += f"Perfil calculado de este atleta (JSON, usar solo lo relevante a la pregunta):\n{perfil_row[0][:1500]}\n"
 
         system_prompt = plantilla_prompt.format(nombre_atleta=nombre_atleta, contexto=contexto)
 
@@ -395,7 +395,7 @@ def post_asistente(atleta_id):
                     {'role': 'system', 'content': system_prompt},
                     {'role': 'user', 'content': mensaje},
                 ],
-                'max_tokens': 500,
+                'max_tokens': 700,
                 'temperature': 0.4,
             },
             timeout=30,
@@ -2886,7 +2886,7 @@ def get_dbal_running(atleta_id, sesion_id):
             if bl and bl[0] and bl[1] and float(bl[1]) > 0:
                 hanna_baseline = float(bl[0])
                 z = (hanna_hoy - hanna_baseline) / float(bl[1]) if hanna_hoy else 0
-                r_norm = 1.0 / (1.0 + math.exp(-z))
+                r_norm = 0.70 + 0.30 * (1.0 / (1.0 + math.exp(-z)))  # piso 70% + sigmoide suave
             elif hanna_hoy is not None:
                 r_norm = min(1.0, max(0.2, hanna_hoy / 100.0))
 
@@ -2988,6 +2988,7 @@ def get_dbal_running(atleta_id, sesion_id):
             'samples': samples,
             'metricas': {
                 'umbral_pace': pace_umbral,
+                'cs_pace': pace_umbral,  # alias para el frontend
                 'd_prime_m': round(d_prime, 1),
                 'glyc_total_g': round(glyc_total, 0),
                 'dbal_inicio_pct': round(r_norm * 100, 1),
@@ -3028,7 +3029,7 @@ def get_dbal_swimming(atleta_id, sesion_id):
         css_min100 = float(atleta[0])
         css_speed = 100.0 / (css_min100 * 60)
         peso_kg = float(atleta[1]) if atleta[1] else 65.0
-        d_prime = 20.0
+        d_prime = 75.0  # ~25-30s supra-CSS (era 20, muy bajo)
         glyc_total = peso_kg * 7.0
 
         # Hanna Life
@@ -3053,9 +3054,9 @@ def get_dbal_swimming(atleta_id, sesion_id):
             if bl and bl[0] and bl[1] and float(bl[1]) > 0:
                 hanna_baseline = float(bl[0])
                 z = (hanna_hoy - hanna_baseline) / float(bl[1]) if hanna_hoy else 0
-                r_norm = 1.0 / (1.0 + math.exp(-z))
+                r_norm = 0.70 + 0.30 * (1.0 / (1.0 + math.exp(-z)))  # piso 70% + sigmoide suave
             elif hanna_hoy is not None:
-                r_norm = min(1.0, max(0.2, hanna_hoy / 100.0))
+                r_norm = min(1.0, 0.70 + 0.30 * (hanna_hoy / 100.0))  # piso 70%
 
         dbal_inicio = d_prime * r_norm
         glyc_inicio = glyc_total * (0.85 + 0.15 * r_norm)
@@ -3069,7 +3070,34 @@ def get_dbal_swimming(atleta_id, sesion_id):
         ).fetchall()
 
         if not laps_rows:
-            return ok({'disponible': False, 'msg': 'Sin laps'})
+            # Fallback: calcular desde activity_samples (sesion continua)
+            rows_as = conn.execute(
+                'SELECT ts_s, speed_ms, hr FROM activity_samples '
+                'WHERE sesion_id=%s AND atleta_id=%s ORDER BY ts_s',
+                (sesion_id, atleta_id)
+            ).fetchall()
+            if not rows_as:
+                return ok({'disponible': False, 'msg': 'Sin datos'})
+            # Convertir samples a pseudo-laps de 25m
+            dist_acum = 0.0
+            laps_rows = []
+            lap_start = 0
+            for j, r in enumerate(rows_as):
+                spd = float(r[1] or 0)
+                if spd <= 0: continue
+                dt_j = max(0.5, min(float(rows_as[j][0] - rows_as[j-1][0]) if j > 0 else 1.0, 5.0))
+                dist_acum += spd * dt_j
+                if dist_acum >= 25:
+                    ts_start = float(rows_as[lap_start][0] or 0)
+                    ts_end = float(r[0] or 0)
+                    dur_min = (ts_end - ts_start) / 60.0
+                    if dur_min > 0:
+                        hr_vals = [float(rows_as[k][2]) for k in range(lap_start, j+1) if rows_as[k][2] and float(rows_as[k][2]) > 0]
+                        laps_rows.append((len(laps_rows)+1, dur_min, dist_acum/1000, None, sum(hr_vals)/len(hr_vals) if hr_vals else None, None))
+                    dist_acum = 0.0
+                    lap_start = j + 1
+            if not laps_rows:
+                return ok({'disponible': False, 'msg': 'Sin datos suficientes'})
 
         def glyc_rate(ratio):
             if ratio < 0.70:   return 0.8
@@ -3481,12 +3509,166 @@ def get_actividad_detalle(atleta_id):
             'hr_max':      l[4],
             'pace':        l[5],
             'watts':       l[6],
+            'avg_power':   l[6],
             'cadencia':    l[7],
             'ascenso_m':   l[8],
             'paladas':     l[9],
             'swolf':       l[10],
             'stroke':      l[11],
         })
+
+
+    # --- Completar laps con datos de activity_samples ---
+    hay_laps_sin_datos = any(l.get('watts') is None or l.get('cadencia') is None for l in laps)
+    if hay_laps_sin_datos and laps:
+        try:
+            samples_all = conn.execute(
+                'SELECT ts_s, power_w, cadence, speed_ms FROM activity_samples '
+                'WHERE sesion_id=%s AND atleta_id=%s ORDER BY ts_s',
+                (ses_id, atleta_id)
+            ).fetchall()
+            if samples_all:
+                # Calcular timestamps de inicio/fin por lap
+                ts_offset = 0.0
+                ftp_atleta = None
+                try:
+                    ftp_row = conn.execute('SELECT ftp_watts FROM atletas WHERE id=%s', (atleta_id,)).fetchone()
+                    ftp_atleta = float(ftp_row[0]) if ftp_row and ftp_row[0] else None
+                except Exception:
+                    pass
+                for lap in laps:
+                    dur_s = (lap.get('duration_min') or 0) * 60
+                    ts_end = ts_offset + dur_s
+                    # Filtrar samples de este lap
+                    lap_samples = [s for s in samples_all if ts_offset <= float(s[0]) < ts_end]
+                    if lap_samples:
+                        powers = [float(s[1]) for s in lap_samples if s[1] and float(s[1]) > 0]
+                        cads = [float(s[2]) for s in lap_samples if s[2] and float(s[2]) > 0]
+                        speeds = [float(s[3]) for s in lap_samples if s[3] and float(s[3]) > 0]
+                        if powers and lap.get('watts') is None:
+                            lap['watts'] = round(sum(powers) / len(powers), 1)
+                            # NP (Coggan): media de (rolling 30s avg power)^4, raiz cuarta
+                            if len(powers) >= 30:
+                                import numpy as _np
+                                p_arr = _np.array(powers)
+                                rolling = _np.convolve(p_arr, _np.ones(30)/30, mode='valid')
+                                np_val = round(float((rolling**4).mean()**0.25), 1)
+                                lap['np'] = np_val
+                                if ftp_atleta and ftp_atleta > 0:
+                                    lap['if'] = round(np_val / ftp_atleta, 2)
+                            lap['w_max'] = round(max(powers), 1)
+                        if cads and lap.get('cadencia') is None:
+                            lap['cadencia'] = round(sum(cads) / len(cads), 1)
+                        if speeds and not lap.get('pace'):
+                            avg_spd = sum(speeds) / len(speeds)
+                            if avg_spd < 0.5:
+                                avg_spd *= 10
+                            lap['vel_kmh'] = round(avg_spd * 3.6, 1)
+                    ts_offset = ts_end
+        except Exception as _e_laps:
+            print(f'[AVISO] Error completando laps: {_e_laps}')
+
+
+    # --- Completar laps con datos de activity_samples ---
+    hay_laps_sin_datos = any(l.get('watts') is None or l.get('cadencia') is None for l in laps)
+    if hay_laps_sin_datos and laps:
+        try:
+            samples_all = conn.execute(
+                'SELECT ts_s, power_w, cadence, speed_ms FROM activity_samples '
+                'WHERE sesion_id=%s AND atleta_id=%s ORDER BY ts_s',
+                (ses_id, atleta_id)
+            ).fetchall()
+            if samples_all:
+                # Calcular timestamps de inicio/fin por lap
+                ts_offset = 0.0
+                ftp_atleta = None
+                try:
+                    ftp_row = conn.execute('SELECT ftp_watts FROM atletas WHERE id=%s', (atleta_id,)).fetchone()
+                    ftp_atleta = float(ftp_row[0]) if ftp_row and ftp_row[0] else None
+                except Exception:
+                    pass
+                for lap in laps:
+                    dur_s = (lap.get('duration_min') or 0) * 60
+                    ts_end = ts_offset + dur_s
+                    # Filtrar samples de este lap
+                    lap_samples = [s for s in samples_all if ts_offset <= float(s[0]) < ts_end]
+                    if lap_samples:
+                        powers = [float(s[1]) for s in lap_samples if s[1] and float(s[1]) > 0]
+                        cads = [float(s[2]) for s in lap_samples if s[2] and float(s[2]) > 0]
+                        speeds = [float(s[3]) for s in lap_samples if s[3] and float(s[3]) > 0]
+                        if powers and lap.get('watts') is None:
+                            lap['watts'] = round(sum(powers) / len(powers), 1)
+                            # NP (Coggan): media de (rolling 30s avg power)^4, raiz cuarta
+                            if len(powers) >= 30:
+                                import numpy as _np
+                                p_arr = _np.array(powers)
+                                rolling = _np.convolve(p_arr, _np.ones(30)/30, mode='valid')
+                                np_val = round(float((rolling**4).mean()**0.25), 1)
+                                lap['np'] = np_val
+                                if ftp_atleta and ftp_atleta > 0:
+                                    lap['if'] = round(np_val / ftp_atleta, 2)
+                            lap['w_max'] = round(max(powers), 1)
+                        if cads and lap.get('cadencia') is None:
+                            lap['cadencia'] = round(sum(cads) / len(cads), 1)
+                        if speeds and not lap.get('pace'):
+                            avg_spd = sum(speeds) / len(speeds)
+                            if avg_spd < 0.5:
+                                avg_spd *= 10
+                            lap['vel_kmh'] = round(avg_spd * 3.6, 1)
+                    ts_offset = ts_end
+        except Exception as _e_laps:
+            print(f'[AVISO] Error completando laps: {_e_laps}')
+
+
+    # --- Completar laps con datos de activity_samples ---
+    hay_laps_sin_datos = any(l.get('watts') is None or l.get('cadencia') is None for l in laps)
+    if hay_laps_sin_datos and laps:
+        try:
+            samples_all = conn.execute(
+                'SELECT ts_s, power_w, cadence, speed_ms FROM activity_samples '
+                'WHERE sesion_id=%s AND atleta_id=%s ORDER BY ts_s',
+                (ses_id, atleta_id)
+            ).fetchall()
+            if samples_all:
+                # Calcular timestamps de inicio/fin por lap
+                ts_offset = 0.0
+                ftp_atleta = None
+                try:
+                    ftp_row = conn.execute('SELECT ftp_watts FROM atletas WHERE id=%s', (atleta_id,)).fetchone()
+                    ftp_atleta = float(ftp_row[0]) if ftp_row and ftp_row[0] else None
+                except Exception:
+                    pass
+                for lap in laps:
+                    dur_s = (lap.get('duration_min') or 0) * 60
+                    ts_end = ts_offset + dur_s
+                    # Filtrar samples de este lap
+                    lap_samples = [s for s in samples_all if ts_offset <= float(s[0]) < ts_end]
+                    if lap_samples:
+                        powers = [float(s[1]) for s in lap_samples if s[1] and float(s[1]) > 0]
+                        cads = [float(s[2]) for s in lap_samples if s[2] and float(s[2]) > 0]
+                        speeds = [float(s[3]) for s in lap_samples if s[3] and float(s[3]) > 0]
+                        if powers and lap.get('watts') is None:
+                            lap['watts'] = round(sum(powers) / len(powers), 1)
+                            # NP (Coggan): media de (rolling 30s avg power)^4, raiz cuarta
+                            if len(powers) >= 30:
+                                import numpy as _np
+                                p_arr = _np.array(powers)
+                                rolling = _np.convolve(p_arr, _np.ones(30)/30, mode='valid')
+                                np_val = round(float((rolling**4).mean()**0.25), 1)
+                                lap['np'] = np_val
+                                if ftp_atleta and ftp_atleta > 0:
+                                    lap['if'] = round(np_val / ftp_atleta, 2)
+                            lap['w_max'] = round(max(powers), 1)
+                        if cads and lap.get('cadencia') is None:
+                            lap['cadencia'] = round(sum(cads) / len(cads), 1)
+                        if speeds and not lap.get('pace'):
+                            avg_spd = sum(speeds) / len(speeds)
+                            if avg_spd < 0.5:
+                                avg_spd *= 10
+                            lap['vel_kmh'] = round(avg_spd * 3.6, 1)
+                    ts_offset = ts_end
+        except Exception as _e_laps:
+            print(f'[AVISO] Error completando laps: {_e_laps}')
 
     # Distribución de zonas (si hay laps con HR)
     zonas_dist = None
@@ -3898,7 +4080,7 @@ def get_actividades_dia(atleta_id):
         ).fetchall()
         laps = [{'lap':l[0],'distance_km':l[1],'duration_min':l[2],
                  'hr_avg':l[3],'hr_max':l[4],'pace':l[5],
-                 'watts':l[6],'cadencia':l[7],'ascenso_m':l[8]} for l in laps_rows]
+                 'watts':l[6],'avg_power':l[6],'cadencia':l[7],'cadence':l[7],'ascenso_m':l[8]} for l in laps_rows]
         # Zonas HR
         atleta_row = conn.execute('SELECT lthr_run, lthr_bike FROM atletas WHERE id=%s', (atleta_id,)).fetchone()
         zonas_dist = None
@@ -4028,7 +4210,7 @@ def get_actividades_rango(atleta_id):
             ).fetchall()
             laps = [{'lap':l[0],'distance_km':l[1],'duration_min':l[2],
                      'hr_avg':l[3],'hr_max':l[4],'pace':l[5],
-                     'watts':l[6],'cadencia':l[7],'ascenso_m':l[8]} for l in laps_rows]
+                     'watts':l[6],'avg_power':l[6],'cadencia':l[7],'cadence':l[7],'ascenso_m':l[8]} for l in laps_rows]
             if f not in actividades: actividades[f] = []
             actividades[f].append({'sesion_id':ses_id,'fecha':f,'sport':r[2],'distance_km':r[3],'duration_min':r[4],'hr_avg':r[5],'tss':r[6],'tipo':r[7],'laps':laps})
         presc_rows = conn.execute(

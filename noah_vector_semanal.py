@@ -35,6 +35,302 @@ from typing import Optional
 
 # ─── Helper pd.read_sql → _read_sql (pandas 2.x no soporta DBAPI2 directo) ────
 
+
+# ── Deteccion de fase del mesociclo ──────────────────────────────────────
+# Modelo fisiologico:
+#   Issurin 2008/2010  — Block Periodization (A/T/R)
+#   Banister 1975      — Fitness-Fatigue (CTL/ATL/TSB)
+#   Mujika 2003/2010   — Taper optimo
+#   Plews/Buchheit 2013 — HRV como proxy de absorcion
+#   Gabbett 2016       — ACWR zona segura
+
+def detectar_fase_mesociclo(conn, atleta_id, fecha_referencia):
+    """
+    Detecta la fase del mesociclo usando multiples senales fisiologicas.
+
+    Senales de carga (todos los atletas):
+      - CTL trend y ramp rate (Banister)
+      - ACWR: ratio ATL/CTL (Gabbett) — zona segura 0.8-1.3
+      - TSB: forma/frescura
+      - Distribucion por zonas: Z1-Z2 vs Z3+ (Issurin)
+      - Sesiones de calidad (Z4+): indicador de transmutacion
+      - Eficiencia cardiaca: HR vs pace para mismo esfuerzo
+
+    Senales de recuperacion (atletas con biomarcadores):
+      - HRV RMSSD trend + CV (Plews/Buchheit)
+      - Hanna Life (proxy integrado de readiness)
+      - Sueno (horas y calidad)
+      - FC nocturna (drift = fatiga acumulada)
+
+    Contexto:
+      - Con carrera A a <=3 semanas -> taper (Mujika 2003)
+      - Con carrera A a >3 semanas -> preparacion
+      - Sin carrera -> mejora_general (progresion sostenible de CTL)
+
+    Returns dict con:
+      fase, confianza, en_taper, semanas_para_carrera, contexto,
+      acwr, ramp_rate_pct, absorcion (solo si hay bio)
+    """
+    from datetime import date, timedelta
+    import numpy as _np
+
+    if isinstance(fecha_referencia, str):
+        fecha_referencia = date.fromisoformat(fecha_referencia[:10])
+
+    resultado = {
+        'fase': 'A', 'confianza': 0.3, 'semana_en_bloque': 1,
+        'en_taper': False, 'semanas_para_carrera': None,
+        'contexto': 'mejora_general', 'acwr': None,
+        'ramp_rate_pct': None, 'absorcion': None,
+    }
+
+    # ── 1. TSS semanal + CTL/ATL de las ultimas 8 semanas ────────────────
+    fecha_desde = fecha_referencia - timedelta(days=8 * 7)
+    rows_tss = conn.execute("""
+        SELECT to_char(fecha::date, 'IYYY-IW') as sem,
+               SUM(COALESCE(tss_total, 0)) as tss,
+               COUNT(*) as n_ses,
+               SUM(CASE WHEN tss_z56 > 0 OR tipo_sesion ILIKE '%%umbral%%'
+                    OR tipo_sesion ILIKE '%%vo2%%' OR tipo_sesion ILIKE '%%calidad%%'
+                    OR tipo_sesion ILIKE '%%series%%' THEN 1 ELSE 0 END) as n_calidad,
+               SUM(COALESCE(tss_z12, 0)) as sum_z12,
+               SUM(COALESCE(tss_z34, 0)) as sum_z34,
+               SUM(COALESCE(tss_z56, 0)) as sum_z56
+        FROM sesiones
+        WHERE atleta_id=%s AND fecha >= %s AND fecha <= %s
+        GROUP BY sem ORDER BY sem
+    """, (atleta_id, str(fecha_desde), str(fecha_referencia))).fetchall()
+
+    if len(rows_tss) < 2:
+        return resultado
+
+    tss_vals = [float(r[1]) for r in rows_tss]
+    n_calidad_vals = [int(r[3] or 0) for r in rows_tss]
+    z12_vals = [float(r[4] or 0) for r in rows_tss]
+    z56_vals = [float(r[6] or 0) for r in rows_tss]
+
+    # ── 2. CTL / ATL actual ──────────────────────────────────────────────
+    row_ctl = conn.execute("""
+        SELECT ctl, atl, tsb FROM sesiones
+        WHERE atleta_id=%s AND ctl IS NOT NULL
+        ORDER BY fecha DESC, id DESC LIMIT 1
+    """, (atleta_id,)).fetchone()
+
+    ctl_actual = float(row_ctl[0]) if row_ctl and row_ctl[0] else None
+    atl_actual = float(row_ctl[1]) if row_ctl and row_ctl[1] else None
+    tsb_actual = float(row_ctl[2]) if row_ctl and row_ctl[2] else None
+
+    # ACWR (Gabbett 2016): ATL/CTL, zona segura 0.8-1.3
+    acwr = None
+    if ctl_actual and ctl_actual > 0 and atl_actual is not None:
+        acwr = round(atl_actual / ctl_actual, 2)
+        resultado['acwr'] = acwr
+
+    # Ramp rate: delta CTL ultima semana vs CTL (>5-7% = riesgo)
+    ramp_rate_pct = None
+    if len(tss_vals) >= 2 and ctl_actual and ctl_actual > 10:
+        # CTL de hace 1 semana (aproximado desde TSS)
+        row_ctl_prev = conn.execute("""
+            SELECT ctl FROM sesiones
+            WHERE atleta_id=%s AND ctl IS NOT NULL
+            AND fecha <= %s
+            ORDER BY fecha DESC, id DESC LIMIT 1
+        """, (atleta_id, str(fecha_referencia - timedelta(days=7)))).fetchone()
+        if row_ctl_prev and row_ctl_prev[0]:
+            delta = ctl_actual - float(row_ctl_prev[0])
+            ramp_rate_pct = round(delta / ctl_actual * 100, 1)
+            resultado['ramp_rate_pct'] = ramp_rate_pct
+
+    # ── 3. Carrera y taper (Mujika 2003) ─────────────────────────────────
+    carrera_row = conn.execute("""
+        SELECT fecha FROM carreras
+        WHERE atleta_id=%s AND prioridad='A' AND estado='pendiente'
+        AND fecha > %s ORDER BY fecha ASC LIMIT 1
+    """, (atleta_id, str(fecha_referencia))).fetchone()
+
+    if carrera_row:
+        dias = (date.fromisoformat(str(carrera_row[0])[:10]) - fecha_referencia).days
+        resultado['semanas_para_carrera'] = max(0, dias // 7)
+        if resultado['semanas_para_carrera'] <= 3:
+            resultado['en_taper'] = True
+            resultado['contexto'] = 'taper'
+        else:
+            resultado['contexto'] = 'preparacion_carrera'
+    else:
+        resultado['contexto'] = 'mejora_general'
+
+    # ── 4. Senales de recuperacion (si hay bio) ──────────────────────────
+    absorcion = None
+    fecha_bio_desde = fecha_referencia - timedelta(days=21)
+    rows_bio = conn.execute("""
+        SELECT hrv_rmssd, hanna_life, fc_nocturna, sleep_h
+        FROM sleep_hrv
+        WHERE atleta_id=%s AND fecha >= %s AND fecha <= %s
+        ORDER BY fecha
+    """, (atleta_id, str(fecha_bio_desde), str(fecha_referencia))).fetchall()
+
+    tiene_bio = len(rows_bio) >= 5
+    hrv_trend = None
+    hrv_cv = None
+
+    if tiene_bio:
+        hrv_vals = [float(r[0]) for r in rows_bio if r[0] and float(r[0]) > 10]
+        if len(hrv_vals) >= 5:
+            # Plews/Buchheit: media semanal + CV
+            hrv_media = _np.mean(hrv_vals)
+            hrv_cv = round(float(_np.std(hrv_vals) / hrv_media * 100), 1) if hrv_media > 0 else None
+
+            # Trend: slope de los ultimos valores
+            x = _np.arange(len(hrv_vals), dtype=float)
+            slope = float(_np.polyfit(x, hrv_vals, 1)[0])
+            hrv_trend = 'subiendo' if slope > 0.3 else ('bajando' if slope < -0.3 else 'estable')
+
+            # Absorcion (Plews 2013):
+            #   HRV estable/subiendo + CV moderado (5-10%) = buena absorcion
+            #   HRV bajando + CV bajo (<3%) = overreaching no funcional
+            #   HRV bajando + CV alto (>12%) = fatiga aguda (recuperable)
+            if hrv_trend == 'bajando' and hrv_cv is not None and hrv_cv < 3:
+                absorcion = 'overreaching'
+            elif hrv_trend == 'bajando' and hrv_cv is not None and hrv_cv > 12:
+                absorcion = 'fatiga_aguda'
+            elif hrv_trend in ('estable', 'subiendo'):
+                absorcion = 'buena'
+            else:
+                absorcion = 'moderada'
+
+        # Hanna Life como factor adicional
+        hanna_vals = [float(r[1]) for r in rows_bio if r[1]]
+        if hanna_vals:
+            hanna_media = _np.mean(hanna_vals)
+            if hanna_media < 35:
+                absorcion = 'overreaching' if absorcion != 'overreaching' else absorcion
+
+        resultado['absorcion'] = absorcion
+
+    # ── 5. Clasificacion de fase (Issurin 2008) ──────────────────────────
+    avg_tss = sum(tss_vals) / len(tss_vals) if tss_vals else 1
+    if avg_tss == 0:
+        avg_tss = 1
+    current_tss = tss_vals[-1]
+    ratio_tss = current_tss / avg_tss
+
+    # Distribucion de zonas de la ultima semana
+    z12_last = z12_vals[-1] if z12_vals else 0
+    z56_last = z56_vals[-1] if z56_vals else 0
+    tss_last = tss_vals[-1] if tss_vals else 1
+    pct_z12 = (z12_last / tss_last * 100) if tss_last > 0 else 50
+    pct_z56 = (z56_last / tss_last * 100) if tss_last > 0 else 0
+    n_calidad_last = n_calidad_vals[-1] if n_calidad_vals else 0
+
+    # Tendencia TSS (subiendo/bajando)
+    if len(tss_vals) >= 3:
+        tendencia_tss = tss_vals[-1] - _np.mean(tss_vals[-3:-1])
+    elif len(tss_vals) >= 2:
+        tendencia_tss = tss_vals[-1] - tss_vals[-2]
+    else:
+        tendencia_tss = 0
+
+    # Semanas consecutivas subiendo
+    semanas_subiendo = 0
+    for j in range(len(tss_vals) - 1, 0, -1):
+        if tss_vals[j] >= tss_vals[j-1] * 0.85:
+            semanas_subiendo += 1
+        else:
+            break
+
+    # --- TAPER: forzar R si estamos en ventana de taper ---
+    if resultado['en_taper']:
+        resultado['fase'] = 'R'
+        resultado['confianza'] = 0.9
+        resultado['semana_en_bloque'] = 4
+        return resultado
+
+    # --- CLASIFICACION MULTISENIAL ---
+    score_A = 0  # acumulacion
+    score_T = 0  # transmutacion
+    score_R = 0  # recuperacion/realizacion
+
+    # Senal 1: Volumen (TSS relativo al promedio)
+    if ratio_tss >= 0.85:
+        score_A += 2
+    if ratio_tss >= 1.10:
+        score_T += 2
+    if ratio_tss < 0.65:
+        score_R += 3
+
+    # Senal 2: Distribucion por zonas (Issurin)
+    # A = Z1-Z2 dominante (>70%), T = Z3-Z5 dominante, R = bajo volumen
+    if pct_z12 > 70:
+        score_A += 2
+    if pct_z56 > 15 or n_calidad_last >= 2:
+        score_T += 2
+    if n_calidad_last == 0 and ratio_tss < 0.75:
+        score_R += 2
+
+    # Senal 3: ACWR (Gabbett 2016)
+    if acwr is not None:
+        if 0.8 <= acwr <= 1.3:
+            score_A += 1  # zona segura, puede acumular
+        elif acwr > 1.5:
+            score_R += 2  # peligro, necesita bajar
+            score_T += 1  # o esta en pico de transmutacion
+
+    # Senal 4: Ramp rate (Banister)
+    if ramp_rate_pct is not None:
+        if ramp_rate_pct > 7:
+            score_R += 2  # riesgo, deberia descargar
+        elif ramp_rate_pct > 5:
+            score_T += 1  # carga alta, posible transmutacion
+        elif 0 < ramp_rate_pct <= 5:
+            score_A += 1  # progresion saludable
+
+    # Senal 5: TSB (forma)
+    if tsb_actual is not None:
+        if tsb_actual < -20:
+            score_R += 2  # fatiga profunda
+        elif tsb_actual < -10:
+            score_T += 1  # carga funcional
+        elif tsb_actual > 5:
+            score_R += 1  # fresco (post-recovery o detraining)
+
+    # Senal 6: Tendencia de TSS
+    if tendencia_tss > 0:
+        score_A += 1  # construyendo
+    elif tendencia_tss < -avg_tss * 0.3:
+        score_R += 1  # bajando significativamente
+
+    # Senal 7: Bio (si disponible) — Plews/Buchheit
+    if tiene_bio and absorcion:
+        if absorcion == 'overreaching':
+            score_R += 3  # senal fuerte de que necesita descargar
+            score_A -= 1
+        elif absorcion == 'fatiga_aguda':
+            score_R += 1
+        elif absorcion == 'buena':
+            score_A += 1  # absorbiendo bien, puede seguir acumulando
+
+    # Determinar fase por score maximo
+    scores = {'A': score_A, 'T': score_T, 'R': score_R}
+    fase = max(scores, key=scores.get)
+    score_max = scores[fase]
+    score_total = sum(scores.values()) or 1
+    confianza = round(min(0.95, score_max / score_total), 2)
+
+    # Semana en bloque
+    if fase == 'A':
+        semana_en_bloque = min(semanas_subiendo + 1, 3)
+    elif fase == 'T':
+        semana_en_bloque = 3
+    else:
+        semana_en_bloque = 4
+
+    resultado['fase'] = fase
+    resultado['confianza'] = confianza
+    resultado['semana_en_bloque'] = semana_en_bloque
+
+    return resultado
+
+
 def _read_sql(sql, conn, params=None):
     import pandas as pd
     try:
@@ -190,9 +486,9 @@ def extraer_vector_semana(
         ORDER BY fecha
     """, conn, params=[atleta_id, str(fecha_lunes), str(fecha_dom)])
 
-    if df_bio.empty:
-        return None
+    # (bio puede estar vacio — atletas sin wearable de sueño/HRV)
 
+    # Crear columnas hrv (funciona OK con DataFrame vacio)
     df_bio['hrv'] = df_bio['hrv_rmssd'].combine_first(df_bio['hrv_estimado_valor'])
     df_bio['hrv_real'] = df_bio['hrv_rmssd'].notna()
 
@@ -577,7 +873,7 @@ def extraer_vector_semana(
 def construir_dataset_completo(
     conn,
     atleta_id: int,
-    semanas_max: int = 200,
+    semanas_max: int = 12,
 ) -> pd.DataFrame:
     """
     Construye el dataset completo de vectores semanales para un atleta.
@@ -595,7 +891,7 @@ def construir_dataset_completo(
 
     # Rango de fechas
     r = conn.execute(
-        'SELECT MIN(fecha), MAX(fecha) FROM sesiones WHERE atleta_id=%s AND ctl IS NOT NULL',
+        'SELECT MIN(fecha), MAX(fecha) FROM sesiones WHERE atleta_id=%s',
         (atleta_id,)
     ).fetchone()
     if not r or not r[0]:
@@ -606,18 +902,31 @@ def construir_dataset_completo(
 
     # Ir al lunes de la primera semana
     dias_al_lunes = fecha_min.weekday()
-    fecha_lunes = fecha_min - timedelta(days=dias_al_lunes)
+    # Arrancar desde las ultimas semanas_max semanas
+    fecha_inicio = max(fecha_min, fecha_max - timedelta(days=semanas_max * 7))
+    fecha_lunes = fecha_inicio - timedelta(days=fecha_inicio.weekday())
 
+    # Ultimas semanas_max semanas (las mas recientes)
     vectores = []
     semana = 0
     while fecha_lunes <= fecha_max and semana < semanas_max:
-        sem_mesociclo = (semana % 4) + 1
+        # Deteccion real de fase (Issurin/Banister/Plews/Mujika)
+        fase_info = detectar_fase_mesociclo(conn, atleta_id, fecha_lunes + timedelta(days=6))
+        sem_mesociclo = fase_info['semana_en_bloque']
         v = extraer_vector_semana(
             conn, atleta_id, fecha_lunes,
             baseline=baseline, k_params=k_params,
             semana_del_mesociclo=sem_mesociclo,
         )
         if v and v['n_sesiones'] > 0:
+            # Inyectar fase real (Issurin/Banister/Plews/Mujika)
+            v['fase_mesociclo'] = fase_info.get('fase')
+            v['confianza_fase'] = fase_info.get('confianza')
+            v['en_taper'] = fase_info.get('en_taper', False)
+            v['contexto_planificacion'] = fase_info.get('contexto', 'mejora_general')
+            v['semanas_para_carrera'] = fase_info.get('semanas_para_carrera')
+            v['acwr'] = fase_info.get('acwr')
+            v['absorcion'] = fase_info.get('absorcion')
             vectores.append(v)
         fecha_lunes += timedelta(days=7)
         semana += 1

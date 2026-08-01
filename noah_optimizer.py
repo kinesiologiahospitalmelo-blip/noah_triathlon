@@ -686,8 +686,10 @@ def analizar_atleta(
 
     # 1. Dataset
     df = construir_dataset_completo(conn, atleta_id)
-    if df.empty or len(df) < 6:
-        return {'error': 'Historial insuficiente (mínimo 6 semanas)', 'atleta_id': atleta_id}
+    if df.empty:
+        return {'error': 'Sin datos de entrenamiento', 'atleta_id': atleta_id}
+    if len(df) < 6:
+        print(f'  NOTA: Solo {len(df)} semanas (minimo ideal: 6). Continuando con datos limitados.')
 
     # 2. K1/K2
     k_params = estimar_k1_k2(conn, atleta_id)
