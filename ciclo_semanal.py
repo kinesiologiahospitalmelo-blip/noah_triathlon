@@ -8,7 +8,10 @@ USO:
   python ciclo_semanal.py --atleta 2
 """
 import sys, json, argparse
-import psycopg2
+try:
+    import psycopg2
+except ImportError:
+    psycopg2 = None
 from datetime import date, timedelta
 from pathlib import Path
 BASE_DIR = Path(__file__).parent
