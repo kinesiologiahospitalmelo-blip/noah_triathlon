@@ -4759,6 +4759,34 @@ def get_optimizer(atleta_id):
                     fase_actual, sem_carrera = 'A', None
                 resultado['escenarios_coach'] = mind.generar_escenarios_coach(
                     estado, fase_actual, sem_carrera)
+            else:
+                # Sin ML: generar escenarios basicos desde PMC
+                ctl = float(resultado.get('estado_actual',{}).get('ctl') or 40)
+                atl = float(resultado.get('estado_actual',{}).get('atl') or 40)
+                tsb = ctl - atl
+                tss_base = round(ctl * 7)
+                nombres = ['Recuperacion activa','Consolidacion','Mantenimiento','Construccion','Carga maxima']
+                factores = [0.70, 0.85, 1.00, 1.10, 1.20]
+                escenarios = []
+                for ni, fi in zip(nombres, factores):
+                    tss_s = round(tss_base * fi)
+                    delta = round((tss_s/7 - ctl) / 42 * 28, 1)
+                    riesgo = round(max(0, (tss_s/7/max(ctl,1) - 1.0) * 0.3), 3)
+                    sem = 'verde' if riesgo < 0.05 else ('amarillo' if riesgo < 0.1 else 'rojo')
+                    escenarios.append({
+                        'nombre':ni, 'tss_semana':tss_s, 'delta_ctl':delta,
+                        'ctl_actual':round(ctl,1), 'ctl_4sem':round(ctl+delta,1),
+                        'atl_max':round(atl+delta*1.5,1), 'tsb_final':round(tsb-delta,1),
+                        'prob_riesgo':riesgo, 'prob_absorcion':None,
+                        'semaforo':sem, 'recomendado_base':fi==1.0, 'recomendado_ml':False,
+                        'interpretacion':'Calculado desde PMC (sin modelo ML)',
+                    })
+                resultado['escenarios_coach'] = {
+                    'escenarios': escenarios,
+                    'rango': {'tss_base':tss_base, 'macro_12sem':tss_base,
+                              'micro_4sem':round(tss_base*0.85), 'contexto':'normal', 'fase':'A'},
+                }
+                print(f'  [PMC] 5 escenarios generados sin ML (CTL={ctl:.1f})')
         except Exception as e:
             resultado['escenarios_coach'] = {'rango': {}, 'escenarios': [], 'error': str(e)}
 

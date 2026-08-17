@@ -27,6 +27,12 @@ TAXONOMIA DE ZONAS (San Millan, Friel, Seiler, Coggan):
 from dataclasses import dataclass, field
 from typing import List, Optional
 from datetime import date, timedelta
+try:
+    from noah_patrones import analizar_patrones_atleta, aplicar_patrones_a_tss, aplicar_duracion_sesion
+    PATRONES_DISPONIBLE = True
+except ImportError:
+    PATRONES_DISPONIBLE = False
+
 
 # ─── TAXONOMIA DE ZONAS ───────────────────────────────────────────────────────
 ZONAS = {
@@ -1279,16 +1285,33 @@ def generar_semana_triatleta(atleta_config, estado, perfil, semana_macro, fechas
         tss_manual=tss_manual,
     )
 
-    tss_run  = round(tss_base * 0.35)
-    tss_bike = round(tss_base * 0.40)
-    tss_swim = round(tss_base * 0.25)
+    # ── Distribucion por deporte (aprendida del atleta) ──────────
+    patrones = None
+    if PATRONES_DISPONIBLE and locals().get('conn') and locals().get('aid'):
+        try:
+            patrones = analizar_patrones_atleta(conn, aid)
+            dist = aplicar_patrones_a_tss(tss_base, patrones, fase)
+            tss_run  = dist['running']
+            tss_bike = dist['cycling']
+            tss_swim = dist['swimming']
+            print(f'  [PATRONES] Dist: run={tss_run} bike={tss_bike} swim={tss_swim} '
+                  f'(actual: {patrones["distribucion_actual"]} -> plan: {patrones["distribucion_plan"]})')
+        except Exception as _ep:
+            print(f'  [PATRONES] Fallback a distribucion fija: {_ep}')
+            tss_run  = round(tss_base * 0.35)
+            tss_bike = round(tss_base * 0.40)
+            tss_swim = round(tss_base * 0.25)
+    if not patrones:
+        tss_run  = round(tss_base * 0.35)
+        tss_bike = round(tss_base * 0.40)
+        tss_swim = round(tss_base * 0.25)
 
     # Esquema semanal triatleta (Navarro):
     # LUN: Swim | MAR: Bike | MIÉ: Swim+Run | JUE: Bike | VIE: Swim+Run | SÁB: Bike largo | DOM: Run largo
     lun, mar, mie, mie_s, jue, vie, vie_s, sab, dom = fechas_9
 
-    aid  = atleta_config.get('atleta_id') or estado.get('atleta_id')
-    conn = atleta_config.get('conn') or estado.get('conn')
+    aid  = atleta_config.get('atleta_id', None) if isinstance(atleta_config, dict) else getattr(atleta_config, 'atleta_id', None)
+    conn = atleta_config.get('conn', None) if isinstance(atleta_config, dict) else getattr(atleta_config, 'conn', None)
 
     # ── Estructura semanal FIJA triatleta ────────────────────────────────────
     # Objetivos por día son ESTÁTICOS — solo cambia la variante y la carga
@@ -1301,6 +1324,19 @@ def generar_semana_triatleta(atleta_config, estado, perfil, semana_macro, fechas
     # VIE PM: Run FTP (umbral run)
     # SÁB: Bike Long (volumen)
     # DOM: Run Long (volumen)
+
+
+    # ── Duraciones aprendidas del atleta ──────────────────────
+    dur_swim_long = dur_swim_qual = dur_bike_qual = dur_bike_long = dur_run_long = None
+    if patrones:
+        dt = patrones.get('duracion_tipica', {})
+        dur_swim_long = dt.get('swimming', {}).get('long')
+        dur_swim_qual = dt.get('swimming', {}).get('quality')
+        dur_bike_qual = dt.get('cycling', {}).get('quality')
+        dur_bike_long = dt.get('cycling', {}).get('long')
+        dur_run_long  = dt.get('running', {}).get('long')
+        print(f'  [PATRONES] Duraciones: swim={dur_swim_long}/{dur_swim_qual}min, '
+              f'bike={dur_bike_qual}/{dur_bike_long}min, run_long={dur_run_long}min')
 
     # Recuperación: reemplaza calidad por regenerativo
     es_rec = (prioridad == 'RECUPERACION')
@@ -1412,8 +1448,8 @@ def generar_semana_completa(atleta_config, estado, perfil,
     tss2 = round(tss_base * 0.25)
     tss3 = round(tss_base * 0.42)
 
-    aid  = atleta_config.get('atleta_id') or estado.get('atleta_id')
-    conn = atleta_config.get('conn') or estado.get('conn')
+    aid  = atleta_config.get('atleta_id', None) if isinstance(atleta_config, dict) else getattr(atleta_config, 'atleta_id', None)
+    conn = atleta_config.get('conn', None) if isinstance(atleta_config, dict) else getattr(atleta_config, 'conn', None)
     es_rec = (prioridad == 'RECUPERACION')
 
     if deporte == 'cycling':

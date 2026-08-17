@@ -346,8 +346,18 @@ def _guardar_streams(conn, atleta_id, sesion_id, garmin_id, samples):
                 # Solo imprime el primer error de la sesion (evita floodear
                 # el log si TODOS los samples fallan por el mismo motivo).
                 print(f'      [WARN] Sample insert error (se muestra 1 vez): {e}')
-    if saved:
+    # Solo marcar completo si bajo suficientes muestras
+    dur = float(conn.execute('SELECT duration_min FROM sesiones WHERE id=%s', (sesion_id,)).fetchone()[0] or 0)
+    min_esperado = max(5, dur * 0.3)  # al menos 0.3 samples/min
+    dur_row = conn.execute('SELECT duration_min FROM sesiones WHERE id=%s', (sesion_id,)).fetchone()
+    dur = float(dur_row[0] or 0) if dur_row else 0
+    min_esperado = max(5, dur * 0.3)
+    if saved >= min_esperado:
         conn.execute('UPDATE sesiones SET has_streams=1 WHERE id=%s', (sesion_id,))
+    elif saved > 0:
+        print(f'      [WARN] Streams incompletos: {saved} para {dur:.0f}min')
+    elif saved > 0:
+        print(f'      [WARN] Streams incompletos: {saved} muestras para {dur:.0f}min (min: {min_esperado:.0f}). No marca has_streams=1.')
     conn.commit()
     return saved
 

@@ -24,6 +24,12 @@ try:
     NOAH_ML_DISPONIBLE = True
 except ImportError:
     NOAH_ML_DISPONIBLE = False
+try:
+    from noah_cerebro import decidir_semana as cerebro_decidir
+    CEREBRO_OK = True
+except ImportError:
+    CEREBRO_OK = False
+
 from patrones_sesion import (
     generar_semana_completa, generar_semana_triatleta,
     mostrar_prescripcion, mostrar_zonas_atleta, ZONAS
@@ -428,7 +434,7 @@ def main():
     if NOAH_ML_DISPONIBLE and not tss_manual:
         try:
             mind = NOAHMind(conn, atleta_id)
-            mind.preparar_datos()
+            pass  # preparar_datos() removido — procesa 9700 dias innecesariamente
             # Entrenar con timeout implícito — si sklearn tarda demasiado
             # o falla (datos insuficientes, cross_val error) se salta sin romper
             try:
