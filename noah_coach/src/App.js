@@ -3090,6 +3090,7 @@ function DashboardAtleta({ atletaId, atleta }) {
   const [loadingCiclo, setLoadingCiclo] = useState(false)
   const [syncLoading, setSyncLoading] = useState(false)
   const [tab, setTab]           = useState('semana')
+  const [menuOpen, setMenuOpen] = useState(window.innerWidth > 768)
   const [subTabZonas, setSubTabZonas] = useState('running')
 
   const cargarPresc = () => axios.get(`${API}/atletas/${atletaId}/prescripcion`).then(r=>setPresc(r.data.data)).catch(()=>{})
@@ -3138,7 +3139,33 @@ function DashboardAtleta({ atletaId, atleta }) {
   const dep = atleta.deporte_ppal||atleta.deporte||'running'
   const s = SPORT[dep]||SPORT.running
 
-  const tabs = [{id:'semana',label:'📅 Semana'},{id:'calendario',label:'🗓 Calendario'},{id:'estado',label:'📊 Estado'},{id:'diagnostico',label:'🔍 Diagnóstico'},{id:'zonas',label:'🎯 Zonas'},{id:'fases',label:'📈 Fases'},{id:'intel',label:'🧠 NOAH Intel'},{id:'race',label:'🏁 Race'},{id:'tests',label:'🔬 Tests'},{id:'clustering',label:'🧬 Clusters'},{id:'optimizer',label:'🎯 Optimizer'},{id:'perfil',label:'⚙ Perfil'},{id:'aprendizaje',label:'📈 Aprendizaje'},{id:'analisis_ciclismo',label:'⚡ Análisis Ciclismo'}]
+  // Iconos SVG custom (NOAH icon system)
+  const _I = (d,vb='0 0 24 24') => ({__html:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">${d}</svg>`})
+  const tabIcons = {
+    semana:     _I('<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9.5h18"/><path d="M8 2v4M16 2v4"/><circle cx="8" cy="14" r="1" fill="currentColor"/><circle cx="12" cy="14" r="1" fill="currentColor"/><circle cx="16" cy="14" r="1" fill="currentColor"/>'),
+    calendario: _I('<rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9.5h18M8 2v4M16 2v4"/><path d="M7.5 13h2v2h-2zM10.5 13h2v2h-2zM13.5 13h2v2h-2zM7.5 16.5h2v2h-2z"/>'),
+    estado:     _I('<path d="M4 20V10l4-6h8l4 6v10z"/><path d="M4 10h16"/><path d="M10 15v3M14 13v5"/>'),
+    diagnostico:_I('<circle cx="10" cy="10" r="6.4"/><path d="m14.7 14.7 5.3 5.3M7.1 10.4l2-2.1 1.9 2.2 2.8-3.2M5.8 19.5h6.8"/>'),
+    zonas:      _I('<circle cx="12" cy="12" r="9"/><path d="M12 3v4M12 17v4"/><path d="M5.6 6.5l2.5 3M15.9 14.5l2.5 3"/><circle cx="12" cy="12" r="3.5"/><path d="m12 8.5.8 2.3h2.5l-2 1.5.7 2.3-2-1.5-2 1.5.7-2.3-2-1.5h2.5z" fill="currentColor" stroke="none"/>'),
+    fases:      _I('<path d="M3.5 20 7 8l4 7 3-10 3.5 8 3 7"/><circle cx="7" cy="8" r="1.2" fill="currentColor"/><circle cx="14" cy="5" r="1.2" fill="currentColor"/><path d="M2.5 20h19" stroke-dasharray="2 2"/>'),
+    intel:      _I('<ellipse cx="12" cy="9" rx="7.5" ry="6.5"/><path d="M8.5 15.5c0 2 1.5 4 3.5 4s3.5-2 3.5-4"/><path d="M12 2.5v-1M7 4l-1-1.2M17 4l1-1.2"/><circle cx="9.5" cy="8.5" r="1" fill="currentColor"/><circle cx="14.5" cy="8.5" r="1" fill="currentColor"/><path d="M9.5 11.5q2.5 2 5 0"/>'),
+    race:       _I('<path d="M5 4v17"/><path d="M5 4h10.5c2 0 3 1.2 3 2.5S17 9 14.5 9H5"/><path d="M5 9h11c2.2 0 3.2 1.2 3.2 2.5S18 14 15.5 14H5"/><path d="M7 6h5M7 11h6"/>'),
+    tests:      _I('<path d="M9 2v4M15 2v4"/><path d="M8.5 6h7l1.2 12.5c.1 1-.7 1.8-1.7 1.8H9c-1 0-1.8-.8-1.7-1.8z"/><path d="M7 11.5h10"/><circle cx="10" cy="15" r=".8" fill="currentColor"/><circle cx="13" cy="14" r=".8" fill="currentColor"/><circle cx="12" cy="17" r=".8" fill="currentColor"/>'),
+    clustering: _I('<circle cx="7" cy="8" r="2.5"/><circle cx="17" cy="8" r="2.5"/><circle cx="12" cy="17" r="2.5"/><path d="M9.2 9.3 10.3 15M14.8 9.3 13.7 15M9.5 8h5" stroke-dasharray="1.5 1.5"/>'),
+    optimizer:  _I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 3.5"/><path d="M19.5 5.5 21 4M4.5 5.5 3 4"/><path d="M2.5 12H4M20 12h1.5"/><path d="M5.5 19l-1 1.5M18.5 19l1 1.5"/>'),
+    perfil:     _I('<circle cx="12" cy="8" r="4.5"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8"/><path d="m15 7 1.5-2.5M17 9.5h2.5"/>'),
+    aprendizaje:_I('<path d="M3 20 7 8l4 7 3-10 3.5 8 3 7"/><circle cx="7" cy="8" r="1.2" fill="currentColor"/><circle cx="14" cy="5" r="1.2" fill="currentColor"/><path d="M2.5 20h19" stroke-dasharray="2 2"/>'),
+    analisis_ciclismo:_I('<circle cx="12" cy="14" r="7"/><circle cx="12" cy="14" r="2.5"/><path d="M12 7V3.5M8 4.5l1.5 3M16 4.5l-1.5 3"/><path d="M12 14V10.5" stroke-dasharray="1 1"/>'),
+  }
+  const tabs = [
+    {id:'semana',label:'Semana'},{id:'calendario',label:'Calendario'},
+    {id:'estado',label:'Estado'},{id:'diagnostico',label:'Diagnóstico'},
+    {id:'zonas',label:'Zonas'},{id:'fases',label:'Fases'},
+    {id:'intel',label:'NOAH Intel'},{id:'race',label:'Race'},
+    {id:'tests',label:'Tests'},{id:'clustering',label:'Clusters'},
+    {id:'optimizer',label:'Optimizer'},{id:'perfil',label:'Perfil'},
+    {id:'aprendizaje',label:'Aprendizaje'},{id:'analisis_ciclismo',label:'Análisis Ciclismo'}
+  ]
 
   return (
     <div style={{ flex:1, overflow:'auto' }}>
@@ -3392,30 +3419,50 @@ function DashboardAtleta({ atletaId, atleta }) {
       )}
         </div>
 
-        {/* Rail vertical de tabs -- a la derecha del contenido */}
+        {/* Boton hamburguesa mobile */}
+        {window.innerWidth <= 768 && (
+          <button onClick={()=>setMenuOpen(!menuOpen)} style={{
+            position:'fixed', bottom:16, right:16, zIndex:100,
+            width:48, height:48, borderRadius:24, border:'none',
+            background:C.purple, color:'#fff', cursor:'pointer',
+            boxShadow:'0 4px 16px rgba(139,92,246,0.4)', fontSize:20,
+            display:'flex', alignItems:'center', justifyContent:'center',
+          }}>
+            {menuOpen ? '✕' : '☰'}
+          </button>
+        )}
+
+        {/* Rail vertical de tabs */}
         <div style={{
-          width:132, flexShrink:0, display:'flex', flexDirection:'column', gap:5,
-          position:'sticky', top:0,
+          width: window.innerWidth <= 768 ? (menuOpen ? 52 : 0) : 140,
+          flexShrink:0, display:'flex', flexDirection:'column', gap:4,
+          position: window.innerWidth <= 768 ? 'fixed' : 'sticky',
+          top: window.innerWidth <= 768 ? 0 : 0,
+          right: window.innerWidth <= 768 ? 0 : 'auto',
+          bottom: window.innerWidth <= 768 ? 60 : 'auto',
+          zIndex: window.innerWidth <= 768 ? 99 : 'auto',
+          background: window.innerWidth <= 768 ? C.bg2 : 'transparent',
+          borderLeft: window.innerWidth <= 768 ? `1px solid ${C.border}` : 'none',
+          padding: window.innerWidth <= 768 ? '8px 4px' : 0,
+          overflowY:'auto',
+          transition:'width 0.2s',
+          ...(window.innerWidth <= 768 && !menuOpen ? {width:0, padding:0, overflow:'hidden'} : {}),
         }}>
-          {tabs.map(t=>{
-            const partes = t.label.split(' ')
-            const icono = partes[0]
-            const texto = partes.slice(1).join(' ')
-            return (
-              <button key={t.id} onClick={()=>setTab(t.id)} style={{
-                display:'flex', alignItems:'center', gap:8, padding:'9px 12px',
-                borderRadius:10, border:`1px solid ${tab===t.id?C.purple:C.border}`,
-                background: tab===t.id ? `${C.purple}18` : 'rgba(255,255,255,0.02)',
-                backdropFilter:'blur(6px)', WebkitBackdropFilter:'blur(6px)',
-                color: tab===t.id?C.purple:C.text2, cursor:'pointer',
-                fontWeight: tab===t.id?700:500, fontSize:11.5, textAlign:'left',
-                transition:'all 0.15s',
-              }}>
-                <span style={{ fontSize:15 }}>{icono}</span>
-                <span>{texto}</span>
-              </button>
-            )
-          })}
+          {tabs.map(t=>(
+            <button key={t.id} onClick={()=>{setTab(t.id); if(window.innerWidth<=768) setMenuOpen(false)}} title={t.label} style={{
+              display:'flex', alignItems:'center', gap:8,
+              padding: window.innerWidth <= 768 ? '8px 10px' : '8px 12px',
+              borderRadius:10, border:`1px solid ${tab===t.id?C.purple:C.border}`,
+              background: tab===t.id ? `${C.purple}18` : 'rgba(255,255,255,0.02)',
+              backdropFilter:'blur(6px)', WebkitBackdropFilter:'blur(6px)',
+              color: tab===t.id?C.purple:C.text2, cursor:'pointer',
+              fontWeight: tab===t.id?700:500, fontSize:11.5, textAlign:'left',
+              transition:'all 0.15s', whiteSpace:'nowrap',
+            }}>
+              <span style={{display:'flex',alignItems:'center'}} dangerouslySetInnerHTML={tabIcons[t.id] || {__html:''}} />
+              {window.innerWidth > 768 && <span>{t.label}</span>}
+            </button>
+          ))}
         </div>
       </div>
       </div>
