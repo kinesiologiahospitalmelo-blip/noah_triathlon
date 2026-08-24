@@ -4863,6 +4863,53 @@ def aplicar_receta_optimizer(atleta_id):
         return error(str(e))
 
 
+
+# ── ESTRATEGIA DE CARRERA ────────────────────────────────────────────────
+@app.route('/api/atletas/<int:atleta_id>/estrategia_carrera', methods=['GET'])
+@requiere_login
+def get_estrategia_carrera(atleta_id):
+    """Genera estrategia de carrera basada en el perfil del atleta."""
+    try:
+        from noah_estrategia_carrera import generar_estrategia
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT nombre, peso_kg, altura_cm, edad, sexo,
+                   pace_umbral_run, ftp_watts, css_100m,
+                   lthr_run, lthr_bike, lthr_swim
+            FROM atletas WHERE id=%s
+        """, (atleta_id,))
+        row = cur.fetchone()
+        if not row:
+            return ok({'error': 'Atleta no encontrado'})
+
+        atleta = {
+            'nombre': row[0], 'peso_kg': row[1] or 70, 'altura_cm': row[2] or 170,
+            'edad': row[3] or 30, 'sexo': row[4] or 'M',
+            'pace_umbral_run': row[5] or 5.5, 'ftp_watts': row[6] or 200,
+            'css_100m': row[7] or 1.85,
+            'lthr_run': row[8] or 160, 'lthr_bike': row[9] or 155,
+            'lthr_swim': row[10] or 145,
+        }
+
+        carrera_tipo = request.args.get('tipo', 'olimpico')
+        temp = float(request.args.get('temp', 20))
+        humedad = float(request.args.get('humedad', 50))
+        altitud = float(request.args.get('altitud', 0))
+        desnivel = float(request.args.get('desnivel', 0))
+
+        condiciones = {
+            'temperatura': temp, 'humedad': humedad,
+            'altitud': altitud, 'desnivel': desnivel,
+        }
+
+        resultado = generar_estrategia(atleta, carrera_tipo, condiciones)
+        conn.close()
+        return ok(resultado)
+    except Exception as e:
+        return ok({'error': str(e)})
+
+
 if __name__ == '__main__':
     print('=' * 50)
     print('  NOA API — Backend Flask')

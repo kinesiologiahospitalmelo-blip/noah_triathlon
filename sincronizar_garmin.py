@@ -686,6 +686,58 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
         conn.commit()
         db.actualizar_ctl_atl_tsb(atleta_id)
         db.actualizar_umbrales(atleta_id)
+        # Detectar carreras y tests
+        pass
+
+    # ── Carreras pasadas pendientes → vincular y completar ─────
+    try:
+        cur_car = conn.cursor() if hasattr(conn, 'cursor') else conn
+        if hasattr(conn, 'cursor'):
+            cur_car = conn.cursor()
+        cur_car.execute(
+            "SELECT id, nombre, fecha, distancia FROM carreras "
+            "WHERE atleta_id=%s AND estado='pendiente' AND fecha::date <= CURRENT_DATE",
+            (atleta_id,))
+        carreras_pend = cur_car.fetchall()
+        for car in carreras_pend:
+            car_id, car_nombre, car_fecha, car_dist = car[0], car[1], str(car[2])[:10], car[3]
+            # Parsear distancia texto ("15 km" → 15)
+            try:
+                car_dist_num = float(''.join(c for c in str(car_dist or '') if c.isdigit() or c == '.') or '0')
+            except: car_dist_num = 0
+            # Buscar sesion del dia de la carrera (+-1 dia)
+            cur_car.execute(
+                "SELECT id, duration_min, distance_km FROM sesiones "
+                "WHERE atleta_id=%s AND fecha::date BETWEEN (%s::date - 1) AND (%s::date + 1) "
+                "ORDER BY tss_total DESC NULLS LAST LIMIT 1",
+                (atleta_id, car_fecha, car_fecha))
+            ses = cur_car.fetchone()
+            if ses and ses[1] and ses[2] and float(ses[2]) > 2:
+                dur = float(ses[1])
+                dist_km = float(ses[2])
+                tiempo = f"{int(dur//60)}:{int(dur%60):02d}"
+                pace = dur / dist_km
+                cur_car.execute("UPDATE carreras SET estado='completada', resultado_tiempo=%s WHERE id=%s",
+                    (tiempo, car_id))
+                conn.commit()
+                print(f'  [CARRERA] "{car_nombre}" completada: {tiempo} (pace {int(pace)}:{int((pace%1)*60):02d}/km)')
+                # Actualizar umbral desde Daniels VDOT
+                if dist_km <= 7: factor = 0.97
+                elif dist_km <= 12: factor = 1.00
+                elif dist_km <= 16: factor = 1.02
+                elif dist_km <= 25: factor = 1.03
+                else: factor = 1.08
+                umbral = round(pace / factor, 2)
+                if 3.5 < umbral < 10:
+                    cur_car.execute("UPDATE atletas SET pace_umbral_run=%s WHERE id=%s", (umbral, atleta_id))
+                    conn.commit()
+                    print(f'  [UMBRAL] Pace actualizado: {int(umbral)}:{int((umbral%1)*60):02d}/km (Daniels factor {factor})')
+            else:
+                cur_car.execute("UPDATE carreras SET estado='completada', resultado_tiempo='DNS' WHERE id=%s", (car_id,))
+                conn.commit()
+                print(f'  [CARRERA] "{car_nombre}" sin sesion encontrada (DNS)')
+    except Exception as _ec:
+        print(f'  [CARRERA] Error: {_ec}')
 
     return sesiones_nuevas
 

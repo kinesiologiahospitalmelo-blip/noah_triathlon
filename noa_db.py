@@ -12,7 +12,10 @@ USO:
   db.agregar_sesion(atleta_id=1, datos=...)
 """
 
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 import numpy as np
 import os
 import psycopg2
@@ -25,32 +28,14 @@ from db_compat import ConexionCompat
 # ─── Helper pd.read_sql → _read_sql (pandas 2.x no soporta DBAPI2 directo) ────
 
 def _read_sql(sql, conn, params=None):
-    import pandas as pd
+    try:
+        import pandas as pd
+    except ImportError:
+        pd = None
     try:
         cur = conn.cursor()
         cur.execute(sql, params)
     except Exception:
-        # Transaccion abortada por error previo — hacer rollback y reintentar
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        cur = conn.cursor()
-        cur.execute(sql, params)
-    cols = [d[0] for d in cur.description]
-    rows = cur.fetchall()
-    return pd.DataFrame(rows, columns=cols)
-
-
-# ─── Helper pd.read_sql → _read_sql (pandas 2.x no soporta DBAPI2 directo) ────
-
-def _read_sql(sql, conn, params=None):
-    import pandas as pd
-    try:
-        cur = conn.cursor()
-        cur.execute(sql, params)
-    except Exception:
-        # Transaccion abortada por error previo — hacer rollback y reintentar
         try:
             conn.rollback()
         except Exception:
@@ -227,20 +212,33 @@ class NOADatabase:
 
         desde = str(date.today() - timedelta(days=28))
 
+        # PACE RUN: desde mejor performance sostenida (no HR)
+        # Buscar sesion con mejor pace (mas rapido) de >20min y >3km
         ses_run = conn.execute(
-            "SELECT hr_avg, pace, duration_min FROM sesiones "
+            "SELECT duration_min, distance_km FROM sesiones "
             "WHERE atleta_id=%s AND sport='running' AND fecha >= %s "
-            "AND duration_min >= 25 AND hr_avg IS NOT NULL "
-            "ORDER BY tss_total DESC LIMIT 1",
+            "AND duration_min >= 20 AND distance_km >= 3 "
+            "ORDER BY (duration_min / NULLIF(distance_km, 0)) ASC LIMIT 1",
             (atleta_id, desde)
         ).fetchone()
 
         lthr_calc = None
         pace_calc = None
-        if ses_run and ses_run[0]:
-            lthr_calc = round(float(ses_run[0]), 1)
-            if ses_run[1]:
-                pace_calc = round(float(ses_run[1]), 3)
+        if ses_run and ses_run[0] and ses_run[1]:
+            dur = float(ses_run[0])
+            dist = float(ses_run[1])
+            pace_sesion = dur / dist
+            # Daniels VDOT: convertir pace de sesion a pace umbral
+            if dist <= 7: factor = 0.97
+            elif dist <= 12: factor = 1.00
+            elif dist <= 16: factor = 1.02
+            elif dist <= 25: factor = 1.03
+            else: factor = 1.08
+            pace_calc = round(pace_sesion / factor, 3)
+            if pace_calc < 3.5 or pace_calc > 10:
+                pace_calc = None  # fuera de rango
+
+        # FTP BIKE: best 20min power × 0.95 (Coggan)
 
         ses_bike = conn.execute(
             "SELECT np_watts, duration_min FROM sesiones "
