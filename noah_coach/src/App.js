@@ -319,10 +319,19 @@ function BloqueEditor({ bloque, sport, atletaId, onChange, onEliminar }) {
   const esSwim = sport === 'swimming'
 
   const fmtDur = (d) => {
+    if (esSwim) return `${Math.round(d)}m`
     if (d < 1) return `${Math.round(d * 60)}"`
     return `${Math.round(d)}'`
   }
-  const ajustarDur = (delta) => onChange({ ...bloque, duracion_min: Math.max(0.17, durMin + delta) })
+  const ajustarDur = (delta) => {
+    if (esSwim) {
+      // Swim: delta en metros (25m = largo de pileta)
+      const nuevoDur = Math.max(25, (durMin || 50) + delta * 25)
+      onChange({ ...bloque, duracion_min: nuevoDur })
+    } else {
+      onChange({ ...bloque, duracion_min: Math.max(0.17, durMin + delta) })
+    }
+  }
   const ajustarReps = (delta) => onChange({ ...bloque, repeticiones: Math.max(1, Math.min(30, (bloque.repeticiones||1)+delta)) })
   const ajustarPausa = (delta) => onChange({ ...bloque, pausa_min: Math.max(0, (bloque.pausa_min||0)+delta) })
 
@@ -412,7 +421,7 @@ function BloqueEditor({ bloque, sport, atletaId, onChange, onEliminar }) {
         ) : (
           <>
             <span style={{ fontSize:10, color:C.text2 }}>pace</span>
-            <input value={bloque.pace_ref ?? ''} placeholder={esSwim?'1:44':'5:04'}
+            <input value={bloque.pace_ref ? `${Math.floor(bloque.pace_ref)}:${String(Math.round((bloque.pace_ref%1)*60)).padStart(2,'0')}` : ''} placeholder={esSwim?'1:44':'5:04'}
               onChange={e=>onChange({...bloque, pace_ref_str: e.target.value})}
               style={{...inputMiniStyle, width:52}} />
             <span style={{ fontSize:11, color:C.text2 }}>/{esSwim?'100m':'km'}</span>

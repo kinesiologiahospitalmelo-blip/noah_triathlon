@@ -2682,15 +2682,7 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
           color:T.dim,cursor:'pointer'}}>Hoy</button>
       </div>
 
-      {/* Leyenda — compacta, una sola fila */}
-      <div style={{padding:'6px 18px',display:'flex',gap:12,flexWrap:'wrap',borderBottom:`1px solid ${T.border}`}}>
-        {[[NOAH_C.success,'Hecha'],[NOAH_C.warning,'Editada'],[NOAH_C.danger,'No hecha'],[NOAH_C.ctl,'A futuro']].map(([c,l])=>(
-          <div key={l} style={{display:'flex',alignItems:'center',gap:4}}>
-            <div style={{width:6,height:6,borderRadius:'50%',background:c}}/>
-            <span style={{fontSize:9,color:T.dim}}>{l}</span>
-          </div>
-        ))}
-      </div>
+
 
       {/* Cabecera días */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',
@@ -4169,17 +4161,6 @@ export default function AtletaDashboard({ atletaId }) {
         })()}
       </div>
 
-      {/* LEYENDA — solo tiene sentido donde se muestran sesiones individuales
-          (Mi Sesion / Semana). En Metricas, Planificacion, etc. no aplica. */}
-      {(tab === 'hoy' || tab === 'semana') && (
-        <div style={{ background:'rgba(255,255,255,0.03)', borderBottom:`1px solid ${NOAH_C.border}`, padding:'7px 16px', display:'flex', gap:14, alignItems:'center', flexWrap:'wrap' }}>
-          {['done','miss','partial','planned'].map(k => {
-            const e = ESTADO[k]
-            const labelCorto = {done:'Hecha', miss:'No hecha', partial:'Editada', planned:'A futuro'}[k]
-            return <span key={k} style={{ fontSize:10, color:e.color, fontWeight:600, display:'flex', alignItems:'center', gap:4 }}><span style={{ width:6,height:6,borderRadius:'50%',background:e.color,display:'inline-block' }} />{labelCorto}</span>
-          })}
-        </div>
-      )}
 
       {/* TABS — carrusel real 3D: centro grande, laterales chicas/borrosas, navegable por swipe/flecha/tap-lateral/dot */}
       {(() => {

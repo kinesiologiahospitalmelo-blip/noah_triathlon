@@ -369,7 +369,7 @@ const inputStyle = {
 }
 
 // ── Card de carrera ──────────────────────────────────────────────────────────
-function RaceCard({ carrera, onEdit, onDelete, modoAtleta = false }) {
+function RaceCard({ carrera, onEdit, onDelete, modoAtleta = false, atletaId }) {
   const dep  = DEPORTE_CONFIG[carrera.deporte] || DEPORTE_CONFIG.running
   const pri  = PRIORIDAD[carrera.prioridad] || PRIORIDAD.B
   const est  = ESTADO[carrera.estado] || ESTADO.pendiente
@@ -529,6 +529,45 @@ function RaceCard({ carrera, onEdit, onDelete, modoAtleta = false }) {
           </div>
         )}
 
+        {/* Botón estrategia de carrera */}
+        {!esPasada && (
+          <div style={{ marginTop: 8 }} onClick={e => e.stopPropagation()}>
+            <button onClick={() => {
+              const tipo = (carrera.modalidad || carrera.distancia || carrera.nombre || '').toLowerCase()
+                .replace('media maratón','21K').replace('media maraton','21K')
+                .replace('maratón','maraton').replace('maraton','maraton')
+                .replace('medio ironman','70.3').replace('half ironman','70.3')
+                .replace('olímpico','olimpico').replace('olimpico','olimpico')
+                .replace('sprint','sprint').replace('ironman','ironman')
+                .replace('10k','10K').replace('5k','5K').replace('21k','21K')
+                .replace('42k','maraton').replace('mtb','mtb')
+              const API = window.location.hostname === 'localhost' 
+                ? `http://localhost:5000` 
+                : `https://noah-triathlon.vercel.app`
+              let token = null
+              try { token = JSON.parse(localStorage.getItem('noah_sesion'))?.token } catch {}
+              fetch(`${API}/api/atletas/${atletaId}/estrategia_carrera?tipo=${tipo}&temp=22`, {
+                headers: token ? {'Authorization': `Bearer ${token}`} : {}
+              })
+              .then(r => r.json())
+              .then(d => {
+                if (d.data?.error) { alert('Error: ' + d.data.error); return }
+                window.dispatchEvent(new CustomEvent('noah-estrategia-result', { detail: { data: d.data || d, carrera } }))
+              })
+              .catch(err => alert('Error: ' + err.message))
+            }} style={{
+              width:'100%', padding:'8px 0', borderRadius:10,
+              border:'1px solid rgba(139,92,246,0.3)',
+              background:'rgba(139,92,246,0.1)',
+              color:'#A78BFA', fontSize:11, fontWeight:700,
+              cursor:'pointer', transition:'all 0.15s',
+            }}
+            onMouseEnter={e=>e.target.style.background='rgba(139,92,246,0.25)'}
+            onMouseLeave={e=>e.target.style.background='rgba(139,92,246,0.1)'}
+            >⚡ Estrategia de carrera</button>
+          </div>
+        )}
+
         {/* Botón borrar */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}
           onClick={e => e.stopPropagation()}>
@@ -578,13 +617,181 @@ function AddRaceCard({ onClick }) {
   )
 }
 
+// ── Modal Estrategia de Carrera — Visual ──────────────────────────────────────
+function ModalEstrategia({ data, carrera, onClose }) {
+  if (!data) return null
+  const segs = data.segmentos || []
+  const n = data.nutricion || {}
+  const h = data.hidratacion || {}
+  const e = data.energia || {}
+  const t = data.tiempo_estimado || {}
+
+  const deporteColor = { running: '#10B981', cycling: '#3B82F6', swimming: '#06B6D4', transicion: '#F59E0B' }
+  const deporteIcon = { running: '🏃', cycling: '🚴', swimming: '🏊', transicion: '🔄' }
+
+  // Calcular max pace/power para escalar barras
+  const maxPace = Math.max(...segs.filter(s => s.pace_decimal).map(s => s.pace_decimal), 1)
+  const maxPower = Math.max(...segs.filter(s => s.potencia_w).map(s => s.potencia_w), 1)
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
+      display: 'flex', justifyContent: 'center', alignItems: 'flex-start',
+      overflowY: 'auto', padding: '40px 16px',
+    }} onClick={onClose}>
+      <div style={{
+        width: '100%', maxWidth: 700, color: '#E5E7EB',
+      }} onClick={ev => ev.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <div>
+            <div style={{ fontSize: 11, color: '#A78BFA', fontWeight: 700, letterSpacing: 1 }}>ESTRATEGIA DE CARRERA</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginTop: 4 }}>{carrera?.nombre || data.carrera}</div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
+              {data.distancia_km}km · Tiempo estimado: <span style={{ color: '#A78BFA', fontWeight: 700 }}>{t.total_hms}</span>
+              · {e.kcal_total} kcal
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            width: 36, height: 36, borderRadius: 18, border: '1px solid rgba(255,255,255,0.1)',
+            background: 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 18, cursor: 'pointer',
+          }}>✕</button>
+        </div>
+
+        {/* Gráfico de pacing — barras horizontales */}
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ fontSize: 11, color: '#A78BFA', fontWeight: 700, marginBottom: 10, letterSpacing: 1 }}>PACING POR SEGMENTO</div>
+          {segs.filter(s => s.deporte !== 'transicion').map((s, i) => {
+            const isRun = s.deporte === 'running'
+            const isBike = s.deporte === 'cycling'
+            const isSwim = s.deporte === 'swimming'
+            const color = deporteColor[s.deporte] || '#888'
+            const pct = isRun ? (s.pace_decimal / maxPace * 100) :
+                        isBike ? (s.potencia_w / maxPower * 100) :
+                        80
+            const label = isRun ? s.pace :
+                         isBike ? `${s.potencia_w}W · ${s.vel_kmh}km/h` :
+                         s.pace_100m
+
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                <div style={{ width: 60, fontSize: 10, color: 'rgba(255,255,255,0.4)', textAlign: 'right' }}>
+                  {isRun || isBike ? `km ${s.km_inicio}` : `${s.distancia_m}m`}
+                </div>
+                <div style={{ flex: 1, height: 22, background: 'rgba(255,255,255,0.03)', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+                  <div style={{
+                    width: `${Math.max(30, pct)}%`, height: '100%',
+                    background: `linear-gradient(90deg, ${color}40, ${color}90)`,
+                    borderRadius: 4, display: 'flex', alignItems: 'center', paddingLeft: 8,
+                  }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#fff' }}>{label}</span>
+                  </div>
+                </div>
+                <div style={{ width: 30, fontSize: 9, color: 'rgba(255,255,255,0.3)', textAlign: 'center' }}>
+                  Z{s.zona}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Glucógeno — barra descendente */}
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ fontSize: 11, color: '#F59E0B', fontWeight: 700, marginBottom: 10, letterSpacing: 1 }}>GLUCÓGENO & ENERGÍA</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 60 }}>
+            {segs.filter(s => s.glucogeno_pct !== undefined).map((s, i) => {
+              const pct = s.glucogeno_pct || 0
+              const color = pct > 50 ? '#10B981' : pct > 25 ? '#F59E0B' : '#EF4444'
+              return (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)', marginBottom: 2 }}>{pct}%</div>
+                  <div style={{
+                    width: '100%', height: `${Math.max(4, pct * 0.55)}px`,
+                    background: color, borderRadius: 2,
+                  }} />
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>Inicio</span>
+            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>Meta</span>
+          </div>
+        </div>
+
+        {/* Nutrición */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, color: '#10B981', fontWeight: 700, marginBottom: 8, letterSpacing: 1 }}>NUTRICIÓN</div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>{n.tipo}</div>
+          {n.geles && n.geles.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+              {n.geles.map((g, i) => (
+                <div key={i} style={{
+                  padding: '4px 10px', borderRadius: 8,
+                  background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)',
+                  fontSize: 10, color: '#10B981', fontWeight: 600,
+                }}>
+                  km {g.km}: {g.tipo}
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 6 }}>Pre-carrera: {n.pre_carrera}</div>
+        </div>
+
+        {/* Hidratación */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 11, color: '#3B82F6', fontWeight: 700, marginBottom: 8, letterSpacing: 1 }}>HIDRATACIÓN</div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>{h.tipo}</div>
+          <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Sudoración: {h.sudor_estimado_ml_hr}ml/hr</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Sodio: {h.sodio_mg_hr}mg/hr</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Total: {h.ml_total}ml</div>
+          </div>
+        </div>
+
+        {/* Balance energético */}
+        <div style={{
+          padding: '12px 16px', borderRadius: 12,
+          background: e.deficit_g > 0 ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)',
+          border: `1px solid ${e.deficit_g > 0 ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: e.deficit_g > 0 ? '#EF4444' : '#10B981' }}>
+                {e.deficit_g > 0 ? '⚠️ DÉFICIT ENERGÉTICO' : '✓ ENERGÍA SUFICIENTE'}
+              </div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
+                CHO quemado: {e.cho_quemado_g}g · Glucógeno: {e.glucogeno_inicio_g}g
+                {e.deficit_g > 0 && ` · Déficit: ${e.deficit_g}g`}
+              </div>
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#A78BFA' }}>{e.kcal_total} kcal</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function SeccionRace({ atletaId, modoAtleta = false }) {
   const [carreras, setCarreras]   = useState([])
   const [loading, setLoading]     = useState(true)
   const [modal, setModal]         = useState(null) // null | 'nueva' | {carrera}
   const [filtro, setFiltro]       = useState('todas') // 'todas' | 'pendiente' | 'completada'
+  const [estrategia, setEstrategia] = useState(null)  // datos de estrategia de carrera
   const carruselRef = useRef(null)
+
+  // Escuchar evento de estrategia
+  useEffect(() => {
+    const handler = (e) => setEstrategia(e.detail)
+    window.addEventListener('noah-estrategia-result', handler)
+    return () => window.removeEventListener('noah-estrategia-result', handler)
+  }, [])
 
   const cargar = async () => {
     try {
@@ -737,6 +944,7 @@ export default function SeccionRace({ atletaId, modoAtleta = false }) {
               onEdit={c => setModal(c)}
               onDelete={borrar}
               modoAtleta={modoAtleta}
+              atletaId={atletaId}
             />
           ))}
           {!loading && (
@@ -754,6 +962,9 @@ export default function SeccionRace({ atletaId, modoAtleta = false }) {
           onGuardado={cargar}
         />
       )}
+
+      {/* Modal Estrategia de Carrera — Visual */}
+      {estrategia && <ModalEstrategia data={estrategia.data} carrera={estrategia.carrera} onClose={() => setEstrategia(null)} />}
     </div>
   )
 }
