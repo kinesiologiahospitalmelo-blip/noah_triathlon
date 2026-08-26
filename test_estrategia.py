@@ -99,8 +99,8 @@ def main():
         # Calcular RANGOS (±3% del valor calculado)
         if d == 'runn':
             p = s['pace_decimal']
-            p_min = f"{int(p*0.97)}:{int((p*0.97%1)*60):02d}"
-            p_max = f"{int(p*1.03)}:{int((p*1.03%1)*60):02d}"
+            p_min = f"{int(p*0.99)}:{int((p*0.99%1)*60):02d}"
+            p_max = f"{int(p*1.01)}:{int((p*1.01%1)*60):02d}"
             print(f"\n  🏃 Run km {s['km_inicio']}-{s['km_fin']}:")
             print(f"     Pace: {p_min} — {p_max} /km (Z{s['zona']})")
             print(f"     Glucogeno: {s['glucogeno_pct']}% | CHO quema {s['cho_quemado_g']}g | Ingerir {s['ingesta_cho_g']}g")
@@ -117,8 +117,8 @@ def main():
 
         elif d == 'swim':
             p = s['pace_decimal']
-            p_min = f"{int(p*0.97)}:{int((p*0.97%1)*60):02d}"
-            p_max = f"{int(p*1.03)}:{int((p*1.03%1)*60):02d}"
+            p_min = f"{int(p*0.99)}:{int((p*0.99%1)*60):02d}"
+            p_max = f"{int(p*1.01)}:{int((p*1.01%1)*60):02d}"
             print(f"\n  🏊 Swim {s['distancia_m']}m:")
             print(f"     Pace: {p_min} — {p_max} /100m (Z{s['zona']})")
 

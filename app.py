@@ -4893,6 +4893,7 @@ def get_estrategia_carrera(atleta_id):
         }
 
         carrera_tipo = request.args.get('tipo', 'olimpico')
+        dist_custom = float(request.args.get('dist', 0))
         temp = float(request.args.get('temp', 20))
         humedad = float(request.args.get('humedad', 50))
         altitud = float(request.args.get('altitud', 0))
@@ -4900,9 +4901,12 @@ def get_estrategia_carrera(atleta_id):
 
         condiciones = {
             'temperatura': temp, 'humedad': humedad,
-            'altitud': altitud, 'desnivel': desnivel,
+            'altitud': altitud, 'desnivel': desnivel, 'dist_km': dist_custom,
         }
 
+        # Si es custom, usar distancia real directamente
+        if carrera_tipo == 'custom' and dist_custom > 0:
+            carrera_tipo = 'custom'  # mantener custom, el backend lo maneja
         resultado = generar_estrategia(atleta, carrera_tipo, condiciones)
         conn.close()
         return ok(resultado)

@@ -80,9 +80,9 @@ def _vel_bike(potencia, peso, cda=0.32, crr=0.005):
 
 
 def _factor_temp(temp):
-    """Factor de degradacion por calor (Ely 2007): -1.5%/°C arriba de 20°C."""
+    """Factor de degradacion por calor (Ely 2007): ~0.3%/°C arriba de 20°C."""
     if temp <= 20: return 1.0
-    return 1.0 + (temp - 20) * 0.015  # pace multiplier (mas lento)
+    return 1.0 + (temp - 20) * 0.003  # pace multiplier (mas lento)
 
 
 def _tasa_sudoracion(peso, temp):
@@ -102,10 +102,20 @@ def _sodio_por_litro(temp):
 
 
 def generar_estrategia(atleta, carrera_tipo, condiciones=None):
-    if carrera_tipo not in CARRERAS:
+    dist_override = float(condiciones.get('dist_km', 0)) if condiciones else 0
+
+    if carrera_tipo == 'custom' and dist_override > 0:
+        # Distancia custom: NO usar diccionario
+        carrera = {'dist_km': dist_override, 'deportes': ['running'], 'run_km': dist_override}
+    elif carrera_tipo in CARRERAS:
+        carrera = dict(CARRERAS[carrera_tipo])
+        # Override distancia si viene
+        if dist_override > 0 and len(carrera.get('deportes', [])) <= 1:
+            carrera['dist_km'] = dist_override
+            carrera['run_km'] = dist_override
+    else:
         return {'error': f'Carrera {carrera_tipo} no soportada'}
 
-    carrera = CARRERAS[carrera_tipo]
     cond = condiciones or {}
     temp = cond.get('temperatura', 20)
     peso = float(atleta.get('peso_kg') or 70)
@@ -264,7 +274,10 @@ def generar_estrategia(atleta, carrera_tipo, condiciones=None):
         'carrera': carrera_tipo,
         'distancia_km': carrera['dist_km'],
         'bmr': bmr,
-        'condiciones': {'temp': temp, 'humedad': cond.get('humedad', 50)},
+        'condiciones': {'temp': temp, 'humedad': cond.get('humedad', 50), 'altitud': cond.get('altitud', 0), 'desnivel': cond.get('desnivel', 0)},
+        'atleta': {'peso_kg': peso, 'edad': edad, 'sexo': sexo,
+                   'pace_umbral': float(atleta.get('pace_umbral_run') or 5.5),
+                   'ftp': int(atleta.get('ftp_watts') or 200)},
         'segmentos': segmentos,
         'tiempo_estimado': {
             'total_min': round(t_min, 1),
