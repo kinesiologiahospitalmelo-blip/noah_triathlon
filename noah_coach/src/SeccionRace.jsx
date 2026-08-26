@@ -533,20 +533,23 @@ function RaceCard({ carrera, onEdit, onDelete, modoAtleta = false, atletaId }) {
         {!esPasada && (
           <div style={{ marginTop: 8 }} onClick={e => e.stopPropagation()}>
             <button onClick={() => {
-              const tipo = (carrera.modalidad || carrera.distancia || carrera.nombre || '').toLowerCase()
-                .replace('media maratón','21K').replace('media maraton','21K')
-                .replace('maratón','maraton').replace('maraton','maraton')
-                .replace('medio ironman','70.3').replace('half ironman','70.3')
-                .replace('olímpico','olimpico').replace('olimpico','olimpico')
-                .replace('sprint','sprint').replace('ironman','ironman')
-                .replace('10k','10K').replace('5k','5K').replace('21k','21K')
-                .replace('42k','maraton').replace('mtb','mtb')
+              const distText = carrera.distancia || carrera.distancia_km || carrera.nombre || ''
+              const distNum = parseFloat(String(distText).replace(/[^0-9.]/g, '')) || 0
+              const mod = (carrera.modalidad || carrera.deporte || '').toLowerCase()
+              // Para triatlón usar tipo fijo (tienen splits swim/bike/run)
+              let tipo = 'custom'
+              if (mod.includes('sprint') && !mod.includes('run')) tipo = 'sprint'
+              else if (mod.includes('olimpico') || mod.includes('olímpico')) tipo = 'olimpico'
+              else if (mod.includes('70.3') || mod.includes('medio ironman')) tipo = '70.3'
+              else if (mod.includes('ironman') && !mod.includes('medio')) tipo = 'ironman'
+              else if (mod.includes('mtb')) tipo = 'mtb'
+              // Running/cycling: siempre custom con distancia real
               const API = window.location.hostname === 'localhost' 
                 ? `http://localhost:5000` 
                 : `https://noah-triathlon.vercel.app`
               let token = null
               try { token = JSON.parse(localStorage.getItem('noah_sesion'))?.token } catch {}
-              fetch(`${API}/api/atletas/${atletaId}/estrategia_carrera?tipo=${tipo}&temp=22`, {
+              fetch(`${API}/api/atletas/${atletaId}/estrategia_carrera?tipo=${tipo}&dist=${distNum}&temp=22`, {
                 headers: token ? {'Authorization': `Bearer ${token}`} : {}
               })
               .then(r => r.json())
@@ -652,7 +655,15 @@ function ModalEstrategia({ data, carrera, onClose }) {
             <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
               {data.distancia_km}km · Tiempo estimado: <span style={{ color: '#A78BFA', fontWeight: 700 }}>{t.total_hms}</span>
               · {e.kcal_total} kcal
+              {data.atleta && ` · ${data.atleta.peso_kg}kg`}
+              {data.condiciones?.temp && ` · ${data.condiciones.temp}°C`}
             </div>
+            {data.atleta && (
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
+                Umbral run: {data.atleta.pace_umbral ? `${Math.floor(data.atleta.pace_umbral)}:${String(Math.round((data.atleta.pace_umbral%1)*60)).padStart(2,'0')}/km` : '--'}
+                {data.atleta.ftp ? ` · FTP: ${data.atleta.ftp}W` : ''}
+              </div>
+            )}
           </div>
           <button onClick={onClose} style={{
             width: 36, height: 36, borderRadius: 18, border: '1px solid rgba(255,255,255,0.1)',
@@ -671,9 +682,20 @@ function ModalEstrategia({ data, carrera, onClose }) {
             const pct = isRun ? (s.pace_decimal / maxPace * 100) :
                         isBike ? (s.potencia_w / maxPower * 100) :
                         80
-            const label = isRun ? s.pace :
-                         isBike ? `${s.potencia_w}W · ${s.vel_kmh}km/h` :
-                         s.pace_100m
+            const label = isRun ? (() => {
+                          const p = s.pace_decimal || 0
+                          const lo = p * 0.99, hi = p * 1.01
+                          return `${Math.floor(lo)}:${String(Math.round((lo%1)*60)).padStart(2,'0')} — ${Math.floor(hi)}:${String(Math.round((hi%1)*60)).padStart(2,'0')}/km`
+                        })() :
+                         isBike ? (() => {
+                          const w = s.potencia_w || 0
+                          return `${Math.round(w*0.98)}-${Math.round(w*1.02)}W · ${s.vel_kmh}km/h`
+                        })() :
+                         (() => {
+                          const p = s.pace_decimal || 0
+                          const lo = p * 0.99, hi = p * 1.01
+                          return `${Math.floor(lo)}:${String(Math.round((lo%1)*60)).padStart(2,'0')} — ${Math.floor(hi)}:${String(Math.round((hi%1)*60)).padStart(2,'0')}/100m`
+                        })()
 
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
