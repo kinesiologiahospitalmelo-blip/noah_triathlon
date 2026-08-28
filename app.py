@@ -880,6 +880,31 @@ def get_prescripcion(atleta_id):
             'bloques' : bloques_ses,
         })
 
+    # ── Cerebro: diagnóstico rápido para el dashboard ──
+    cerebro_diag = None
+    try:
+        conn2 = get_conn()
+        from noah_cerebro import evaluar_atleta, decidir_foco
+        ev = evaluar_atleta(conn2, atleta_id)
+        atleta_dep = conn2.execute(
+            "SELECT deporte_ppal FROM atletas WHERE id=%s", (atleta_id,)
+        ).fetchone()
+        dep = (atleta_dep[0] if atleta_dep else 'running') or 'running'
+        ct = '21K' if dep == 'running' else 'olimpico'
+        tss_o = round((ev.get('ctl') or 30) * 7)
+        foco = decidir_foco(ev, row[1] or 'A', ct, tss_o)
+        conn2.close()
+        cerebro_diag = {
+            'sistemas': ev.get('sistemas', {}),
+            'readiness': ev.get('readiness'),
+            'limitante': foco.get('limitante'),
+            'foco': foco.get('foco'),
+            'explicacion': foco.get('explicacion'),
+            'n_calidad': foco.get('n_calidad'),
+        }
+    except Exception:
+        pass
+
     return ok({
         'prescripcion': {
             'id'            : presc_id,
@@ -888,7 +913,8 @@ def get_prescripcion(atleta_id):
             'fecha_generada': row[3],
             'estado'        : row[4],
             'sesiones'      : sesiones,
-        }
+        },
+        'cerebro': cerebro_diag,
     })
 
 
@@ -2113,6 +2139,53 @@ def get_diagnostico(atleta_id):
                    'resumen_atleta': 'Seguimos recopilando datos.',
                    'alertas': [], 'distribucion': {}, 'proyeccion': {}})
 
+
+
+# ─── CEREBRO NOAH ──────────────────────────────────────────────────────────────
+
+@app.route('/api/atletas/<int:atleta_id>/cerebro', methods=['GET'])
+@requiere_login
+def get_cerebro(atleta_id):
+    """Diagnóstico del cerebro: sistemas fisiológicos, limitante, readiness."""
+    conn = get_conn()
+    try:
+        from noah_cerebro import evaluar_atleta, decidir_foco
+        evaluacion = evaluar_atleta(conn, atleta_id)
+        atleta_row = conn.execute(
+            "SELECT deporte_ppal FROM atletas WHERE id=%s", (atleta_id,)
+        ).fetchone()
+        deporte = (atleta_row[0] if atleta_row else 'running') or 'running'
+        carrera_tipo = '21K' if deporte == 'running' else 'olimpico'
+        tss_obj = round((evaluacion.get('ctl') or 30) * 7)
+        foco = decidir_foco(evaluacion, 'A', carrera_tipo, tss_obj)
+        conn.close()
+        return ok({
+            'sistemas': evaluacion.get('sistemas', {}),
+            'readiness': evaluacion.get('readiness', 'medio'),
+            'hanna': evaluacion.get('hanna'),
+            'hrv': evaluacion.get('hrv'),
+            'sueno': evaluacion.get('sueno'),
+            'ctl': evaluacion.get('ctl'),
+            'tsb': evaluacion.get('tsb'),
+            'n_sesiones': evaluacion.get('n_sesiones', 0),
+            'tss_semanal_avg': evaluacion.get('tss_semanal_avg'),
+            'pct_z12': evaluacion.get('pct_z12'),
+            'pct_z34': evaluacion.get('pct_z34'),
+            'pct_z56': evaluacion.get('pct_z56'),
+            'limitante': foco.get('limitante'),
+            'foco': foco.get('foco'),
+            'explicacion': foco.get('explicacion'),
+            'n_calidad': foco.get('n_calidad'),
+        })
+    except Exception as e:
+        try: conn.close()
+        except: pass
+        return ok({
+            'error': str(e),
+            'sistemas': {},
+            'readiness': 'sin_datos',
+            'explicacion': 'Sin datos suficientes para diagnóstico.',
+        })
 
 
 # ─── ZONAS POR DEPORTE ────────────────────────────────────────────────────────
@@ -3568,6 +3641,22 @@ def get_actividad_detalle(atleta_id):
         except Exception as _e_laps:
             print(f'[AVISO] Error completando laps: {_e_laps}')
 
+    # ── Alias de campos: backend → frontend ──
+    for lap in laps:
+        if lap.get('np') and not lap.get('norm_power'):
+            lap['norm_power'] = lap['np']
+        if lap.get('w_max') and not lap.get('max_power'):
+            lap['max_power'] = lap['w_max']
+        if lap.get('vel_kmh') and not lap.get('avg_speed'):
+            lap['avg_speed'] = lap['vel_kmh']
+        if lap.get('if') and not lap.get('lap_if'):
+            lap['lap_if'] = lap['if']
+        if lap.get('cadencia') and not lap.get('cadence'):
+            lap['cadence'] = lap['cadencia']
+        if lap.get('watts') and not lap.get('avg_power'):
+            lap['avg_power'] = lap['watts']
+        lap['lap_num'] = lap.get('lap') or lap.get('lap_num')
+
 
     # --- Completar laps con datos de activity_samples ---
     hay_laps_sin_datos = any(l.get('watts') is None or l.get('cadencia') is None for l in laps)
@@ -4062,14 +4151,12 @@ def get_actividades_dia(atleta_id):
         # Laps de cada actividad
         # Ver qué columnas tiene laps
         lap_cols = set(columnas_de_tabla(conn, 'laps'))
-        lap_extra = []
-        if 'avg_power' in lap_cols: lap_extra.append('avg_power')
-        elif 'potencia_media' in lap_cols: lap_extra.append('potencia_media')
-        else: lap_extra.append('NULL')
-        if 'cadence' in lap_cols: lap_extra.append('cadence')
-        else: lap_extra.append('NULL')
-        if 'ascent_m' in lap_cols: lap_extra.append('ascent_m')
-        else: lap_extra.append('NULL')
+        _all_lap_cols = [
+            'avg_power', 'cadence', 'ascent_m', 'norm_power', 'max_power',
+            'avg_speed', 'max_speed', 'lap_if', 'work_kj', 'temperature',
+            'lap_tss', 'gct_ms', 'vert_osc_mm', 'stride_m',
+        ]
+        lap_extra = [c if c in lap_cols else 'NULL as '+c for c in _all_lap_cols]
 
         laps_rows = conn.execute(
             f"SELECT lap_num, distance_km, duration_min, hr_avg, hr_max, pace, "
@@ -4078,9 +4165,65 @@ def get_actividades_dia(atleta_id):
             "ORDER BY lap_num",
             (atleta_id, ses_id)
         ).fetchall()
-        laps = [{'lap':l[0],'distance_km':l[1],'duration_min':l[2],
-                 'hr_avg':l[3],'hr_max':l[4],'pace':l[5],
-                 'watts':l[6],'avg_power':l[6],'cadencia':l[7],'cadence':l[7],'ascenso_m':l[8]} for l in laps_rows]
+        laps = []
+        for l in laps_rows:
+            laps.append({
+                'lap_num':l[0], 'lap':l[0], 'distance_km':l[1], 'duration_min':l[2],
+                'hr_avg':l[3], 'hr_max':l[4], 'pace':l[5],
+                'avg_power':l[6], 'watts':l[6], 'cadence':l[7], 'cadencia':l[7],
+                'ascenso_m':l[8], 'norm_power':l[9], 'max_power':l[10],
+                'avg_speed':l[11], 'max_speed':l[12], 'lap_if':l[13],
+                'work_kj':l[14], 'temperature':l[15], 'lap_tss':l[16],
+                'gct_ms':l[17], 'vert_osc_mm':l[18], 'stride_m':l[19],
+            })
+
+        # ── Completar laps de bike/run con NP/IF/VEL desde activity_samples ──
+        if laps and act.get('sport') in ('cycling','running'):
+            hay_sin = any(l.get('avg_power') is None or l.get('cadence') is None for l in laps)
+            if hay_sin:
+                try:
+                    samp = conn.execute(
+                        'SELECT ts_s, power_w, cadence, speed_ms FROM activity_samples '
+                        'WHERE sesion_id=%s AND atleta_id=%s ORDER BY ts_s',
+                        (ses_id, atleta_id)
+                    ).fetchall()
+                    if samp:
+                        ftp_r = conn.execute('SELECT ftp_watts FROM atletas WHERE id=%s', (atleta_id,)).fetchone()
+                        ftp_v = float(ftp_r[0]) if ftp_r and ftp_r[0] else None
+                        ts_off = 0.0
+                        for lap in laps:
+                            dur_s = (lap.get('duration_min') or 0) * 60
+                            ts_end = ts_off + dur_s
+                            ls = [s for s in samp if ts_off <= float(s[0]) < ts_end]
+                            if ls:
+                                pws = [float(s[1]) for s in ls if s[1] and float(s[1]) > 0]
+                                cds = [float(s[2]) for s in ls if s[2] and float(s[2]) > 0]
+                                sps = [float(s[3]) for s in ls if s[3] and float(s[3]) > 0]
+                                if pws and lap.get('avg_power') is None:
+                                    lap['avg_power'] = round(sum(pws)/len(pws), 1)
+                                    lap['watts'] = lap['avg_power']
+                                if pws:
+                                    lap['max_power'] = round(max(pws), 1)
+                                    if len(pws) >= 30:
+                                        import numpy as _np
+                                        p_arr = _np.array(pws)
+                                        rolling = _np.convolve(p_arr, _np.ones(30)/30, mode='valid')
+                                        np_val = round(float((rolling**4).mean()**0.25), 1)
+                                        lap['norm_power'] = np_val
+                                        if ftp_v and ftp_v > 0:
+                                            lap['lap_if'] = round(np_val / ftp_v, 2)
+                                if cds and lap.get('cadence') is None:
+                                    lap['cadence'] = round(sum(cds)/len(cds), 1)
+                                    lap['cadencia'] = lap['cadence']
+                                if sps:
+                                    avg_spd = sum(sps)/len(sps)
+                                    if avg_spd < 0.5:
+                                        avg_spd *= 10
+                                    lap['avg_speed'] = round(avg_spd * 3.6, 1)
+                            ts_off = ts_end
+                except Exception as _e:
+                    pass
+
         # Zonas HR
         atleta_row = conn.execute('SELECT lthr_run, lthr_bike FROM atletas WHERE id=%s', (atleta_id,)).fetchone()
         zonas_dist = None
@@ -4908,6 +5051,31 @@ def get_estrategia_carrera(atleta_id):
         if carrera_tipo == 'custom' and dist_custom > 0:
             carrera_tipo = 'custom'  # mantener custom, el backend lo maneja
         resultado = generar_estrategia(atleta, carrera_tipo, condiciones)
+        conn.close()
+        return ok(resultado)
+    except Exception as e:
+        return ok({'error': str(e)})
+
+
+# ── ANÁLISIS DE TÉCNICA ──────────────────────────────────────────────────
+@app.route('/api/atletas/<int:atleta_id>/tecnica', methods=['GET'])
+@requiere_login
+def get_tecnica(atleta_id):
+    """Análisis biomecánico por deporte."""
+    try:
+        from noah_tecnica import analizar_running, analizar_cycling
+        conn = get_conn()
+        sport = request.args.get('sport', 'running')
+        sesion_id = request.args.get('sesion_id')
+        semanas = int(request.args.get('semanas', 8))
+
+        if sport == 'running':
+            resultado = analizar_running(conn, atleta_id, sesion_id=int(sesion_id) if sesion_id else None, semanas=semanas)
+        elif sport == 'cycling':
+            resultado = analizar_cycling(conn, atleta_id, sesion_id=int(sesion_id) if sesion_id else None, semanas=semanas)
+        else:
+            resultado = {'error': f'Deporte {sport} no soportado'}
+
         conn.close()
         return ok(resultado)
     except Exception as e:

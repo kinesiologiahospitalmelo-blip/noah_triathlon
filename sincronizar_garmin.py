@@ -689,55 +689,41 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
         # Detectar carreras y tests
         pass
 
-    # ── Carreras pasadas pendientes → vincular y completar ─────
+    # ── Dia de carrera? ──────────────────────────────────────
     try:
-        cur_car = conn.cursor() if hasattr(conn, 'cursor') else conn
-        if hasattr(conn, 'cursor'):
-            cur_car = conn.cursor()
-        cur_car.execute(
-            "SELECT id, nombre, fecha, distancia FROM carreras "
-            "WHERE atleta_id=%s AND estado='pendiente' AND fecha::date <= CURRENT_DATE",
-            (atleta_id,))
-        carreras_pend = cur_car.fetchall()
-        for car in carreras_pend:
-            car_id, car_nombre, car_fecha, car_dist = car[0], car[1], str(car[2])[:10], car[3]
-            # Parsear distancia texto ("15 km" → 15)
-            try:
-                car_dist_num = float(''.join(c for c in str(car_dist or '') if c.isdigit() or c == '.') or '0')
-            except: car_dist_num = 0
-            # Buscar sesion del dia de la carrera (+-1 dia)
-            cur_car.execute(
-                "SELECT id, duration_min, distance_km FROM sesiones "
-                "WHERE atleta_id=%s AND fecha::date BETWEEN (%s::date - 1) AND (%s::date + 1) "
-                "ORDER BY tss_total DESC NULLS LAST LIMIT 1",
-                (atleta_id, car_fecha, car_fecha))
-            ses = cur_car.fetchone()
-            if ses and ses[1] and ses[2] and float(ses[2]) > 2:
-                dur = float(ses[1])
-                dist_km = float(ses[2])
-                tiempo = f"{int(dur//60)}:{int(dur%60):02d}"
-                pace = dur / dist_km
-                cur_car.execute("UPDATE carreras SET estado='completada', resultado_tiempo=%s WHERE id=%s",
-                    (tiempo, car_id))
-                conn.commit()
-                print(f'  [CARRERA] "{car_nombre}" completada: {tiempo} (pace {int(pace)}:{int((pace%1)*60):02d}/km)')
-                # Actualizar umbral desde Daniels VDOT
-                if dist_km <= 7: factor = 0.97
-                elif dist_km <= 12: factor = 1.00
-                elif dist_km <= 16: factor = 1.02
-                elif dist_km <= 25: factor = 1.03
-                else: factor = 1.08
-                umbral = round(pace / factor, 2)
-                if 3.5 < umbral < 10:
-                    cur_car.execute("UPDATE atletas SET pace_umbral_run=%s WHERE id=%s", (umbral, atleta_id))
-                    conn.commit()
-                    print(f'  [UMBRAL] Pace actualizado: {int(umbral)}:{int((umbral%1)*60):02d}/km (Daniels factor {factor})')
-            else:
-                cur_car.execute("UPDATE carreras SET estado='completada', resultado_tiempo='DNS' WHERE id=%s", (car_id,))
-                conn.commit()
-                print(f'  [CARRERA] "{car_nombre}" sin sesion encontrada (DNS)')
+        carrera_hoy = conn.execute(
+            "SELECT id, nombre, distancia FROM carreras "
+            "WHERE atleta_id=%s AND fecha::date=CURRENT_DATE AND estado='pendiente'",
+            (atleta_id,)).fetchone()
+        if carrera_hoy:
+            from noah_deteccion_carrera import detectar_y_vincular
+            # Buscar la sesion de hoy
+            ses_hoy = conn.execute(
+                "SELECT id FROM sesiones WHERE atleta_id=%s AND fecha::date=CURRENT_DATE ORDER BY id DESC LIMIT 1",
+                (atleta_id,)).fetchone()
+            if ses_hoy:
+                detectar_y_vincular(conn, atleta_id, ses_hoy[0])
+                print(f'  [CARRERA] Dia de carrera: {carrera_hoy[1]}')
     except Exception as _ec:
-        print(f'  [CARRERA] Error: {_ec}')
+        print(f'  [CARRERA] {_ec}')
+
+    # ── Retry: sesiones sin streams completos ──────────────────
+    try:
+        retry_rows = conn.execute(
+            "SELECT id, garmin_activity_id, sport FROM sesiones "
+            "WHERE atleta_id=%s AND has_streams=0 AND garmin_activity_id IS NOT NULL "
+            "AND fecha::date >= CURRENT_DATE - INTERVAL '14 days' "
+            "ORDER BY fecha DESC LIMIT 3",
+            (atleta_id,)).fetchall()
+        for rs in retry_rows:
+            sid, gid, sp = rs[0], rs[1], rs[2]
+            try:
+                _bajar_streams(client, int(gid), atleta_id, sid, sp, conn)
+                _completar_laps_desde_samples(conn, atleta_id, sid)
+            except Exception as _er:
+                print(f'  [RETRY] Sesion {sid} fallo: {_er}')
+    except Exception:
+        pass
 
     return sesiones_nuevas
 
@@ -786,7 +772,15 @@ def _guardar_metricas_summary(conn, sesion_id: int, act: dict):
 def _bajar_streams(client, activity_id, atleta_id, sesion_id, sport, conn):
     """Baja y guarda streams punto a punto."""
     try:
-        details = client.get_activity_details(activity_id)
+        # Garmin default maxchart=2000 corta sesiones largas.
+        # Pedir 1 sample/seg para toda la sesion.
+        dur_row = conn.execute(
+            'SELECT duration_min FROM sesiones WHERE id=%s', (sesion_id,)
+        ).fetchone()
+        dur_min = float(dur_row[0]) if dur_row and dur_row[0] else 60
+        max_chart = max(2000, int(dur_min * 20) + 100)  # 1 sample cada 3s
+        import time; time.sleep(1)  # Evitar rate limit de Garmin
+        details = client.get_activity_details(activity_id, maxchart=max_chart)
         samples = _parsear_streams(details, sport)
         if samples:
             n = _guardar_streams(conn, atleta_id, sesion_id, activity_id, samples)
@@ -835,8 +829,96 @@ def _bajar_laps(client, activity_id, atleta_id, fecha, sport, sesion_id, conn, d
                 _bajar_laps_basico(splits, atleta_id, fecha, sesion_id, db)
         else:
             _bajar_laps_basico(splits, atleta_id, fecha, sesion_id, db)
+            _completar_laps_desde_samples(conn, atleta_id, sesion_id)
     except Exception as e:
         print(f'    Laps error: {e}')
+
+
+def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
+    """
+    Para cada lap con avg_power=NULL, calcula avg/norm/max power, speed, IF
+    desde activity_samples. Garmin a veces no manda aggregates por lap
+    pero SI manda los samples segundo a segundo.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return
+
+    laps = conn.execute(
+        "SELECT id, lap_num, duration_min FROM laps "
+        "WHERE atleta_id=%s AND sesion_id=%s ORDER BY lap_num",
+        (atleta_id, sesion_id)
+    ).fetchall()
+    if not laps:
+        return
+
+    samples = conn.execute(
+        "SELECT ts_s, power_w, cadence, speed_ms FROM activity_samples "
+        "WHERE sesion_id=%s AND atleta_id=%s ORDER BY ts_s",
+        (sesion_id, atleta_id)
+    ).fetchall()
+    if not samples:
+        return
+
+    ftp_row = conn.execute(
+        "SELECT ftp_watts FROM atletas WHERE id=%s", (atleta_id,)
+    ).fetchone()
+    ftp = float(ftp_row[0]) if ftp_row and ftp_row[0] else None
+
+    ts_offset = 0.0
+    actualizados = 0
+
+    for lap_id, lap_num, dur_min in laps:
+        dur_s = (dur_min or 0) * 60
+        ts_end = ts_offset + dur_s
+        lap_samp = [s for s in samples if ts_offset <= float(s[0]) < ts_end]
+
+        if lap_samp:
+            powers = [float(s[1]) for s in lap_samp if s[1] and float(s[1]) > 0]
+            cads   = [float(s[2]) for s in lap_samp if s[2] and float(s[2]) > 0]
+            speeds = [float(s[3]) for s in lap_samp if s[3] and float(s[3]) > 0]
+
+            sets = []
+            vals = []
+
+            if powers:
+                sets.append("avg_power = COALESCE(avg_power, %s)")
+                vals.append(round(sum(powers)/len(powers), 1))
+                sets.append("max_power = COALESCE(max_power, %s)")
+                vals.append(round(max(powers), 1))
+                sets.append("work_kj = COALESCE(work_kj, %s)")
+                vals.append(round(sum(powers)/1000, 2))
+                if len(powers) >= 30:
+                    p_arr = np.array(powers)
+                    rolling = np.convolve(p_arr, np.ones(30)/30, mode='valid')
+                    np_val = round(float((rolling**4).mean()**0.25), 1)
+                    sets.append("norm_power = COALESCE(norm_power, %s)")
+                    vals.append(np_val)
+                    if ftp and ftp > 0:
+                        sets.append("lap_if = COALESCE(lap_if, %s)")
+                        vals.append(round(np_val / ftp, 3))
+
+            if cads:
+                sets.append("cadence = COALESCE(cadence, %s)")
+                vals.append(round(sum(cads)/len(cads), 1))
+
+            if speeds:
+                sets.append("avg_speed = COALESCE(avg_speed, %s)")
+                vals.append(round(sum(speeds)/len(speeds) * 3.6, 1))
+                sets.append("max_speed = COALESCE(max_speed, %s)")
+                vals.append(round(max(speeds) * 3.6, 1))
+
+            if sets:
+                vals.append(lap_id)
+                conn.execute(f"UPDATE laps SET {', '.join(sets)} WHERE id=%s", vals)
+                actualizados += 1
+
+        ts_offset = ts_end
+
+    if actualizados > 0:
+        conn.commit()
+        print(f'    [OK] {actualizados} laps completados desde samples')
 
 
 def _bajar_laps_basico(splits, atleta_id, fecha, sesion_id, db):
@@ -874,6 +956,13 @@ def _bajar_laps_basico(splits, atleta_id, fecha, sesion_id, db):
         lap_tss = lap.get('trainingStressScore') or lap.get('tss')
         lap_if  = lap.get('intensityFactor') or lap.get('if')
 
+        # Running dynamics del lap
+        gct = lap.get('avgGroundContactTime') or lap.get('groundContactTime')
+        vo = lap.get('avgVerticalOscillation') or lap.get('verticalOscillation')
+        stride = lap.get('avgStrideLength') or lap.get('strideLength')
+        vert_ratio = lap.get('avgVerticalRatio') or lap.get('verticalRatio')
+        gct_balance = lap.get('avgGroundContactBalance') or lap.get('groundContactBalance')
+
         # W/kg se calcula en el front si tiene FTP
         # w_balance si está disponible
         w_prime_balance = lap.get('wBalanceFinal') or lap.get('wPrimeBalance')
@@ -896,6 +985,12 @@ def _bajar_laps_basico(splits, atleta_id, fecha, sesion_id, db):
             'lap_tss':      lap_tss,
             'lap_if':       round(lap_if, 3) if lap_if else None,
             'w_balance':    round(w_prime_balance, 0) if w_prime_balance else None,
+            # Running dynamics
+            'gct_ms':       round(gct, 1) if gct else None,
+            'vert_osc_mm':  round(vo, 1) if vo else None,
+            'stride_m':     round(stride / 100, 3) if stride and stride > 10 else (round(stride, 3) if stride else None),
+            'vert_ratio':   round(vert_ratio, 2) if vert_ratio else None,
+            'gct_balance':  round(gct_balance, 1) if gct_balance else None,
         })
     if laps_raw:
         n = db.agregar_laps(atleta_id, sesion_id, fecha, laps_raw)
