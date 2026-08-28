@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import GraficoActividadStreams from './GraficoActividadStreams'
 import SeccionRace from './SeccionRace'
+import SeccionTecnica from './SeccionTecnica'
 import SeccionTests from './SeccionTests'
 import axios from 'axios'
 import {
@@ -616,10 +617,10 @@ function SemanaCompleta({ presc, atletaId, sesionExpandida, setSesionExpandida }
                     <SportTag sport={act.sport||'running'}/>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:700,color:NOAH_C.success,display:'flex',alignItems:'center',gap:6}}>
-                        <CheckCircle2 size={13}/> {SPORT[act.sport]?.label||act.sport} — {act.distance_km?.toFixed(1)}km · Realizada
+                        <CheckCircle2 size={13}/> {SPORT[act.sport]?.label||act.sport} · Realizada
                       </div>
                       <div style={{fontSize:11,color:NOAH_C.ink3}}>
-                        {Math.round(act.duration_min)}min · TSS {act.tss?.toFixed(0)} · HR {act.hr_avg?Math.round(act.hr_avg):'--'}bpm
+                        
                       </div>
                     </div>
                     <span style={{fontSize:12,color:NOAH_C.ink3,transform:abierta?'rotate(180deg)':'none',transition:'transform 0.2s'}}>▾</span>
@@ -1005,12 +1006,9 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
         </div>
         <div style={{flex:1}}>
           <div style={{fontSize:15,fontWeight:700,color:NOAH_C.ink}}>
-            {s.label} · {fmtDist(act.distance_km)}
           </div>
           <div style={{fontSize:11,color:NOAH_C.ink3}}>
-            {act.fecha} · {Math.round(act.duration_min)}min
-            {act.hr_avg ? ` · HR ${Math.round(act.hr_avg)} bpm avg` : ''}
-            {act.hr_max ? ` · máx ${Math.round(act.hr_max)}` : ''}
+            {act.fecha}
           </div>
         </div>
         <div style={{fontSize:11,fontWeight:700,color:cumplColor,flexShrink:0}}>
@@ -1023,25 +1021,7 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
         </button>
       </div>
 
-      {/* Métricas -- chips inline, no cajas contenedoras (estilo Whoop/Strava) */}
-      <div style={{padding:'0 2px 12px',display:'flex',gap:8,flexWrap:'wrap'}}>
-        {[
-          [Activity, `${Math.round(act.duration_min)} min`],
-          [Ruler, fmtDist(act.distance_km)],
-          act.hr_avg  && [HeartPulse, `${Math.round(act.hr_avg)} bpm avg`],
-          act.hr_max  && [Flame, `máx ${Math.round(act.hr_max)}`],
-          act.tss_total && [Target, `TSS ${act.tss_total.toFixed(0)}`],
-          act.pace && sport==='running' && [Footprints, fmtPaceStr(act.pace)],
-          act.np_watts && [Zap, `${act.np_watts}W NP`],
-          act.swolf    && [Waves, `Swolf ${act.swolf.toFixed(1)}`],
-        ].filter(Boolean).map(([Icon,val])=>(
-          <div key={val} style={{display:'flex',alignItems:'center',gap:4,
-            padding:'4px 10px',borderRadius:99,background:`${s.color}10`,
-            fontSize:11,fontWeight:600,color:NOAH_C.ink,border:`1px solid ${s.color}20`}}>
-            <Icon size={12} color={s.color}/><span>{val}</span>
-          </div>
-        ))}
-      </div>
+      {/* Métricas se muestran en GraficoActividadStreams — sin duplicar */}
 
       {/* Gráfico premium */}
       <div style={{padding:'12px 4px',borderBottom:`1px solid ${NOAH_C.border}`}}>
@@ -3765,6 +3745,7 @@ export default function AtletaDashboard({ atletaId }) {
     {id:'zonas',         label:'Mis Zonas',     icon: Target},
     {id:'race',          label:'Race',          icon: Flag},
     {id:'tests',         label:'Tests',         icon: FlaskConical},
+    {id:'tecnica',       label:'Técnica',       icon: Target},
     {id:'perfil',        label:'Perfil',        icon: UserCircle},
     {id:'asistente',     label:'Asistente',     icon: MessageCircle},
   ]
@@ -4347,7 +4328,8 @@ export default function AtletaDashboard({ atletaId }) {
         <SeccionRace atletaId={atletaId} modoAtleta={true} />
       )}
 
-      {tab==='tests' && (
+      {tab==='tecnica'&&<SeccionTecnica atletaId={id} />}
+        {tab==='tests' && (
         <SeccionTests atletaId={atletaId} modoAtleta={true} />
       )}
 
