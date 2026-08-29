@@ -269,7 +269,7 @@ def _parsear_streams(details: dict, sport: str) -> list:
     for s in samples_raw:
         hr    = s.get('hr')
         speed = s.get('speed_ms')
-        power = s.get('power')
+        power = s.get('power_w')
 
         if hr    and not (30 <= hr <= 250):    hr    = None
         if speed and not (0  < speed <= 20):   speed = None
@@ -772,13 +772,9 @@ def _guardar_metricas_summary(conn, sesion_id: int, act: dict):
 def _bajar_streams(client, activity_id, atleta_id, sesion_id, sport, conn):
     """Baja y guarda streams punto a punto."""
     try:
-        # Garmin default maxchart=2000 corta sesiones largas.
-        # Pedir 1 sample/seg para toda la sesion.
-        dur_row = conn.execute(
-            'SELECT duration_min FROM sesiones WHERE id=%s', (sesion_id,)
-        ).fetchone()
-        dur_min = float(dur_row[0]) if dur_row and dur_row[0] else 60
-        max_chart = max(2000, int(dur_min * 20) + 100)  # 1 sample cada 3s
+        # maxchart=2000: Garmin distribuye ~2000 puntos en toda la actividad CON power.
+        # Valores mas altos devuelven samples sin power — no sirven.
+        max_chart = 2000
         import time; time.sleep(1)  # Evitar rate limit de Garmin
         details = client.get_activity_details(activity_id, maxchart=max_chart)
         samples = _parsear_streams(details, sport)
@@ -836,9 +832,9 @@ def _bajar_laps(client, activity_id, atleta_id, fecha, sport, sesion_id, conn, d
 
 def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
     """
-    Para cada lap con avg_power=NULL, calcula avg/norm/max power, speed, IF
-    desde activity_samples. Garmin a veces no manda aggregates por lap
-    pero SI manda los samples segundo a segundo.
+    Para cada lap, calcula avg/norm/max power, speed, IF desde activity_samples.
+    Mapea proporcionalmente: Garmin distribuye N puntos en toda la actividad
+    pero ts_s puede ser secuencial (0..N) en vez de tiempo real.
     """
     try:
         import numpy as np
@@ -858,7 +854,7 @@ def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
         "WHERE sesion_id=%s AND atleta_id=%s ORDER BY ts_s",
         (sesion_id, atleta_id)
     ).fetchall()
-    if not samples:
+    if not samples or len(samples) < 5:
         return
 
     ftp_row = conn.execute(
@@ -866,13 +862,22 @@ def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
     ).fetchone()
     ftp = float(ftp_row[0]) if ftp_row and ftp_row[0] else None
 
-    ts_offset = 0.0
+    # Duracion total de todos los laps
+    total_dur_s = sum((l[2] or 0) * 60 for l in laps)
+    if total_dur_s <= 0:
+        return
+    n_samples = len(samples)
+
+    # Mapeo proporcional: cada lap ocupa una fraccion de los samples
+    idx_offset = 0
     actualizados = 0
 
     for lap_id, lap_num, dur_min in laps:
         dur_s = (dur_min or 0) * 60
-        ts_end = ts_offset + dur_s
-        lap_samp = [s for s in samples if ts_offset <= float(s[0]) < ts_end]
+        # Cuantos samples corresponden a este lap
+        n_lap = max(1, round(n_samples * dur_s / total_dur_s))
+        idx_end = min(idx_offset + n_lap, n_samples)
+        lap_samp = samples[idx_offset:idx_end]
 
         if lap_samp:
             powers = [float(s[1]) for s in lap_samp if s[1] and float(s[1]) > 0]
@@ -887,11 +892,14 @@ def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
                 vals.append(round(sum(powers)/len(powers), 1))
                 sets.append("max_power = COALESCE(max_power, %s)")
                 vals.append(round(max(powers), 1))
+                # kJ: potencia * tiempo real del lap (no cantidad de samples)
                 sets.append("work_kj = COALESCE(work_kj, %s)")
-                vals.append(round(sum(powers)/1000, 2))
-                if len(powers) >= 30:
+                vals.append(round(sum(powers)/len(powers) * dur_s / 1000, 2))
+                if len(powers) >= 6:
                     p_arr = np.array(powers)
-                    rolling = np.convolve(p_arr, np.ones(30)/30, mode='valid')
+                    # Rolling window adaptado a resolucion (min 6 puntos)
+                    win = min(30, max(6, len(powers) // 4))
+                    rolling = np.convolve(p_arr, np.ones(win)/win, mode='valid')
                     np_val = round(float((rolling**4).mean()**0.25), 1)
                     sets.append("norm_power = COALESCE(norm_power, %s)")
                     vals.append(np_val)
@@ -914,7 +922,7 @@ def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
                 conn.execute(f"UPDATE laps SET {', '.join(sets)} WHERE id=%s", vals)
                 actualizados += 1
 
-        ts_offset = ts_end
+        idx_offset = idx_end
 
     if actualizados > 0:
         conn.commit()
