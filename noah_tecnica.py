@@ -57,6 +57,23 @@ def _pearson(xs, ys):
     return round(cov / math.sqrt(vx * vy), 2)
 
 
+def _correlacion_es_significativa(r_val, n, p=0.05):
+    """Chequea si |r_val| supera el r crítico para el tamaño de muestra dado
+    (aprox. vía transformación de Fisher, dos colas, p=0.05 por defecto).
+
+    Antes se usaba un umbral fijo (|r| >= 0.3) sin mirar cuántas sesiones
+    había detrás. Con pocas sesiones (n=8-10, algo común en este panel),
+    r=0.4-0.5 puede ser ruido y no una relación real — este chequeo evita
+    que NOAH afirme "patrón consistente" cuando no está estadísticamente
+    respaldado por la cantidad de datos disponibles.
+    """
+    if r_val is None or n is None or n < 5:
+        return False
+    z_umbral = 1.96 if abs(p - 0.05) < 1e-9 else 1.96  # sólo soportamos p=0.05 por ahora
+    r_critico = math.tanh(z_umbral / math.sqrt(n - 3))
+    return abs(r_val) >= r_critico
+
+
 def _linreg(xs, ys):
     """Regresión lineal simple (mínimos cuadrados) sobre datos reales."""
     n = len(xs)
@@ -762,12 +779,13 @@ def analizar_running(conn, atleta_id, sesion_id=None, semanas=8):
             elif reg and reg['slope'] > 0 and cad_drift is not None and cad_drift < -3:
                 patron = f'La cadencia cae con la fatiga (drift {cad_drift:+.1f}%).'
                 accion = 'Trabajar resistencia neuromuscular específica (drills de cadencia en fatiga).'
-            elif r_val is not None and abs(r_val) >= 0.3:
+            elif r_val is not None and _correlacion_es_significativa(r_val, len(serie)):
                 direccion = 'cae' if r_val < 0 else 'sube'
-                patron = f'La eficiencia {direccion} de forma consistente cuando aumenta la fatiga (r={r_val}).'
+                patron = f'La eficiencia {direccion} cuando aumenta la fatiga (r={r_val}, n={len(serie)} sesiones).'
                 accion = 'Ajustar la carga de series técnicas en sesiones de alta fatiga acumulada.'
             else:
-                patron = 'No se detecta una relación consistente entre fatiga y degradación técnica en este período.'
+                patron = ('No se detecta una relación estadísticamente sólida entre fatiga y '
+                           'degradación técnica con las sesiones disponibles.')
                 accion = 'Mantener el monitoreo; ampliar la muestra de sesiones.'
             resultado['analisis_fatiga']['patron_detectado'] = {'patron': patron, 'accion': accion}
         else:
@@ -872,27 +890,37 @@ def analizar_cycling(conn, atleta_id, sesion_id=None, semanas=8):
         q_final  = round(sum(cadencias[-pct10:]) / pct10)
         drift_cad = round((q_final - q_inicio) / q_inicio * 100, 1) if q_inicio > 0 else 0
 
-        estado = 'óptima' if 80 <= cad_avg <= 95 else ('baja' if cad_avg < 80 else 'alta')
+        estado = 'óptima' if 70 <= cad_avg <= 95 else ('baja' if cad_avg < 70 else 'alta')
         resultado['metricas']['cadencia'] = {
             'promedio': cad_avg, 'estado': estado,
             'q1': q_inicio, 'q4': q_final, 'drift_pct': drift_cad,
         }
         resultado['drift']['cadencia'] = drift_cad
-        resultado['spider']['cadencia'] = max(0, min(100, 100 - abs(cad_avg - 87.5) * 4))
+        resultado['spider']['cadencia'] = max(0, min(100, 100 - abs(cad_avg - 82.5) * 4))
 
+        # NOTA: la evidencia científica sobre cadencia "óptima" en ciclismo de
+        # triatlón es contradictoria y muy individual (Vercruyssen 2001,
+        # Bernard 2003, Lepers 2001 — algunos estudios muestran que cadencias
+        # más altas antes de T2 mejoran la carrera posterior, otros que la
+        # cadencia libremente elegida es igual o mejor). No existe un único
+        # número "óptimo" universal, por eso evitamos afirmar una cifra
+        # cerrada como si fuera un hecho establecido.
         resultado['interpretacion'].append(
-            f'Cadencia promedio: {cad_avg} rpm. Óptimo: 85-95 rpm en Z2-Z4 (Faria 2005). '
-            f'Cadencia baja (<75) genera más estrés muscular; alta (>100) más cardiovascular. '
+            f'Cadencia promedio: {cad_avg} rpm. En ciclismo de triatlón el rango de trabajo '
+            f'habitual es amplio (70-95 rpm) y muy dependiente del atleta — la literatura no '
+            f'muestra un único número "óptimo" universal (Vercruyssen 2001, Bernard 2003). '
             f'Inicio: {q_inicio} rpm → Final: {q_final} rpm. Drift: {drift_cad:+.1f}%.')
 
         if drift_cad < -5:
             resultado['interpretacion'].append(
                 f'Cadencia cae {abs(drift_cad):.1f}% ({q_inicio}→{q_final} rpm) al final — '
-                f'patrón de fatiga neuromuscular.')
+                f'posible fatiga neuromuscular (conviene confirmar con más sesiones).')
 
-        if cad_avg < 75:
+        if cad_avg < 60:
             resultado['recomendaciones'].append(
-                f'Cadencia baja ({cad_avg} rpm) — mayor estrés muscular a esta cadencia.')
+                f'Cadencia muy baja ({cad_avg} rpm) para el estándar de trabajo en bici. '
+                f'Vale la pena revisar con el atleta si es una elección consciente (estilo de '
+                f'fuerza) o una limitación a trabajar.')
 
     # ══════════════════════════════════════════════════════════
     # L/R BALANCE — bug corregido: se decodifica el flag 0x80 antes
@@ -1055,7 +1083,7 @@ def analizar_cycling(conn, atleta_id, sesion_id=None, semanas=8):
                 if lr_dec is not None: g['lr'].append(lr_dec)
 
             orden_sesion.sort(key=lambda sid: grupos[sid]['fecha'])
-            bl_cad_val = resultado['metricas'].get('cadencia', {}).get('promedio', 87.5)
+            bl_cad_val = resultado['metricas'].get('cadencia', {}).get('promedio', 82.5)
 
             eficiencia = []
             cad_por_sesion, power_por_sesion, te_por_sesion, lr_por_sesion = [], [], [], []
@@ -1159,7 +1187,7 @@ def analizar_cycling(conn, atleta_id, sesion_id=None, semanas=8):
                     if actual is None or mejor is None:
                         return None
                     if metric_key == 'cadencia':
-                        return abs(actual - 87.5) <= abs(mejor - 87.5)
+                        return abs(actual - 82.5) <= abs(mejor - 82.5)
                     if metric_key == 'torque_effectiveness':
                         return actual >= mejor
                     if metric_key == 'lr_balance':
@@ -1194,12 +1222,13 @@ def analizar_cycling(conn, atleta_id, sesion_id=None, semanas=8):
             elif reg and reg['slope'] > 0 and cad_drift is not None and cad_drift < -3:
                 patron = f'La cadencia cae con la fatiga (drift {cad_drift:+.1f}%).'
                 accion = 'Trabajar resistencia neuromuscular específica (drills de cadencia en fatiga).'
-            elif r_val is not None and abs(r_val) >= 0.3:
+            elif r_val is not None and _correlacion_es_significativa(r_val, len(serie)):
                 direccion = 'cae' if r_val < 0 else 'sube'
-                patron = f'La eficiencia {direccion} de forma consistente cuando aumenta la fatiga (r={r_val}).'
+                patron = f'La eficiencia {direccion} cuando aumenta la fatiga (r={r_val}, n={len(serie)} sesiones).'
                 accion = 'Ajustar la carga de series técnicas en sesiones de alta fatiga acumulada.'
             else:
-                patron = 'No se detecta una relación consistente entre fatiga y degradación técnica en este período.'
+                patron = ('No se detecta una relación estadísticamente sólida entre fatiga y '
+                           'degradación técnica con las sesiones disponibles.')
                 accion = 'Mantener el monitoreo; ampliar la muestra de sesiones.'
             resultado['analisis_fatiga']['patron_detectado'] = {'patron': patron, 'accion': accion}
         else:
@@ -1218,6 +1247,412 @@ def analizar_cycling(conn, atleta_id, sesion_id=None, semanas=8):
 # ═══════════════════════════════════════════════════════════════
 # TEST
 # ═══════════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════════
+# SWIMMING
+# ═══════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════
+# SWIMMING — Análisis completo con fatiga, clusters, patrones
+# ═══════════════════════════════════════════════════════════════
+
+def analizar_swimming(conn, atleta_id, sesion_id=None, semanas=8):
+    """Análisis de técnica de natación. Misma estructura que running/cycling."""
+    from collections import defaultdict
+    cur = conn.cursor() if hasattr(conn, 'cursor') else conn
+    if not hasattr(cur, 'execute'):
+        cur = conn.cursor()
+
+    # ── Obtener largos individuales ──
+    if sesion_id:
+        cur.execute("""
+            SELECT swim_stroke, paladas, swolf, pace, hr_avg, distance_km,
+                   duration_min, lap_num, sesion_id
+            FROM laps WHERE sesion_id=%s AND atleta_id=%s AND es_largo=1 AND paladas > 0
+            ORDER BY lap_num
+        """, (sesion_id, atleta_id))
+    else:
+        cur.execute("""
+            SELECT l.swim_stroke, l.paladas, l.swolf, l.pace, l.hr_avg,
+                   l.distance_km, l.duration_min, l.lap_num, l.sesion_id
+            FROM laps l
+            JOIN sesiones s ON s.id = l.sesion_id
+            WHERE s.atleta_id=%s AND s.sport='swimming'
+            AND s.fecha::date >= CURRENT_DATE - INTERVAL '%s weeks'
+            AND l.es_largo = 1 AND l.paladas > 0
+            ORDER BY s.fecha, l.lap_num
+        """ % (atleta_id, semanas))
+
+    largos = cur.fetchall()
+    if not largos:
+        return {'error': 'Sin datos de natación.', 'deporte': 'swimming'}
+
+    # ── Parsear datos ──
+    por_estilo = defaultdict(lambda: {'paladas': [], 'swolf': [], 'pace': [], 'hr': [], 'dps': []})
+    all_paladas, all_swolf, all_pace, all_hr, all_dps = [], [], [], [], []
+    por_sesion = defaultdict(lambda: {'paladas': [], 'swolf': [], 'pace': [], 'hr': [], 'dps': []})
+
+    pool_len = 25  # metros, default
+
+    for l in largos:
+        stroke = l[0] or 'UNKNOWN'
+        paladas = float(l[1]) if l[1] and float(l[1]) > 0 else None
+        swolf = float(l[2]) if l[2] and float(l[2]) > 0 and float(l[2]) < 100 else None
+        pace = float(l[3]) if l[3] and float(l[3]) > 0 and float(l[3]) < 5 else None
+        hr = float(l[4]) if l[4] and float(l[4]) > 40 else None
+        dist = float(l[5]) if l[5] else 0.025
+        ses_id = l[8]
+
+        if dist > 0.01 and dist < 0.06:
+            pool_len = round(dist * 1000)
+
+        dps = round(pool_len / paladas, 2) if paladas and paladas > 0 else None
+
+        if paladas:
+            por_estilo[stroke]['paladas'].append(paladas)
+            all_paladas.append(paladas)
+            por_sesion[ses_id]['paladas'].append(paladas)
+        if swolf:
+            por_estilo[stroke]['swolf'].append(swolf)
+            all_swolf.append(swolf)
+            por_sesion[ses_id]['swolf'].append(swolf)
+        if pace:
+            por_estilo[stroke]['pace'].append(pace)
+            all_pace.append(pace)
+            por_sesion[ses_id]['pace'].append(pace)
+        if hr:
+            por_estilo[stroke]['hr'].append(hr)
+            all_hr.append(hr)
+            por_sesion[ses_id]['hr'].append(hr)
+        if dps:
+            por_estilo[stroke]['dps'].append(dps)
+            all_dps.append(dps)
+            por_sesion[ses_id]['dps'].append(dps)
+
+    def avg(vals): return round(sum(vals) / len(vals), 2) if vals else None
+
+    # ── Métricas por estilo ──
+    STROKE_NAMES = {'FREESTYLE': 'Crol', 'BACKSTROKE': 'Espalda', 'BREASTSTROKE': 'Pecho',
+                    'BUTTERFLY': 'Mariposa', 'UNKNOWN': 'Otro', 'MIXED': 'Mixto', 'DRILL': 'Drill'}
+    estilos_data = {}
+    for stroke, data in por_estilo.items():
+        if len(data['paladas']) < 3: continue
+        nombre = STROKE_NAMES.get(stroke, stroke)
+        estilos_data[nombre] = {
+            'brazadas_25m': avg(data['paladas']),
+            'dps': avg(data['dps']),
+            'swolf': avg(data['swolf']),
+            'pace_100m': avg(data['pace']),
+            'hr_avg': avg(data['hr']),
+            'n_largos': len(data['paladas']),
+        }
+
+    # ── Distribución de estilos ──
+    total_largos = sum(len(d['paladas']) for d in por_estilo.values())
+    distribucion = {}
+    for stroke, data in por_estilo.items():
+        if len(data['paladas']) >= 3:
+            nombre = STROKE_NAMES.get(stroke, stroke)
+            distribucion[nombre] = round(len(data['paladas']) / max(1, total_largos) * 100, 1)
+
+    # ── Drift (primer 10% vs último 10%) ──
+    drift = {}
+    for nombre, vals in [('paladas', all_paladas), ('swolf', all_swolf), ('dps', all_dps), ('pace', all_pace)]:
+        if vals and len(vals) >= 10:
+            n = len(vals)
+            p10 = max(1, n // 10)
+            inicio = avg(vals[:p10])
+            final = avg(vals[-p10:])
+            if inicio and final and inicio > 0:
+                drift[nombre] = round((final - inicio) / inicio * 100, 1)
+
+    # ── Spider chart (normalizado 0-100) ──
+    spider = {}
+    if all_swolf:
+        best_swolf = min(all_swolf)
+        avg_swolf = avg(all_swolf)
+        spider['swolf'] = round(max(0, min(100, (60 - avg_swolf) / 0.3))) if avg_swolf else 50
+    if all_dps:
+        spider['dps'] = round(max(0, min(100, avg(all_dps) * 40))) if all_dps else 50
+    # Estabilidad: basada en drift
+    drift_vals = [abs(v) for v in drift.values()]
+    if drift_vals:
+        spider['estabilidad'] = round(max(0, min(100, 100 - sum(drift_vals) / len(drift_vals) * 8)))
+    if all_pace:
+        spider['velocidad'] = round(max(0, min(100, (3 - avg(all_pace)) * 50))) if avg(all_pace) else 50
+    if all_paladas:
+        spider['eficiencia'] = round(max(0, min(100, (20 - avg(all_paladas)) * 8))) if avg(all_paladas) else 50
+
+    # ── Evolución semanal ──
+    sparkline = []
+    try:
+        cur.execute("""
+            SELECT DATE_TRUNC('week', s.fecha)::date as semana,
+                   AVG(l.swolf), AVG(l.paladas), AVG(l.pace)
+            FROM laps l
+            JOIN sesiones s ON s.id = l.sesion_id
+            WHERE s.atleta_id=%s AND s.sport='swimming'
+            AND s.fecha::date >= CURRENT_DATE - INTERVAL '%s weeks'
+            AND l.es_largo = 1 AND l.swolf > 0 AND l.swolf < 100
+            GROUP BY DATE_TRUNC('week', s.fecha)
+            ORDER BY semana
+        """ % (atleta_id, semanas))
+        for w in cur.fetchall():
+            sparkline.append({
+                'semana': str(w[0]) if w[0] else '',
+                'cadencia': round(float(w[2]), 1) if w[2] else None,  # paladas como "cadencia" para Sparklines
+                'swolf': round(float(w[1]), 1) if w[1] else None,
+            })
+    except Exception:
+        pass
+
+    # ── Comparación vs período anterior ──
+    comparacion = {}
+    try:
+        cur.execute("""
+            SELECT AVG(l.swolf), AVG(l.paladas), AVG(l.pace)
+            FROM laps l JOIN sesiones s ON s.id = l.sesion_id
+            WHERE s.atleta_id=%s AND s.sport='swimming'
+            AND s.fecha::date >= CURRENT_DATE - INTERVAL '%s weeks'
+            AND s.fecha::date < CURRENT_DATE - INTERVAL '%s weeks'
+            AND l.es_largo=1 AND l.swolf > 0
+        """ % (atleta_id, semanas * 2, semanas))
+        prev = cur.fetchone()
+        if prev and prev[0]:
+            sw_prev = round(float(prev[0]), 1)
+            sw_now = avg(all_swolf)
+            if sw_now:
+                comparacion['swolf'] = {'actual': sw_now, 'anterior': sw_prev,
+                    'diff': round((sw_now - sw_prev) / sw_prev * 100, 1),
+                    'direccion': 'down' if sw_now < sw_prev else 'up'}
+            pal_prev = round(float(prev[1]), 1)
+            pal_now = avg(all_paladas)
+            if pal_now:
+                comparacion['paladas'] = {'actual': pal_now, 'anterior': pal_prev,
+                    'diff': round((pal_now - pal_prev) / pal_prev * 100, 1),
+                    'direccion': 'down' if pal_now < pal_prev else 'up'}
+    except Exception:
+        pass
+
+    # ── Análisis de fatiga por sesión ──
+    analisis_fatiga = {'serie': [], 'heatmap': None, 'scatter': [],
+                       'clusters_tecnica': [], 'comparativa': [],
+                       'correlacion_eficiencia_fatiga': None,
+                       'regresion_fatiga_degradacion': None,
+                       'patron_detectado': None}
+
+    try:
+        cur.execute("""
+            SELECT s.id, s.fecha::date, s.tsb,
+                   AVG(l.swolf), AVG(l.paladas), AVG(l.pace)
+            FROM laps l JOIN sesiones s ON s.id = l.sesion_id
+            WHERE s.atleta_id=%s AND s.sport='swimming'
+            AND s.fecha::date >= CURRENT_DATE - INTERVAL '%s weeks'
+            AND l.es_largo=1 AND l.swolf > 0
+            GROUP BY s.id, s.fecha, s.tsb
+            ORDER BY s.fecha
+        """ % (atleta_id, semanas))
+        sesiones_data = cur.fetchall()
+
+        if sesiones_data and len(sesiones_data) >= 3:
+            best_swolf_ses = min(float(s[3]) for s in sesiones_data if s[3])
+
+            serie = []
+            heatmap_sesiones = []
+            scatter_pts = []
+
+            for sd in sesiones_data:
+                ses_swolf = float(sd[3]) if sd[3] else None
+                ses_pal = float(sd[4]) if sd[4] else None
+                ses_pace = float(sd[5]) if sd[5] else None
+                ses_tsb = float(sd[2]) if sd[2] else None
+
+                if ses_swolf is None: continue
+
+                # Eficiencia: cuán cerca del mejor SWOLF
+                eficiencia = round(max(20, min(100, 100 - (ses_swolf - best_swolf_ses) * 5)))
+
+                # Drift dentro de sesión
+                ses_largos = por_sesion.get(sd[0], {})
+                ses_sw_list = ses_largos.get('swolf', [])
+                drift_intra = 0
+                if len(ses_sw_list) >= 6:
+                    p = max(1, len(ses_sw_list) // 5)
+                    i_sw = avg(ses_sw_list[:p])
+                    f_sw = avg(ses_sw_list[-p:])
+                    if i_sw and f_sw and i_sw > 0:
+                        drift_intra = round((f_sw - i_sw) / i_sw * 100, 1)
+
+                eficiencia = max(20, eficiencia - abs(drift_intra) * 2)
+
+                serie.append({
+                    'fecha': str(sd[1]),
+                    'eficiencia': round(eficiencia),
+                    'fatiga_idx': ses_tsb,
+                })
+
+                # Heatmap
+                heatmap_sesiones.append({
+                    'fecha': str(sd[1]),
+                    'swolf': _bucket_estabilidad(ses_sw_list) if ses_sw_list else 'sin_datos',
+                    'paladas': _bucket_estabilidad(ses_largos.get('paladas', [])) if ses_largos.get('paladas') else 'sin_datos',
+                    'dps': _bucket_estabilidad(ses_largos.get('dps', [])) if ses_largos.get('dps') else 'sin_datos',
+                    'pace': _bucket_estabilidad(ses_largos.get('pace', [])) if ses_largos.get('pace') else 'sin_datos',
+                })
+
+                # Scatter fatiga × degradación
+                if ses_tsb is not None:
+                    degradacion = round(ses_swolf - best_swolf_ses, 1)
+                    scatter_pts.append({'x': round(ses_tsb, 1), 'y': degradacion})
+
+            analisis_fatiga['serie'] = serie
+
+            # Correlación y regresión
+            if scatter_pts and len(scatter_pts) >= 5:
+                xs = [p['x'] for p in scatter_pts]
+                ys = [p['y'] for p in scatter_pts]
+                analisis_fatiga['correlacion_eficiencia_fatiga'] = _pearson(
+                    [s['fatiga_idx'] for s in serie if s['fatiga_idx'] is not None],
+                    [s['eficiencia'] for s in serie if s['fatiga_idx'] is not None][:len([s for s in serie if s['fatiga_idx'] is not None])]
+                )
+                analisis_fatiga['regresion_fatiga_degradacion'] = _linreg(xs, ys)
+                analisis_fatiga['scatter'] = scatter_pts
+
+            # Heatmap
+            if heatmap_sesiones:
+                analisis_fatiga['heatmap'] = {
+                    'sesiones': heatmap_sesiones,
+                    'metricas': ['swolf', 'paladas', 'dps', 'pace'],
+                    'labels': {'swolf': 'SWOLF', 'paladas': 'Brazadas', 'dps': 'DPS', 'pace': 'Ritmo'},
+                }
+
+            # Clusters técnica (paladas × pace)
+            if all_paladas and all_pace and len(all_paladas) >= 10:
+                pts_cluster = [(all_paladas[i], all_pace[i])
+                               for i in range(min(len(all_paladas), len(all_pace), 300))
+                               if all_paladas[i] and all_pace[i]]
+                if len(pts_cluster) >= 10:
+                    clusters_tecnica = []
+                    labels = _kmeans_2d(pts_cluster, k=min(3, len(pts_cluster) // 5))
+                    estados = ['eficiente', 'compensada', 'degradada']
+                    for i, (x, y) in enumerate(pts_cluster):
+                        clusters_tecnica.append({
+                            'x': round(x, 1), 'y': round(y, 2),
+                            'cluster': labels[i] if i < len(labels) else 0,
+                            'estado': estados[labels[i] % 3] if i < len(labels) else 'compensada',
+                        })
+                    analisis_fatiga['clusters_tecnica'] = clusters_tecnica
+
+            # Comparativa: sesión más reciente vs mejor sesión
+            if len(sesiones_data) >= 2:
+                mejor = min(sesiones_data, key=lambda s: float(s[3]) if s[3] else 999)
+                reciente = sesiones_data[-1]
+                comparativa = []
+                labels_comp = {'swolf': 'SWOLF', 'paladas': 'Brazadas/25m', 'pace': 'Ritmo (min/100m)'}
+                for idx, key in [(3, 'swolf'), (4, 'paladas'), (5, 'pace')]:
+                    v_actual = round(float(reciente[idx]), 1) if reciente[idx] else None
+                    v_mejor = round(float(mejor[idx]), 1) if mejor[idx] else None
+                    if v_actual and v_mejor and v_mejor > 0:
+                        comparativa.append({
+                            'metrica': labels_comp[key],
+                            'actual': v_actual, 'mejor': v_mejor,
+                            'diff_pct': round((v_actual - v_mejor) / v_mejor * 100, 1),
+                        })
+                analisis_fatiga['comparativa'] = comparativa
+
+            # Patrón detectado
+            reg = analisis_fatiga.get('regresion_fatiga_degradacion')
+            r_val = analisis_fatiga.get('correlacion_eficiencia_fatiga')
+            drift_swolf = drift.get('swolf', 0)
+
+            if reg and r_val is not None:
+                if r_val < -0.4 and drift_swolf > 3:
+                    patron = f'A mayor fatiga (TSB bajo), el SWOLF sube. Drift intra-sesión: +{drift_swolf}%.'
+                    accion = 'Reducir volumen de nado en semanas de carga alta. Priorizar series cortas con técnica.'
+                elif drift_swolf > 5:
+                    patron = f'SWOLF se degrada {drift_swolf}% durante las sesiones. Pérdida de eficiencia por fatiga.'
+                    accion = 'Acortar series, más descanso entre repeticiones. Foco en DPS en los últimos largos.'
+                elif drift_swolf < -3:
+                    patron = f'SWOLF mejora durante la sesión ({drift_swolf}%). Buen calentamiento progresivo.'
+                    accion = 'Patrón positivo. Mantener estructura actual de calentamiento.'
+                else:
+                    patron = f'Técnica estable. SWOLF drift {drift_swolf:+.1f}%, sin correlación significativa con fatiga.'
+                    accion = 'Continuar con el enfoque actual.'
+                analisis_fatiga['patron_detectado'] = {'patron': patron, 'accion': accion}
+
+    except Exception as e:
+        pass  # analisis_fatiga queda con defaults vacíos
+
+    # ── Interpretaciones ──
+    interpretacion = []
+
+    if estilos_data.get('Crol'):
+        crol = estilos_data['Crol']
+        interpretacion.append(
+            f'Crol: {crol["brazadas_25m"]} brazadas/25m, DPS {crol["dps"]}m, '
+            f'SWOLF {crol["swolf"]}, ritmo {crol["pace_100m"]} min/100m '
+            f'({crol["n_largos"]} largos analizados).')
+
+    if drift.get('swolf') is not None:
+        d = drift['swolf']
+        if abs(d) < 3:
+            interpretacion.append(f'SWOLF estable durante la sesión (drift {d:+.1f}%). Eficiencia mantenida.')
+        elif d > 0:
+            interpretacion.append(f'SWOLF sube {d:+.1f}% al final de la sesión. La brazada pierde eficiencia con fatiga.')
+        else:
+            interpretacion.append(f'SWOLF baja {d:+.1f}% (mejora). Buen calentamiento progresivo.')
+
+    if drift.get('dps') is not None:
+        d = drift['dps']
+        if d < -3:
+            interpretacion.append(
+                f'Distancia por brazada cae {abs(d):.1f}% al final. '
+                f'La tracción y/o patada pierden efectividad con fatiga.')
+
+    if all_hr and all_swolf:
+        corr = _pearson(all_hr[:min(len(all_hr), len(all_swolf))],
+                        all_swolf[:min(len(all_hr), len(all_swolf))])
+        if corr is not None and corr > 0.3:
+            interpretacion.append(
+                f'Correlación positiva entre FC y SWOLF (r={corr}). '
+                f'A mayor esfuerzo cardiovascular, peor eficiencia técnica.')
+        elif corr is not None and corr < -0.3:
+            interpretacion.append(
+                f'Correlación negativa entre FC y SWOLF (r={corr}). '
+                f'Mayor intensidad con mejor técnica — patrón de nadador entrenado.')
+
+    if len(distribucion) > 1:
+        dist_str = ', '.join(f'{k}: {v}%' for k, v in sorted(distribucion.items(), key=lambda x: -x[1]))
+        interpretacion.append(f'Distribución: {dist_str}.')
+
+    # Score técnico
+    scores = [s['eficiencia'] for s in analisis_fatiga.get('serie', []) if s.get('eficiencia')]
+    score_tecnico = round(sum(scores) / len(scores)) if scores else 50
+
+    return {
+        'deporte': 'swimming',
+        'n_largos': total_largos,
+        'pool_length': pool_len,
+        'estilos': estilos_data,
+        'distribucion': distribucion,
+        'metricas': {
+            'swolf_avg': avg(all_swolf),
+            'brazadas_avg': avg(all_paladas),
+            'dps_avg': avg(all_dps),
+            'pace_avg': avg(all_pace),
+            'hr_avg': avg(all_hr),
+        },
+        'drift': drift,
+        'spider': spider,
+        'sparkline': sparkline,
+        'comparacion': comparacion,
+        'analisis_fatiga': analisis_fatiga,
+        'interpretacion': interpretacion,
+        'score_tecnico': score_tecnico,
+        'sensores': {'has_hrm_pro': True, 'faltantes': [], 'sensores': ['Garmin Swim']},
+    }
+
 
 if __name__ == '__main__':
     import psycopg2, psycopg2.extras, sys, json
