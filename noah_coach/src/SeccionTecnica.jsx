@@ -506,13 +506,27 @@ const CLUSTER_COLOR = [C.cyan, C.yellow, C.purple]
 
 function ScatterFatigaDegradacion({ scatter, regresion }) {
   if (!scatter || scatter.length === 0) return null
-  const nClusters = new Set(scatter.map(p => p.cluster)).size
   const grupos = {}
   scatter.forEach(p => {
     const c = p.cluster || 0
     if (!grupos[c]) grupos[c] = []
     grupos[c].push(p)
   })
+  const clusterIds = Object.keys(grupos)
+  const nClusters = clusterIds.length
+
+  // Los clusters de k-means no tienen un orden ni significado propio (son
+  // solo un índice 0/1) — acá les damos una etiqueta legible ordenándolos
+  // por su degradación promedio real, en vez de mostrar "Grupo 1/Grupo 2"
+  // sin contexto.
+  let nombreCluster = {}
+  if (nClusters > 1) {
+    const promedios = clusterIds.map(c => ({
+      c, avg: grupos[c].reduce((s, p) => s + p.degradacion, 0) / grupos[c].length,
+    })).sort((a, b) => a.avg - b.avg)
+    const etiquetas = ['Menor degradación técnica', 'Mayor degradación técnica']
+    promedios.forEach((p, i) => { nombreCluster[p.c] = etiquetas[i] || `Grupo ${i + 1}` })
+  }
 
   const xs = scatter.map(p => p.fatiga)
   const minX = Math.min(...xs), maxX = Math.max(...xs)
@@ -529,12 +543,12 @@ function ScatterFatigaDegradacion({ scatter, regresion }) {
       <ResponsiveContainer width="100%" height={220}>
         <ScatterChart margin={{ top: 4, right: 12, left: -12, bottom: 0 }}>
           <CartesianGrid stroke="rgba(255,255,255,0.04)" />
-          <XAxis type="number" dataKey="fatiga" name="Fatiga (ATL)" tick={{ fill: C.dim, fontSize: 8 }} />
+          <XAxis type="number" dataKey="fatiga" name="Fatiga (-TSB)" tick={{ fill: C.dim, fontSize: 8 }} />
           <YAxis type="number" dataKey="degradacion" name="Degradación" domain={[0, 'auto']} tick={{ fill: C.dim, fontSize: 8 }} />
           <ZAxis range={[40, 40]} />
           <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ background: '#1a1a2e', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 10 }} />
           {Object.entries(grupos).map(([c, pts]) => (
-            <Scatter key={c} name={nClusters > 1 ? `Grupo ${Number(c) + 1}` : 'Sesiones'}
+            <Scatter key={c} name={nombreCluster[c] || 'Sesiones'}
                       data={pts} fill={CLUSTER_COLOR[c % CLUSTER_COLOR.length]} />
           ))}
           {lineaRegresion && (
@@ -594,8 +608,12 @@ function ComparativaTecnica({ comparativa }) {
   if (!comparativa || comparativa.length === 0) return null
   return (
     <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 2 }}>
         COMPARATIVA vs MEJOR PERÍODO
+      </div>
+      <div style={{ fontSize: 9, color: C.dim, marginBottom: 8 }}>
+        Sesión más reciente vs. tu sesión con mejor score técnico en este período
+        (no es necesariamente la más rápida o exigente)
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {comparativa.map((row, i) => {
@@ -754,19 +772,71 @@ function PanelCycling({ data }) {
   )
 }
 
-function PanelSwimming() {
+function PanelSwimming({ data }) {
+  if (!data || data.error) return (
+    <div style={{ position: 'relative', width: '100%', height: 300, borderRadius: 16, overflow: 'hidden' }}>
+      <img src="/img/tecnica_swim.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.5 }} />
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 30%, rgba(13,17,23,0.95) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ fontSize: 13, color: C.dim }}>{data?.error || 'Sin datos de natación'}</p>
+      </div>
+    </div>
+  )
+  const m = data.metricas || {}
+  const estilos = data.estilos || {}
+  const dist = data.distribucion || {}
   return (
     <div>
-      <div style={{ position: 'relative', width: '100%', height: 350, borderRadius: 16, overflow: 'hidden', marginBottom: 20 }}>
-        <img src="/img/tecnica_swim.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6 }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 30%, rgba(13,17,23,0.9) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 14, color: C.cyan, fontWeight: 700 }}>ANÁLISIS DE SWIM</div>
-            <div style={{ fontSize: 11, color: C.dim, marginTop: 8 }}>Requiere datos de stroke type y cadencia de nado</div>
-            <div style={{ fontSize: 10, color: C.dim, marginTop: 4 }}>Se activa con Garmin Swim 2 o HRM-Swim</div>
+      <div style={{ position: 'relative', width: '100%', height: 300, borderRadius: 16, overflow: 'hidden', marginBottom: 4 }}>
+        <img src="/img/tecnica_swim.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.5 }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 30%, rgba(13,17,23,0.95) 100%)' }} />
+        {m.swolf_avg && <MetricaOverlay label="SWOLF" valor={m.swolf_avg} unidad="" estado={m.swolf_avg < 40 ? 'óptima' : m.swolf_avg < 50 ? 'bueno' : 'mejorar'} x={25} y={30} />}
+        {m.brazadas_avg && <MetricaOverlay label="BRAZADAS/25m" valor={m.brazadas_avg} unidad="" estado="bueno" x={75} y={30} />}
+        {m.dps_avg && <MetricaOverlay label="DPS" valor={m.dps_avg} unidad="m" estado={m.dps_avg > 2.0 ? 'óptima' : 'bueno'} x={25} y={60} />}
+        {m.pace_avg && <MetricaOverlay label="RITMO" valor={m.pace_avg} unidad="min/100m" estado="bueno" x={75} y={60} />}
+      </div>
+      <p style={{ textAlign: 'center', fontSize: 10, color: C.dim, marginBottom: 12 }}>
+        Pileta {data.pool_length || 25}m · <strong style={{ color: C.cyan }}>{data.n_largos}</strong> largos analizados
+      </p>
+      {Object.keys(estilos).length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, color: C.cyan, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>POR ESTILO</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {Object.entries(estilos).map(([nombre, d]) => (
+              <div key={nombre} style={{ flex: '1 1 140px', padding: '12px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontSize: 11, color: C.cyan, fontWeight: 700, marginBottom: 6 }}>{nombre}</div>
+                <div style={{ fontSize: 10, color: C.dim, lineHeight: 2 }}>
+                  Brazadas: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{d.brazadas_25m}/25m</strong><br/>
+                  DPS: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{d.dps}m</strong><br/>
+                  SWOLF: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{d.swolf}</strong><br/>
+                  Ritmo: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{d.pace_100m} min/100m</strong><br/>
+                  FC: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{d.hr_avg || '--'} bpm</strong>
+                  <div style={{ fontSize: 8, color: C.dim, marginTop: 2 }}>{d.n_largos} largos</div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      )}
+      {Object.keys(dist).length > 1 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, color: C.cyan, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>DISTRIBUCIÓN DE ESTILOS</div>
+          <div style={{ display: 'flex', height: 24, borderRadius: 6, overflow: 'hidden' }}>
+            {Object.entries(dist).sort((a,b) => b[1]-a[1]).map(([nombre, pct], i) => {
+              const colors = [C.cyan, C.purple, C.green, C.yellow]
+              return <div key={nombre} style={{ width: pct+'%', background: colors[i%4], display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {pct > 10 && <span style={{ fontSize: 8, color: '#000', fontWeight: 700 }}>{nombre} {pct}%</span>}
+              </div>
+            })}
+          </div>
+        </div>
+      )}
+      <SpiderChart data={data.spider} />
+      <DriftCard drift={data.drift} />
+      <Sparklines data={data.sparkline} cadUnidad="" linea2Key="swolf" linea2Nombre="SWOLF" />
+      <Comparacion data={data.comparacion} />
+      <Interpretacion items={data.interpretacion} />
+      <AnalisisFatigaTecnica data={data.analisis_fatiga}
+        clusterEjes={{ xNombre: 'Brazadas', xUnidad: '/25m', yNombre: 'Ritmo', yUnidad: ' min/100m' }} />
     </div>
   )
 }
@@ -817,7 +887,7 @@ export default function SeccionTecnica({ atletaId }) {
         <>
           {sport === 'running' && <PanelRunning data={data} />}
           {sport === 'cycling' && <PanelCycling data={data} />}
-          {sport === 'swimming' && <PanelSwimming />}
+          {sport === 'swimming' && <PanelSwimming data={data} />}
         </>
       )}
 
