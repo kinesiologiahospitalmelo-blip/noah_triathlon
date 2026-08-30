@@ -395,13 +395,8 @@ def analizar_running(conn, atleta_id, sesion_id=None, semanas=8):
                 f'en mayor tiempo de contacto aunque la cadencia se mantenga.')
 
         if estado == 'mejorar':
-            resultado['recomendaciones'].append({
-                'texto': f'GCT alto ({gct_avg}ms). Objetivo: <270ms.',
-                'ejercicio': 'Pliometría: saltos al cajón, skipping alto, drop jumps. Excéntricos de gemelos.',
-                'frecuencia': '2x/semana post-calentamiento',
-                'prioridad': 'alta',
-                'resultado_esperado': '-15-20ms en 8 semanas',
-            })
+            resultado['recomendaciones'].append(
+                f'GCT alto ({gct_avg}ms) — por encima de tu patrón habitual.')
 
     # ══════════════════════════════════════════════════════════
     # 3. OSCILACIÓN VERTICAL
@@ -434,13 +429,8 @@ def analizar_running(conn, atleta_id, sesion_id=None, semanas=8):
             f'Menos rebote = más energía hacia adelante (Saunders 2004).')
 
         if estado == 'mejorar':
-            resultado['recomendaciones'].append({
-                'texto': f'Oscilación vertical alta ({vo_avg}cm). Objetivo: <9cm.',
-                'ejercicio': 'A-skip bajo, strides con foco en cadera alta. Correr "rasante".',
-                'frecuencia': '3x/semana como parte del calentamiento',
-                'prioridad': 'media',
-                'resultado_esperado': '-1-2cm en 6 semanas',
-            })
+            resultado['recomendaciones'].append(
+                f'Oscilación vertical alta ({vo_avg}cm) — energía desperdiciada verticalmente.')
 
     # ══════════════════════════════════════════════════════════
     # 4. STRIDE LENGTH
@@ -512,13 +502,8 @@ def analizar_running(conn, atleta_id, sesion_id=None, semanas=8):
         if len(zvals) >= 2:
             sorted_z = sorted(zvals, key=lambda x: x[0])
             if sorted_z[-1][1] <= sorted_z[0][1]:
-                resultado['recomendaciones'].append({
-                    'texto': 'La cadencia no sube con la intensidad.',
-                    'ejercicio': 'Strides y fartlek con cambios de cadencia conscientes. Usar metrónomo.',
-                    'frecuencia': '2x/semana',
-                    'prioridad': 'media',
-                    'resultado_esperado': '+3-5 spm entre Z1 y Z4',
-                })
+                resultado['recomendaciones'].append(
+                    'La cadencia no varía con la intensidad — patrón a monitorear.')
 
     # ══════════════════════════════════════════════════════════
     # 3b. EVOLUCIÓN SEMANAL (sparkline data)
@@ -906,12 +891,8 @@ def analizar_cycling(conn, atleta_id, sesion_id=None, semanas=8):
                 f'patrón de fatiga neuromuscular.')
 
         if cad_avg < 75:
-            resultado['recomendaciones'].append({
-                'texto': f'Cadencia baja ({cad_avg} rpm). Más estrés muscular.',
-                'ejercicio': 'Drills de cadencia alta: 5x3\' a 100rpm+ en Z2.',
-                'frecuencia': '2x/semana', 'prioridad': 'alta',
-                'resultado_esperado': '+5-10 rpm promedio en 4 semanas',
-            })
+            resultado['recomendaciones'].append(
+                f'Cadencia baja ({cad_avg} rpm) — mayor estrés muscular a esta cadencia.')
 
     # ══════════════════════════════════════════════════════════
     # L/R BALANCE — bug corregido: se decodifica el flag 0x80 antes
@@ -932,12 +913,8 @@ def analizar_cycling(conn, atleta_id, sesion_id=None, semanas=8):
             f'Normal: 48-52%. Desbalance > 4% puede indicar compensación o asimetría (Bini 2014).')
 
         if desbalance >= 4:
-            resultado['recomendaciones'].append({
-                'texto': f'Desbalance significativo ({lr_avg}%/{round(100-lr_avg,1)}%).',
-                'ejercicio': 'Single leg drills, verificar bike fitting, trabajo unilateral de fuerza.',
-                'frecuencia': '2x/semana', 'prioridad': 'alta',
-                'resultado_esperado': 'Reducir a <3% en 6-8 semanas',
-            })
+            resultado['recomendaciones'].append(
+                f'Desbalance L/R significativo ({lr_avg}%/{round(100-lr_avg,1)}%) — verificar bike fitting.')
 
     # ══════════════════════════════════════════════════════════
     # TORQUE EFFECTIVENESS (+ drift intra-sesión)
@@ -1046,12 +1023,8 @@ def analizar_cycling(conn, atleta_id, sesion_id=None, semanas=8):
 
     # Fallback
     if not resultado['recomendaciones']:
-        resultado['recomendaciones'].append({
-            'texto': 'Técnica de pedaleo dentro de parámetros normales.',
-            'ejercicio': 'Mantener drills de cadencia y single leg como calentamiento.',
-            'frecuencia': '1x/semana', 'prioridad': 'baja',
-            'resultado_esperado': 'Mantener eficiencia',
-        })
+        resultado['recomendaciones'].append(
+            'Técnica de pedaleo dentro del patrón habitual.')
 
     # ══════════════════════════════════════════════════════════
     # ANÁLISIS DE FATIGA POR SESIÓN — mismo patrón que running:
