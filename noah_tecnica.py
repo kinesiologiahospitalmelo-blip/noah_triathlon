@@ -1332,6 +1332,30 @@ def analizar_swimming(conn, atleta_id, sesion_id=None, semanas=8):
 
     def avg(vals): return round(sum(vals) / len(vals), 2) if vals else None
 
+    # ── NUEVO: pares correctamente alineados (mismo largo) para correlaciones ──
+    # Antes había un bug acá: la correlación FC×SWOLF se armaba recortando dos
+    # listas independientes por posición (cada una solo incluía largos donde SU
+    # PROPIO valor era válido), así que podía terminar comparando el FC de un
+    # largo con el SWOLF de un largo distinto. Estos pares se arman recorriendo
+    # los largos una sola vez y solo se agregan cuando AMBOS valores existen
+    # para el MISMO largo.
+    pares_paladas_pace, pares_paladas_hr = [], []
+    pares_dps_pace, pares_hr_swolf = [], []
+    for l in largos:
+        paladas_l = float(l[1]) if l[1] and float(l[1]) > 0 else None
+        swolf_l = float(l[2]) if l[2] and float(l[2]) > 0 and float(l[2]) < 100 else None
+        pace_l = float(l[3]) if l[3] and float(l[3]) > 0 and float(l[3]) < 5 else None
+        hr_l = float(l[4]) if l[4] and float(l[4]) > 40 else None
+        dps_l = round(pool_len / paladas_l, 2) if paladas_l else None
+        if paladas_l is not None and pace_l is not None:
+            pares_paladas_pace.append((paladas_l, pace_l))
+        if paladas_l is not None and hr_l is not None:
+            pares_paladas_hr.append((paladas_l, hr_l))
+        if dps_l is not None and pace_l is not None:
+            pares_dps_pace.append((dps_l, pace_l))
+        if hr_l is not None and swolf_l is not None:
+            pares_hr_swolf.append((hr_l, swolf_l))
+
     # ── Métricas por estilo ──
     STROKE_NAMES = {'FREESTYLE': 'Crol', 'BACKSTROKE': 'Espalda', 'BREASTSTROKE': 'Pecho',
                     'BUTTERFLY': 'Mariposa', 'UNKNOWN': 'Otro', 'MIXED': 'Mixto', 'DRILL': 'Drill'}
@@ -1445,7 +1469,7 @@ def analizar_swimming(conn, atleta_id, sesion_id=None, semanas=8):
     try:
         cur.execute("""
             SELECT s.id, s.fecha::date, s.tsb,
-                   AVG(l.swolf), AVG(l.paladas), AVG(l.pace)
+                   AVG(l.swolf), AVG(l.paladas), AVG(l.pace), AVG(l.hr_avg)
             FROM laps l JOIN sesiones s ON s.id = l.sesion_id
             WHERE s.atleta_id=%s AND s.sport='swimming'
             AND s.fecha::date >= CURRENT_DATE - INTERVAL '%s weeks'
@@ -1462,11 +1486,12 @@ def analizar_swimming(conn, atleta_id, sesion_id=None, semanas=8):
             heatmap_sesiones = []
             scatter_pts = []
 
-            for sd in sesiones_data:
+            for idx_ses, sd in enumerate(sesiones_data):
                 ses_swolf = float(sd[3]) if sd[3] else None
                 ses_pal = float(sd[4]) if sd[4] else None
                 ses_pace = float(sd[5]) if sd[5] else None
                 ses_tsb = float(sd[2]) if sd[2] else None
+                ses_hr = float(sd[6]) if len(sd) > 6 and sd[6] else None
 
                 if ses_swolf is None: continue
 
@@ -1489,7 +1514,7 @@ def analizar_swimming(conn, atleta_id, sesion_id=None, semanas=8):
                 serie.append({
                     'fecha': str(sd[1]),
                     'eficiencia': round(eficiencia),
-                    'fatiga_idx': ses_tsb,
+                    'fatiga': round(-ses_tsb, 1) if ses_tsb is not None else (round(ses_hr - 100, 1) if ses_hr else round(idx_ses * 2, 1)),
                 })
 
                 # Heatmap
@@ -1502,29 +1527,57 @@ def analizar_swimming(conn, atleta_id, sesion_id=None, semanas=8):
                 })
 
                 # Scatter fatiga × degradación
-                if ses_tsb is not None:
-                    degradacion = round(ses_swolf - best_swolf_ses, 1)
-                    scatter_pts.append({'x': round(ses_tsb, 1), 'y': degradacion})
+                degradacion = round(ses_swolf - best_swolf_ses, 1)
+                fatiga_val = round(-ses_tsb, 1) if ses_tsb is not None else (round(ses_hr - 100, 1) if ses_hr else round(idx_ses * 2, 1))
+                scatter_pts.append({'fecha': str(sd[1]), 'fatiga': fatiga_val, 'degradacion': degradacion})
 
             analisis_fatiga['serie'] = serie
 
             # Correlación y regresión
             if scatter_pts and len(scatter_pts) >= 5:
-                xs = [p['x'] for p in scatter_pts]
-                ys = [p['y'] for p in scatter_pts]
-                analisis_fatiga['correlacion_eficiencia_fatiga'] = _pearson(
-                    [s['fatiga_idx'] for s in serie if s['fatiga_idx'] is not None],
-                    [s['eficiencia'] for s in serie if s['fatiga_idx'] is not None][:len([s for s in serie if s['fatiga_idx'] is not None])]
-                )
+                xs = [p['fatiga'] for p in scatter_pts]
+                ys = [p['degradacion'] for p in scatter_pts]
+                if len(xs) >= 5:
+                    clusters_sc = _kmeans_2d(list(zip(xs, ys)), k=min(3, len(xs) // 3))
+                    for p, c in zip(scatter_pts, clusters_sc):
+                        p['cluster'] = c
+                efic_vals = [s['eficiencia'] for s in serie if s.get('fatiga') is not None]
+                fat_vals = [s['fatiga'] for s in serie if s.get('fatiga') is not None]
+                n_min = min(len(efic_vals), len(fat_vals))
+                analisis_fatiga['correlacion_eficiencia_fatiga'] = _pearson(fat_vals[:n_min], efic_vals[:n_min])
                 analisis_fatiga['regresion_fatiga_degradacion'] = _linreg(xs, ys)
                 analisis_fatiga['scatter'] = scatter_pts
 
-            # Heatmap
+            # Heatmap — formato objeto con {label, celdas} como running/cycling
             if heatmap_sesiones:
+                # Recalcular: necesitamos valores raw por sesión
+                heatmap_metricas = {}
+                for key, label in [('swolf', 'SWOLF'), ('paladas', 'Brazadas/largo'), ('dps', 'Dist./Palada'), ('pace', 'Ritmo')]:
+                    raw_vals = []
+                    for sd2 in sesiones_data:
+                        ses2 = por_sesion.get(sd2[0], {})
+                        vals2 = ses2.get(key, [])
+                        raw_vals.append(round(sum(vals2)/len(vals2), 1) if vals2 else None)
+                    if all(v is None for v in raw_vals):
+                        heatmap_metricas[key] = {'label': label, 'celdas': ['N/D'] * len(raw_vals)}
+                    else:
+                        valid = [v for v in raw_vals if v is not None]
+                        if len(valid) >= 2:
+                            estados_h = _bucket_estabilidad(valid)
+                            ei = 0
+                            celdas = []
+                            for v in raw_vals:
+                                if v is None:
+                                    celdas.append('N/D')
+                                else:
+                                    celdas.append({'valor': v, 'estado': estados_h[ei] if ei < len(estados_h) else 'estable'})
+                                    ei += 1
+                        else:
+                            celdas = [{'valor': v, 'estado': 'estable'} if v else 'N/D' for v in raw_vals]
+                        heatmap_metricas[key] = {'label': label, 'celdas': celdas}
                 analisis_fatiga['heatmap'] = {
-                    'sesiones': heatmap_sesiones,
-                    'metricas': ['swolf', 'paladas', 'dps', 'pace'],
-                    'labels': {'swolf': 'SWOLF', 'paladas': 'Brazadas', 'dps': 'DPS', 'pace': 'Ritmo'},
+                    'sesiones': [str(sd2[1]) for sd2 in sesiones_data],
+                    'metricas': heatmap_metricas,
                 }
 
             # Clusters técnica (paladas × pace)
@@ -1538,7 +1591,7 @@ def analizar_swimming(conn, atleta_id, sesion_id=None, semanas=8):
                     estados = ['eficiente', 'compensada', 'degradada']
                     for i, (x, y) in enumerate(pts_cluster):
                         clusters_tecnica.append({
-                            'x': round(x, 1), 'y': round(y, 2),
+                            'cadencia': round(x, 1), 'stride': round(y, 2),
                             'cluster': labels[i] if i < len(labels) else 0,
                             'estado': estados[labels[i] % 3] if i < len(labels) else 'compensada',
                         })
@@ -1556,8 +1609,9 @@ def analizar_swimming(conn, atleta_id, sesion_id=None, semanas=8):
                     if v_actual and v_mejor and v_mejor > 0:
                         comparativa.append({
                             'metrica': labels_comp[key],
-                            'actual': v_actual, 'mejor': v_mejor,
+                            'actual': v_actual, 'mejor_periodo': v_mejor,
                             'diff_pct': round((v_actual - v_mejor) / v_mejor * 100, 1),
+                            'mejora': v_actual <= v_mejor,
                         })
                 analisis_fatiga['comparativa'] = comparativa
 
@@ -1581,7 +1635,8 @@ def analizar_swimming(conn, atleta_id, sesion_id=None, semanas=8):
                     accion = 'Continuar con el enfoque actual.'
                 analisis_fatiga['patron_detectado'] = {'patron': patron, 'accion': accion}
 
-    except Exception as e:
+    except Exception:
+        import traceback; traceback.print_exc()
         pass  # analisis_fatiga queda con defaults vacíos
 
     # ── Interpretaciones ──
@@ -1610,21 +1665,136 @@ def analizar_swimming(conn, atleta_id, sesion_id=None, semanas=8):
                 f'Distancia por brazada cae {abs(d):.1f}% al final. '
                 f'La tracción y/o patada pierden efectividad con fatiga.')
 
-    if all_hr and all_swolf:
-        corr = _pearson(all_hr[:min(len(all_hr), len(all_swolf))],
-                        all_swolf[:min(len(all_hr), len(all_swolf))])
-        if corr is not None and corr > 0.3:
-            interpretacion.append(
-                f'Correlación positiva entre FC y SWOLF (r={corr}). '
-                f'A mayor esfuerzo cardiovascular, peor eficiencia técnica.')
-        elif corr is not None and corr < -0.3:
-            interpretacion.append(
-                f'Correlación negativa entre FC y SWOLF (r={corr}). '
-                f'Mayor intensidad con mejor técnica — patrón de nadador entrenado.')
+    # ── Correlaciones (con pares bien alineados y chequeo de significancia) ──
+    # Reemplaza el cálculo anterior de FC×SWOLF, que emparejaba mal los datos
+    # (ver comentario en la construcción de 'pares_*' más arriba).
+    correlaciones = {}
+
+    def _agregar_correlacion(key, pares, nombre_x, nombre_y, texto_r_positivo, texto_r_negativo):
+        if len(pares) < 8:
+            return
+        xs = [p[0] for p in pares]
+        ys = [p[1] for p in pares]
+        r = _pearson(xs, ys)
+        if r is None:
+            return
+        sig = _correlacion_es_significativa(r, len(pares))
+        correlaciones[key] = {
+            'r': r, 'n': len(pares), 'significativo': sig,
+            'x': nombre_x, 'y': nombre_y,
+        }
+        if sig:
+            texto = texto_r_positivo if r > 0 else texto_r_negativo
+            interpretacion.append(f'{texto} (r={r}, n={len(pares)} largos).')
+
+    # Paladas vs Pace: pace en min/100m, más alto = más lento.
+    # r positivo = más brazadas coincide con ritmo más lento (brazada rinde menos).
+    _agregar_correlacion(
+        'paladas_pace', pares_paladas_pace, 'Paladas', 'Ritmo',
+        'Los largos con más brazadas tienden a ser más lentos — la brazada rinde menos cuando aumenta la frecuencia',
+        'Los largos con más brazadas tienden a ser más rápidos')
+
+    # DPS vs Pace: r negativo esperable (más metros por brazada = más rápido).
+    _agregar_correlacion(
+        'dps_pace', pares_dps_pace, 'Dist./Palada', 'Ritmo',
+        'A mayor distancia por brazada, el ritmo es más lento (fuera de lo esperable, revisar)',
+        'A mayor distancia por brazada, el ritmo es más rápido — la brazada larga rinde en velocidad')
+
+    # Paladas vs HR: relación esperable si aumenta el esfuerzo.
+    _agregar_correlacion(
+        'paladas_hr', pares_paladas_hr, 'Paladas', 'FC',
+        'Los largos con más brazadas coinciden con mayor frecuencia cardíaca — más esfuerzo asociado a más brazadas',
+        'Los largos con más brazadas coinciden con menor frecuencia cardíaca')
+
+    # HR vs SWOLF: costo cardiovascular vs eficiencia técnica.
+    _agregar_correlacion(
+        'hr_swolf', pares_hr_swolf, 'FC', 'SWOLF',
+        'A mayor frecuencia cardíaca, peor eficiencia técnica (SWOLF más alto)',
+        'A mayor frecuencia cardíaca, mejor eficiencia técnica — patrón de nadador entrenado')
 
     if len(distribucion) > 1:
         dist_str = ', '.join(f'{k}: {v}%' for k, v in sorted(distribucion.items(), key=lambda x: -x[1]))
         interpretacion.append(f'Distribución: {dist_str}.')
+
+    # ── NUEVO: Curva largo-por-largo de la sesión más reciente ──
+    # Todo lo anterior son promedios del período. Esto es distinto: muestra
+    # cómo evoluciona la técnica DENTRO de una sesión, largo por largo — la
+    # única forma real de ver "se desarma la brazada / sube la FC a medida
+    # que avanza la sesión" en vez de solo comparar un promedio de inicio vs
+    # final. Se separan dos curvas con significados distintos:
+    #   - técnica pura (paladas/DPS/SWOLF) — calidad de la brazada en sí
+    #   - cardiovascular (FC vs pace) — costo fisiológico de sostener el ritmo
+    # Un atleta puede tener buena curva técnica y mala cardiovascular, o
+    # viceversa — mostrarlas separadas evita mezclar dos fenómenos distintos
+    # en un solo número.
+    curva_sesion = None
+    try:
+        ultima_ses_id = largos[-1][8]
+        largos_ultima = [l for l in largos if l[8] == ultima_ses_id]
+        if len(largos_ultima) >= 6:
+            curva = []
+            for i, l in enumerate(largos_ultima):
+                paladas_i = float(l[1]) if l[1] and float(l[1]) > 0 else None
+                swolf_i = float(l[2]) if l[2] and float(l[2]) > 0 and float(l[2]) < 100 else None
+                pace_i = float(l[3]) if l[3] and float(l[3]) > 0 and float(l[3]) < 5 else None
+                hr_i = float(l[4]) if l[4] and float(l[4]) > 40 else None
+                dps_i = round(pool_len / paladas_i, 2) if paladas_i else None
+                curva.append({
+                    'largo': i + 1, 'paladas': paladas_i, 'dps': dps_i,
+                    'swolf': swolf_i, 'pace': pace_i, 'hr': hr_i,
+                })
+
+            # Score técnico por largo (0-100): SOLO DPS y SWOLF, sin FC a
+            # propósito, para que sea un índice de calidad de brazada puro,
+            # independiente del costo cardiovascular.
+            dps_vals = [c['dps'] for c in curva if c['dps'] is not None]
+            swolf_vals = [c['swolf'] for c in curva if c['swolf'] is not None]
+            if dps_vals and swolf_vals and max(dps_vals) > min(dps_vals) and max(swolf_vals) > min(swolf_vals):
+                dmax, dmin = max(dps_vals), min(dps_vals)
+                smax, smin = max(swolf_vals), min(swolf_vals)
+                for c in curva:
+                    partes = []
+                    if c['dps'] is not None:
+                        partes.append((c['dps'] - dmin) / (dmax - dmin))
+                    if c['swolf'] is not None:
+                        partes.append(1 - (c['swolf'] - smin) / (smax - smin))
+                    c['score_tecnico'] = round(sum(partes) / len(partes) * 100) if partes else None
+
+            idxs_score = [c['largo'] for c in curva if c.get('score_tecnico') is not None]
+            scores_curva = [c['score_tecnico'] for c in curva if c.get('score_tecnico') is not None]
+            tendencia_tecnica = _linreg(idxs_score, scores_curva) if len(idxs_score) >= 5 else None
+
+            idxs_hr = [c['largo'] for c in curva if c['hr'] is not None]
+            hr_vals_curva = [c['hr'] for c in curva if c['hr'] is not None]
+            tendencia_cardiaca = _linreg(idxs_hr, hr_vals_curva) if len(idxs_hr) >= 5 else None
+
+            fecha_ultima = None
+            try:
+                cur.execute("SELECT fecha::date FROM sesiones WHERE id=%s", (ultima_ses_id,))
+                r_fecha = cur.fetchone()
+                fecha_ultima = str(r_fecha[0]) if r_fecha and r_fecha[0] else None
+            except Exception:
+                pass
+
+            curva_sesion = {
+                'fecha': fecha_ultima,
+                'n_largos': len(curva),
+                'largos': curva,
+                'tendencia_tecnica': tendencia_tecnica,
+                'tendencia_cardiaca': tendencia_cardiaca,
+            }
+
+            if tendencia_tecnica and tendencia_tecnica['slope'] < -0.5:
+                interpretacion.append(
+                    f'En la última sesión ({fecha_ultima}), el score técnico por largo cae a un ritmo de '
+                    f'{tendencia_tecnica["slope"]:.1f} pts/largo — la brazada se degrada de forma progresiva '
+                    f'a medida que avanza la sesión.')
+            if tendencia_cardiaca and tendencia_cardiaca['slope'] > 0.3:
+                interpretacion.append(
+                    f'En la última sesión, la FC sube {tendencia_cardiaca["slope"]:.1f} bpm por largo en promedio '
+                    f'— deriva cardiovascular dentro de la sesión.')
+    except Exception:
+        curva_sesion = None
 
     # Score técnico
     scores = [s['eficiencia'] for s in analisis_fatiga.get('serie', []) if s.get('eficiencia')]
@@ -1648,6 +1818,8 @@ def analizar_swimming(conn, atleta_id, sesion_id=None, semanas=8):
         'sparkline': sparkline,
         'comparacion': comparacion,
         'analisis_fatiga': analisis_fatiga,
+        'correlaciones': correlaciones,
+        'curva_sesion': curva_sesion,
         'interpretacion': interpretacion,
         'score_tecnico': score_tecnico,
         'sensores': {'has_hrm_pro': True, 'faltantes': [], 'sensores': ['Garmin Swim']},
