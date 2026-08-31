@@ -772,6 +772,100 @@ function PanelCycling({ data }) {
   )
 }
 
+// ── Curva técnica por largo (última sesión): paladas / DPS / SWOLF, normalizados ──
+function CurvaTecnicaPorLargo({ curva, tendencia }) {
+  if (!curva || curva.length < 4) return null
+  const tieneScore = curva.some(c => c.score_tecnico !== null && c.score_tecnico !== undefined)
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 2 }}>
+        DEGRADACIÓN TÉCNICA POR LARGO (última sesión)
+      </div>
+      <div style={{ fontSize: 9, color: C.dim, marginBottom: 8 }}>
+        Score técnico basado solo en distancia por brazada y SWOLF — sin FC, para medir la calidad
+        de la brazada en sí, no el esfuerzo cardiovascular
+      </div>
+      <ResponsiveContainer width="100%" height={160}>
+        <ComposedChart data={curva} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
+          <CartesianGrid stroke="rgba(255,255,255,0.04)" />
+          <XAxis dataKey="largo" tick={{ fill: C.dim, fontSize: 8 }} label={{ value: 'N° de largo', position: 'insideBottom', offset: -2, fill: C.dim, fontSize: 8 }} />
+          <YAxis domain={[0, 100]} tick={{ fill: C.dim, fontSize: 8 }} />
+          <Tooltip contentStyle={{ background: '#1a1a2e', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 10 }} />
+          {tieneScore && <Line type="monotone" dataKey="score_tecnico" name="Score técnico" stroke={C.purple} strokeWidth={2} dot={{ r: 2 }} connectNulls />}
+        </ComposedChart>
+      </ResponsiveContainer>
+      {tendencia && (
+        <div style={{ textAlign: 'center', fontSize: 9, color: tendencia.slope < -0.5 ? C.red : (tendencia.slope > 0.5 ? C.green : C.dim), marginTop: 2 }}>
+          Tendencia: {tendencia.slope >= 0 ? '+' : ''}{tendencia.slope} pts/largo
+          {tendencia.slope < -0.5 ? ' — la técnica se degrada a lo largo de la sesión' : ''}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Curva cardiovascular por largo (última sesión): FC vs Pace ──
+function CurvaCardiacaPorLargo({ curva, tendencia }) {
+  if (!curva || curva.length < 4) return null
+  const tieneHR = curva.some(c => c.hr !== null && c.hr !== undefined)
+  if (!tieneHR) return null
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 2 }}>
+        DERIVA CARDIOVASCULAR POR LARGO (última sesión)
+      </div>
+      <div style={{ fontSize: 9, color: C.dim, marginBottom: 8 }}>
+        FC y ritmo por largo — si el ritmo se mantiene pero la FC sube, es costo cardiovascular,
+        no necesariamente pérdida de técnica
+      </div>
+      <ResponsiveContainer width="100%" height={160}>
+        <ComposedChart data={curva} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
+          <CartesianGrid stroke="rgba(255,255,255,0.04)" />
+          <XAxis dataKey="largo" tick={{ fill: C.dim, fontSize: 8 }} />
+          <YAxis yAxisId="left" domain={['auto', 'auto']} tick={{ fill: C.red, fontSize: 8 }} />
+          <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} tick={{ fill: C.cyan, fontSize: 8 }} reversed />
+          <Tooltip contentStyle={{ background: '#1a1a2e', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 10 }} />
+          <Line yAxisId="left" type="monotone" dataKey="hr" name="FC (bpm)" stroke={C.red} strokeWidth={2} dot={{ r: 2 }} connectNulls />
+          <Line yAxisId="right" type="monotone" dataKey="pace" name="Ritmo (min/100m)" stroke={C.cyan} strokeWidth={2} dot={{ r: 2 }} connectNulls />
+        </ComposedChart>
+      </ResponsiveContainer>
+      {tendencia && tendencia.slope > 0.3 && (
+        <div style={{ textAlign: 'center', fontSize: 9, color: C.yellow, marginTop: 2 }}>
+          FC sube {tendencia.slope.toFixed(2)} bpm/largo en promedio — deriva cardiovascular dentro de la sesión
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Correlaciones directas (paladas/pace/hr/swolf) ──
+function CorrelacionesSwim({ correlaciones }) {
+  if (!correlaciones || Object.keys(correlaciones).length === 0) return null
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 8 }}>
+        RELACIONES DETECTADAS
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {Object.entries(correlaciones).filter(([_, v]) => v.significativo).map(([key, v]) => (
+          <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '8px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.8)' }}>{v.x} × {v.y}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: Math.abs(v.r) >= 0.6 ? C.green : C.yellow }}>
+              r = {v.r} <span style={{ fontSize: 8, color: C.dim, fontWeight: 400 }}>(n={v.n})</span>
+            </span>
+          </div>
+        ))}
+        {Object.values(correlaciones).every(v => !v.significativo) && (
+          <div style={{ fontSize: 9, color: C.dim, textAlign: 'center' }}>
+            Ninguna relación alcanzó significancia estadística con los datos disponibles todavía.
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function PanelSwimming({ data }) {
   if (!data || data.error) return (
     <div style={{ position: 'relative', width: '100%', height: 300, borderRadius: 16, overflow: 'hidden' }}>
@@ -832,6 +926,9 @@ function PanelSwimming({ data }) {
       )}
       <SpiderChart data={data.spider} />
       <DriftCard drift={data.drift} />
+      <CurvaTecnicaPorLargo curva={data.curva_sesion?.largos} tendencia={data.curva_sesion?.tendencia_tecnica} />
+      <CurvaCardiacaPorLargo curva={data.curva_sesion?.largos} tendencia={data.curva_sesion?.tendencia_cardiaca} />
+      <CorrelacionesSwim correlaciones={data.correlaciones} />
       <Sparklines data={data.sparkline} cadUnidad="" linea2Key="swolf" linea2Nombre="SWOLF" />
       <Comparacion data={data.comparacion} />
       <Interpretacion items={data.interpretacion} />
