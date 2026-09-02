@@ -780,9 +780,12 @@ def analizar_running(conn, atleta_id, sesion_id=None, semanas=8):
                 patron = f'La cadencia cae con la fatiga (drift {cad_drift:+.1f}%).'
                 accion = 'Trabajar resistencia neuromuscular específica (drills de cadencia en fatiga).'
             elif r_val is not None and _correlacion_es_significativa(r_val, len(serie)):
-                direccion = 'cae' if r_val < 0 else 'sube'
-                patron = f'La eficiencia {direccion} cuando aumenta la fatiga (r={r_val}, n={len(serie)} sesiones).'
-                accion = 'Ajustar la carga de series técnicas en sesiones de alta fatiga acumulada.'
+                if r_val < 0:
+                    patron = f'En este atleta, la eficiencia técnica tiende a caer con la fatiga acumulada (r={r_val}, {len(serie)} sesiones).'
+                    accion = 'Priorizar calidad técnica en sesiones de baja fatiga. En días de carga alta, reducir exigencia técnica.'
+                else:
+                    patron = f'En este atleta, los niveles de fatiga actuales no degradan su eficiencia técnica (r={r_val}, {len(serie)} sesiones). Esto no significa que más fatiga mejore la técnica — indica que el rango de carga actual está dentro de su capacidad.'
+                    accion = 'Mantener el esquema de carga actual. Monitorear si al aumentar volumen o intensidad el patrón cambia.'
             else:
                 patron = ('No se detecta una relación estadísticamente sólida entre fatiga y '
                            'degradación técnica con las sesiones disponibles.')
@@ -890,7 +893,7 @@ def analizar_cycling(conn, atleta_id, sesion_id=None, semanas=8):
         q_final  = round(sum(cadencias[-pct10:]) / pct10)
         drift_cad = round((q_final - q_inicio) / q_inicio * 100, 1) if q_inicio > 0 else 0
 
-        estado = 'óptima' if 70 <= cad_avg <= 95 else ('baja' if cad_avg < 70 else 'alta')
+        estado = 'óptima' if 70 <= cad_avg <= 85 else ('baja' if cad_avg < 70 else 'alta')
         resultado['metricas']['cadencia'] = {
             'promedio': cad_avg, 'estado': estado,
             'q1': q_inicio, 'q4': q_final, 'drift_pct': drift_cad,
@@ -907,7 +910,7 @@ def analizar_cycling(conn, atleta_id, sesion_id=None, semanas=8):
         # cerrada como si fuera un hecho establecido.
         resultado['interpretacion'].append(
             f'Cadencia promedio: {cad_avg} rpm. En ciclismo de triatlón el rango de trabajo '
-            f'habitual es amplio (70-95 rpm) y muy dependiente del atleta — la literatura no '
+            f'habitual en triatlón es 70-85 rpm — cadencias más bajas preservan las piernas para la carrera — la literatura no '
             f'muestra un único número "óptimo" universal (Vercruyssen 2001, Bernard 2003). '
             f'Inicio: {q_inicio} rpm → Final: {q_final} rpm. Drift: {drift_cad:+.1f}%.')
 
@@ -1223,9 +1226,12 @@ def analizar_cycling(conn, atleta_id, sesion_id=None, semanas=8):
                 patron = f'La cadencia cae con la fatiga (drift {cad_drift:+.1f}%).'
                 accion = 'Trabajar resistencia neuromuscular específica (drills de cadencia en fatiga).'
             elif r_val is not None and _correlacion_es_significativa(r_val, len(serie)):
-                direccion = 'cae' if r_val < 0 else 'sube'
-                patron = f'La eficiencia {direccion} cuando aumenta la fatiga (r={r_val}, n={len(serie)} sesiones).'
-                accion = 'Ajustar la carga de series técnicas en sesiones de alta fatiga acumulada.'
+                if r_val < 0:
+                    patron = f'En este atleta, la eficiencia tiende a caer con la fatiga acumulada (r={r_val}, {len(serie)} sesiones).'
+                    accion = 'Priorizar técnica en sesiones de baja fatiga.'
+                else:
+                    patron = f'En este atleta, los niveles de fatiga actuales no degradan su eficiencia (r={r_val}, {len(serie)} sesiones). El rango de carga actual está dentro de su capacidad.'
+                    accion = 'Mantener esquema de carga. Monitorear ante aumentos de volumen.'
             else:
                 patron = ('No se detecta una relación estadísticamente sólida entre fatiga y '
                            'degradación técnica con las sesiones disponibles.')

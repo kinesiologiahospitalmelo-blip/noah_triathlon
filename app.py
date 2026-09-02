@@ -3566,7 +3566,8 @@ def get_actividad_detalle(atleta_id):
     # Laps de la sesión
     laps_rows = conn.execute(
         "SELECT lap_num, distance_km, duration_min, hr_avg, hr_max, pace, "
-        "avg_power, cadence, ascent_m, paladas, swolf, swim_stroke, es_largo "
+        "avg_power, cadence, ascent_m, paladas, swolf, swim_stroke, es_largo, "
+        "norm_power, max_power, avg_speed, max_speed, lap_if, work_kj, temperature "
         "FROM laps WHERE atleta_id=%s AND sesion_id=%s AND (es_largo IS NULL OR es_largo=0) "
         "ORDER BY lap_num",
         (atleta_id, ses_id)
@@ -3575,7 +3576,7 @@ def get_actividad_detalle(atleta_id):
     laps = []
     for l in laps_rows:
         laps.append({
-            'lap':         l[0],
+            'lap':         l[0], 'lap_num': l[0],
             'distance_km': l[1],
             'duration_min':l[2],
             'hr_avg':      l[3],
@@ -3583,11 +3584,18 @@ def get_actividad_detalle(atleta_id):
             'pace':        l[5],
             'watts':       l[6],
             'avg_power':   l[6],
-            'cadencia':    l[7],
+            'cadencia':    l[7], 'cadence': l[7],
             'ascenso_m':   l[8],
             'paladas':     l[9],
             'swolf':       l[10],
             'stroke':      l[11],
+            'norm_power':  l[13],
+            'max_power':   l[14],
+            'avg_speed':   l[15],
+            'max_speed':   l[16],
+            'lap_if':      l[17],
+            'work_kj':     l[18],
+            'temperature': l[19],
         })
 
 
@@ -4335,10 +4343,12 @@ def get_actividades_rango(atleta_id):
         # por si el esquema varia entre entornos).
         from db_compat import columnas_de_tabla
         lap_cols = set(columnas_de_tabla(conn, 'laps'))
-        lap_extra = []
-        lap_extra.append('avg_power' if 'avg_power' in lap_cols else ('potencia_media' if 'potencia_media' in lap_cols else 'NULL'))
-        lap_extra.append('cadence' if 'cadence' in lap_cols else 'NULL')
-        lap_extra.append('ascent_m' if 'ascent_m' in lap_cols else 'NULL')
+        _all_lap_cols_r = [
+            'avg_power', 'cadence', 'ascent_m', 'norm_power', 'max_power',
+            'avg_speed', 'max_speed', 'lap_if', 'work_kj', 'temperature',
+            'lap_tss', 'gct_ms', 'vert_osc_mm', 'stride_m',
+        ]
+        lap_extra = [c if c in lap_cols else 'NULL as '+c for c in _all_lap_cols_r]
 
         actividades = {}
         for r in rows:
@@ -4351,9 +4361,17 @@ def get_actividades_rango(atleta_id):
                 "ORDER BY lap_num",
                 (atleta_id, ses_id)
             ).fetchall()
-            laps = [{'lap':l[0],'distance_km':l[1],'duration_min':l[2],
-                     'hr_avg':l[3],'hr_max':l[4],'pace':l[5],
-                     'watts':l[6],'avg_power':l[6],'cadencia':l[7],'cadence':l[7],'ascenso_m':l[8]} for l in laps_rows]
+            laps = []
+            for l in laps_rows:
+                laps.append({
+                    'lap_num':l[0], 'lap':l[0], 'distance_km':l[1], 'duration_min':l[2],
+                    'hr_avg':l[3], 'hr_max':l[4], 'pace':l[5],
+                    'avg_power':l[6], 'watts':l[6], 'cadence':l[7], 'cadencia':l[7],
+                    'ascenso_m':l[8], 'norm_power':l[9], 'max_power':l[10],
+                    'avg_speed':l[11], 'max_speed':l[12], 'lap_if':l[13],
+                    'work_kj':l[14], 'temperature':l[15], 'lap_tss':l[16],
+                    'gct_ms':l[17], 'vert_osc_mm':l[18], 'stride_m':l[19],
+                })
             if f not in actividades: actividades[f] = []
             actividades[f].append({'sesion_id':ses_id,'fecha':f,'sport':r[2],'distance_km':r[3],'duration_min':r[4],'hr_avg':r[5],'tss':r[6],'tipo':r[7],'laps':laps})
         presc_rows = conn.execute(
@@ -5063,7 +5081,7 @@ def get_estrategia_carrera(atleta_id):
 def get_tecnica(atleta_id):
     """Análisis biomecánico por deporte."""
     try:
-        from noah_tecnica import analizar_running, analizar_cycling
+        from noah_tecnica import analizar_running, analizar_cycling, analizar_swimming
         conn = get_conn()
         sport = request.args.get('sport', 'running')
         sesion_id = request.args.get('sesion_id')
@@ -5074,7 +5092,7 @@ def get_tecnica(atleta_id):
         elif sport == 'cycling':
             resultado = analizar_cycling(conn, atleta_id, sesion_id=int(sesion_id) if sesion_id else None, semanas=semanas)
         else:
-            resultado = {'error': f'Deporte {sport} no soportado'}
+            resultado = analizar_swimming(conn, atleta_id, sesion_id=int(sesion_id) if sesion_id else None, semanas=semanas)
 
         conn.close()
         return ok(resultado)
