@@ -5180,7 +5180,10 @@ function SeccionAsistente({ atletaId, nombre }) {
       const r = await authFetch(`${API}/atletas/${atletaId}/asistente`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mensaje: texto }),
+        body: JSON.stringify({
+          mensaje: texto,
+          historial: mensajes.slice(-10).map(m => ({ rol: m.rol, texto: m.texto.slice(0, 500) })),
+        }),
       })
       const data = await r.json()
       if (data.ok) {
