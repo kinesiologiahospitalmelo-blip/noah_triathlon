@@ -355,10 +355,11 @@ _RESPUESTA_AMIGABLE_SI_FALLA = (
 def post_asistente(atleta_id):
     data = request.get_json(force=True) or {}
     mensaje = (data.get('mensaje') or '').strip()
+    historial = data.get('historial', [])  # [{rol:'usuario'|'asistente', texto:'...'}]
     if not mensaje:
         return error('mensaje requerido')
-    if len(mensaje) > 500:
-        return error('El mensaje es demasiado largo (maximo 500 caracteres).')
+    if len(mensaje) > 1000:
+        return error('El mensaje es demasiado largo (maximo 1000 caracteres).')
 
     try:
         groq_key = os.environ.get('GROQ_API_KEY')
@@ -393,9 +394,14 @@ def post_asistente(atleta_id):
                 'model': os.environ.get('GROQ_MODEL', 'openai/gpt-oss-120b'),
                 'messages': [
                     {'role': 'system', 'content': system_prompt},
+                ] + [
+                    {'role': 'assistant' if h.get('rol') == 'asistente' else 'user',
+                     'content': h.get('texto', '')[:500]}
+                    for h in (historial or [])[-10:]  # últimos 10 mensajes
+                ] + [
                     {'role': 'user', 'content': mensaje},
                 ],
-                'max_tokens': 700,
+                'max_tokens': 2000,
                 'temperature': 0.4,
             },
             timeout=30,
