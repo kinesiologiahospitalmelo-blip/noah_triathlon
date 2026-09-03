@@ -644,6 +644,44 @@ function SemanaCompleta({ presc, atletaId, sesionExpandida, setSesionExpandida }
           ))}
         </div>
       )}
+
+      {/* Cerebro NOAH */}
+      {presc.cerebro && presc.cerebro.sistemas && (
+        <div style={{ background:'linear-gradient(135deg,#0F172A,#1E293B)', borderRadius:12, padding:'16px 20px', marginTop:12, boxShadow:'0 4px 12px rgba(0,0,0,0.12)' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+            <div style={{ fontSize:10, color:'#06B6D4', fontWeight:700, letterSpacing:1.5, textTransform:'uppercase' }}>🧠 Cerebro NOAH</div>
+            {presc.cerebro.readiness && (
+              <div style={{
+                fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20,
+                background: presc.cerebro.readiness === 'alto' ? 'rgba(16,185,129,0.15)' : presc.cerebro.readiness === 'medio' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+                color: presc.cerebro.readiness === 'alto' ? '#10B981' : presc.cerebro.readiness === 'medio' ? '#F59E0B' : '#EF4444',
+              }}>
+                Readiness: {presc.cerebro.readiness}
+              </div>
+            )}
+          </div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:12 }}>
+            {Object.entries(presc.cerebro.sistemas).map(([sys, val]) => {
+              const color = val >= 80 ? '#10B981' : val >= 60 ? '#F59E0B' : '#EF4444'
+              return (
+                <div key={sys} style={{ flex:'1 1 80px', textAlign:'center', padding:'8px 4px', borderRadius:8, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ fontSize:8, color:'rgba(255,255,255,0.4)', fontWeight:600, textTransform:'uppercase', marginBottom:4 }}>{sys}</div>
+                  <div style={{ fontSize:18, fontWeight:800, color }}>{typeof val === 'number' ? val : '--'}</div>
+                </div>
+              )
+            })}
+          </div>
+          {presc.cerebro.limitante && (
+            <div style={{ fontSize:11, color:'rgba(255,255,255,0.6)', lineHeight:1.6 }}>
+              <strong style={{ color:'#A78BFA' }}>Limitante:</strong> {presc.cerebro.limitante}
+              {presc.cerebro.foco && <span> · <strong style={{ color:'#06B6D4' }}>Foco:</strong> {presc.cerebro.foco}</span>}
+            </div>
+          )}
+          {presc.cerebro.explicacion && (
+            <div style={{ fontSize:10, color:'rgba(255,255,255,0.4)', marginTop:6, lineHeight:1.5 }}>{presc.cerebro.explicacion}</div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -5229,7 +5267,7 @@ function SeccionAsistente({ atletaId, nombre }) {
         borderBottom:'1px solid rgba(255,255,255,0.08)', marginBottom:8 }}>
         <div style={{ width:7, height:7, borderRadius:'50%', background:'#22C55E' }}/>
         <span style={{ fontSize:12, color:'rgba(255,255,255,0.55)', fontWeight:600 }}>
-          Online · Tu entrenador IA
+          Online · Asistente NOAH
         </span>
       </div>
 
@@ -5240,7 +5278,7 @@ function SeccionAsistente({ atletaId, nombre }) {
             alignSelf: m.rol === 'usuario' ? 'flex-end' : 'flex-start',
             display: 'flex', gap: 8, alignItems: 'flex-start',
             flexDirection: m.rol === 'usuario' ? 'row-reverse' : 'row',
-            maxWidth: '85%',
+            maxWidth: '95%',
           }}>
             {m.rol === 'asistente' && (
               <div className="avatar-noah-wrap">
@@ -5293,7 +5331,7 @@ function SeccionAsistente({ atletaId, nombre }) {
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }}
           placeholder="Preguntale a NOAH sobre tu entrenamiento..."
-          maxLength={500}
+          maxLength={1000}
           style={{
             flex:1, padding:'12px 14px', borderRadius:12, border:'1px solid rgba(255,255,255,0.15)',
             background:'rgba(255,255,255,0.05)', color:'#fff', fontSize:14, outline:'none',
