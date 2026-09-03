@@ -402,7 +402,7 @@ def post_asistente(atleta_id):
                     {'role': 'user', 'content': mensaje},
                 ],
                 'max_tokens': 2000,
-                'temperature': 0.4,
+                'temperature': 0.3,
             },
             timeout=30,
         )
