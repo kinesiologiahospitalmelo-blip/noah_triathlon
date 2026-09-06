@@ -652,6 +652,9 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
 
                     # Bajar streams (punto a punto)
                     _bajar_streams(client, act_id, atleta_id, sesion_id, sport, conn)
+
+                    # Completar laps desde samples (después de que los streams estén en DB)
+                    _completar_laps_desde_samples(conn, atleta_id, sesion_id)
             else:
                 # Si ya existe: re-bajar laps si --relaps, o streams si no los tiene
                 ses_row = conn.execute(
@@ -927,6 +930,27 @@ def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
     if actualizados > 0:
         conn.commit()
         print(f'    [OK] {actualizados} laps completados desde samples')
+
+    # Calcular IF y VEL para laps que tienen NP/distancia pero no IF/VEL
+    try:
+        conn.execute("""
+            UPDATE laps l SET lap_if = ROUND((l.norm_power / a.ftp_watts)::numeric, 3)
+            FROM atletas a
+            WHERE l.atleta_id = a.id AND l.sesion_id = %s
+            AND l.norm_power IS NOT NULL AND l.norm_power > 0
+            AND a.ftp_watts IS NOT NULL AND a.ftp_watts > 0
+            AND l.lap_if IS NULL
+        """, (sesion_id,))
+        conn.execute("""
+            UPDATE laps SET avg_speed = ROUND((distance_km / (duration_min / 60))::numeric, 1)
+            WHERE sesion_id = %s
+            AND distance_km IS NOT NULL AND distance_km > 0
+            AND duration_min IS NOT NULL AND duration_min > 0
+            AND avg_speed IS NULL
+        """, (sesion_id,))
+        conn.commit()
+    except Exception:
+        pass
 
 
 def _bajar_laps_basico(splits, atleta_id, fecha, sesion_id, db):
@@ -1421,5 +1445,38 @@ def main():
     print('=' * 60)
 
 
+def _completar_laps_sql(conn):
+    """Completa IF y VEL para todos los laps que falten. SQL puro, sin numpy."""
+    try:
+        # VEL desde distancia/duración
+        conn.execute("""
+            UPDATE laps SET avg_speed = ROUND((distance_km / NULLIF(duration_min, 0) * 60)::numeric, 1)
+            WHERE distance_km IS NOT NULL AND distance_km > 0
+            AND duration_min IS NOT NULL AND duration_min > 0
+            AND avg_speed IS NULL
+        """)
+        # IF desde NP/FTP
+        conn.execute("""
+            UPDATE laps l SET lap_if = ROUND((l.norm_power / a.ftp_watts)::numeric, 3)
+            FROM atletas a
+            WHERE l.atleta_id = a.id
+            AND l.norm_power IS NOT NULL AND l.norm_power > 0
+            AND a.ftp_watts IS NOT NULL AND a.ftp_watts > 0
+            AND l.lap_if IS NULL
+        """)
+        conn.commit()
+    except Exception:
+        pass
+
+
 if __name__ == '__main__':
     main()
+    # Paso final: completar laps que quedaron incompletos
+    try:
+        import noa_db
+        db = noa_db.NOADatabase()
+        with db._conn() as conn:
+            _completar_laps_sql(conn)
+            print('[OK] Laps IF/VEL completados')
+    except Exception as e:
+        print(f'[WARN] Completar laps SQL: {e}')
