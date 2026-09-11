@@ -839,10 +839,7 @@ def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
     Mapea proporcionalmente: Garmin distribuye N puntos en toda la actividad
     pero ts_s puede ser secuencial (0..N) en vez de tiempo real.
     """
-    try:
-        import numpy as np
-    except ImportError:
-        return
+    # Sin dependencia de numpy — funciona en cualquier entorno
 
     laps = conn.execute(
         "SELECT id, lap_num, duration_min FROM laps "
@@ -899,11 +896,17 @@ def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
                 sets.append("work_kj = COALESCE(work_kj, %s)")
                 vals.append(round(sum(powers)/len(powers) * dur_s / 1000, 2))
                 if len(powers) >= 6:
-                    p_arr = np.array(powers)
-                    # Rolling window adaptado a resolucion (min 6 puntos)
+                    # NP Coggan: rolling average^4 — Python puro, sin numpy
                     win = min(30, max(6, len(powers) // 4))
-                    rolling = np.convolve(p_arr, np.ones(win)/win, mode='valid')
-                    np_val = round(float((rolling**4).mean()**0.25), 1)
+                    rolling = []
+                    for ri in range(len(powers) - win + 1):
+                        avg_w = sum(powers[ri:ri+win]) / win
+                        rolling.append(avg_w)
+                    if rolling:
+                        mean_4th = sum(r**4 for r in rolling) / len(rolling)
+                        np_val = round(mean_4th ** 0.25, 1)
+                    else:
+                        np_val = round(sum(powers)/len(powers), 1)
                     sets.append("norm_power = COALESCE(norm_power, %s)")
                     vals.append(np_val)
                     if ftp and ftp > 0:
