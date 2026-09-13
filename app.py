@@ -2635,6 +2635,112 @@ def get_ultima_actividad(atleta_id):
     return ok({'actividad': dict(zip(cols, row))})
 
 
+@app.route('/api/atletas/<int:atleta_id>/distribucion_entrenamiento', methods=['GET'])
+@requiere_login
+def get_distribucion_entrenamiento(atleta_id):
+    """
+    Distribución REAL de carga de los últimos N días, por deporte
+    (Bike/Run/Swim): cuánto tiempo real y qué % del total representa cada
+    uno. Dentro de cada deporte, cómo se repartió ese tiempo entre zonas de
+    intensidad (Endurance / Threshold / VO2). Son datos tal cual se
+    registraron -- no hay comparación contra ningún objetivo.
+    """
+    dias = int(request.args.get('dias', 28))
+    conn = get_conn()
+    try:
+        desde = (date.today() - timedelta(days=dias)).isoformat()
+
+        # ── Sesiones REALES del período ──────────────────────────────────
+        reales = conn.execute(
+            """SELECT sport, duration_min, tss_total, tss_z12, tss_z34, tss_z56
+               FROM sesiones
+               WHERE atleta_id=%s AND fecha >= %s
+               AND (fuente IS NULL OR fuente NOT IN ('prescripcion','simulacion','generada'))""",
+            (atleta_id, desde)
+        ).fetchall()
+
+        if not reales:
+            return ok({
+                'dias': dias,
+                'sin_datos': True,
+                'mensaje': f'Sin sesiones reales en los últimos {dias} días.'
+            })
+
+        # Distribución por DEPORTE (basada en TSS; fallback a duración)
+        tss_por_deporte = {'running': 0, 'cycling': 0, 'swimming': 0}
+        dur_por_deporte = {'running': 0, 'cycling': 0, 'swimming': 0}
+        tss_total_real = 0
+        dur_total_real = 0
+
+        # Distribución por INTENSIDAD, DENTRO de cada deporte
+        zonas_por_deporte = {
+            'running':  {'z12': 0, 'z34': 0, 'z56': 0},
+            'cycling':  {'z12': 0, 'z34': 0, 'z56': 0},
+            'swimming': {'z12': 0, 'z34': 0, 'z56': 0},
+        }
+
+        for r in reales:
+            sport = r[0] or 'running'
+            dur   = float(r[1] or 0)
+            tss   = float(r[2] or 0)
+            z12   = float(r[3] or 0)
+            z34   = float(r[4] or 0)
+            z56   = float(r[5] or 0)
+
+            if sport in tss_por_deporte:
+                tss_por_deporte[sport] += tss
+                dur_por_deporte[sport] += dur
+            tss_total_real += tss
+            dur_total_real += dur
+
+            if sport in zonas_por_deporte:
+                zonas_por_deporte[sport]['z12'] += z12
+                zonas_por_deporte[sport]['z34'] += z34
+                zonas_por_deporte[sport]['z56'] += z56
+
+        # Usar TSS como base del % (más representativo del esfuerzo real que
+        # la duración); si no hay TSS cargado, cae a duración.
+        usar_tss = tss_total_real > 0
+        base = tss_por_deporte if usar_tss else dur_por_deporte
+        total = tss_total_real if usar_tss else dur_total_real
+
+        def pct(val, tot):
+            return round((val / tot) * 100) if tot > 0 else 0
+
+        deporte_dist = {}
+        for sport in ('cycling', 'running', 'swimming'):
+            deporte_dist[sport] = {
+                'pct':   pct(base[sport], total),
+                'tss':   round(tss_por_deporte[sport], 1),
+                'horas': round(dur_por_deporte[sport] / 60, 2),
+            }
+
+        # Intensidad DENTRO de cada deporte (Endurance/Threshold/VO2)
+        intensidad_por_deporte = {}
+        for sport in ('cycling', 'running', 'swimming'):
+            zz = zonas_por_deporte[sport]
+            tot_sport = zz['z12'] + zz['z34'] + zz['z56']
+            if tot_sport > 0:
+                intensidad_por_deporte[sport] = {
+                    'endurance': pct(zz['z12'], tot_sport),
+                    'threshold': pct(zz['z34'], tot_sport),
+                    'vo2':       pct(zz['z56'], tot_sport),
+                }
+            else:
+                intensidad_por_deporte[sport] = None
+
+        return ok({
+            'dias':                  dias,
+            'total_sesiones':        len(reales),
+            'horas_totales':         round(dur_total_real / 60, 1),
+            'tss_total':             round(tss_total_real, 1),
+            'deporte':               deporte_dist,
+            'intensidad_por_deporte': intensidad_por_deporte,
+        })
+    finally:
+        conn.close()
+
+
 @app.route('/api/atletas/<int:atleta_id>/resumen_cumplimiento', methods=['GET'])
 @requiere_login
 def get_resumen_cumplimiento(atleta_id):
