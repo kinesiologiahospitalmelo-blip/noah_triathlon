@@ -3835,16 +3835,19 @@ function DistribucionEntrenamiento({ atletaId }) {
           </div>
         </div>
 
-        {/* Tres módulos: horizontales y simétricos en pantallas anchas,
-            apilados sin cortes de texto en pantallas angostas */}
+        {/* Tres módulos: flex-wrap centrado (no grid). Cada módulo tiene
+            ancho fijo, así en desktop entran los 3 en una fila centrada, y
+            si el ancho no alcanza (mobile) se arma automáticamente 2
+            arriba + 1 abajo -ambas filas centradas-, o 1 sola centrada si
+            solo hay un deporte con datos. */}
         <div style={{
-          display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(168px, 1fr))',
-          gap:16, alignItems:'stretch', justifyItems:'center',
+          display:'flex', flexWrap:'wrap', justifyContent:'center', alignItems:'flex-start',
+          gap:'20px 16px',
         }}>
           {sports.map((s, idx) => (
             <div key={s.key} className="noah-distrib-mod" style={{
-              width:'100%', maxWidth:220, display:'flex', flexDirection:'column', alignItems:'center',
-              gap:12, padding:'18px 16px 16px', borderRadius:22,
+              width:160, flexShrink:0, flexGrow:0, display:'flex', flexDirection:'column', alignItems:'center',
+              gap:12, padding:'18px 14px 16px', borderRadius:22,
               background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)',
               backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
               boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)',
