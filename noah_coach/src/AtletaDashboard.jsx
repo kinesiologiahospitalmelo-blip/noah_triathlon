@@ -3662,6 +3662,235 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
 }
 
 
+// ── DistribucionEntrenamiento — "Distribución del entrenamiento" ────────────
+// MISMA lógica y MISMOS datos que antes (tiempo real, % sobre el total y
+// desglose de intensidad por deporte, sin comparación contra objetivo).
+// Lo único que cambia acá es la presentación: layout horizontal centrado,
+// tres módulos simétricos con glass muy sutil, colores de disciplina fijos
+// e intensos, etiquetas de zona completas (Endurance / FTP / VO₂) y
+// tipografía Inter con jerarquía tiempo → % → intensidad.
+function DistribucionEntrenamiento({ atletaId }) {
+  const [data, setData] = useState(null)
+  const [dias, setDias] = useState(28)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!atletaId) return
+    setLoading(true)
+    authFetch(`${API}/atletas/${atletaId}/distribucion_entrenamiento?dias=${dias}`)
+      .then(r => r.json())
+      .then(r => { setData(r.data || null); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [atletaId, dias])
+
+  if (loading && !data) return null
+  if (!data || data.sin_datos) return null
+
+  const fmtHM = (horas) => {
+    const totalMin = Math.round((horas || 0) * 60)
+    const hh = Math.floor(totalMin / 60)
+    const mm = totalMin % 60
+    if (hh <= 0) return `${mm}m`
+    return `${hh}h ${String(mm).padStart(2, '0')}m`
+  }
+
+  // Mezcla un hex con blanco/negro para obtener variantes de luminosidad de
+  // UN mismo color de disciplina (nunca colores nuevos por zona).
+  const mixHex = (hex, target, amt) => {
+    const p = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16))
+    const [r1, g1, b1] = p(hex.replace('#', ''))
+    const [r2, g2, b2] = p(target.replace('#', ''))
+    const m = (a, b) => Math.round(a + (b - a) * amt)
+    return `#${[m(r1, r2), m(g1, g2), m(b1, b2)].map(v => v.toString(16).padStart(2, '0')).join('')}`
+  }
+  const lighten = (hex, amt) => mixHex(hex, '#ffffff', amt)
+  const darken  = (hex, amt) => mixHex(hex, '#000000', amt)
+
+  // Paleta fija de disciplina (independiente de NOAH_C para no afectar el
+  // resto del dashboard, que usa esos tokens en otros lados).
+  const SPORT_META = {
+    cycling:  { label: 'Bike', base: '#19BFFF' },
+    running:  { label: 'Run',  base: '#9B6CFF' },
+    swimming: { label: 'Swim', base: '#19D3AE' },
+  }
+
+  const sports = ['cycling', 'running', 'swimming']
+    .map(key => ({
+      key,
+      label: SPORT_META[key].label,
+      base:  SPORT_META[key].base,
+      pct:   data.deporte?.[key]?.pct   ?? 0,
+      horas: data.deporte?.[key]?.horas ?? 0,
+      zonas: data.intensidad_por_deporte?.[key] ?? null,
+    }))
+    .filter(s => s.pct > 0 || s.horas > 0)
+
+  if (!sports.length) return null
+
+  // ── Microinterpretación — una sola frase, solo si aporta algo ───────────
+  let frase = null
+  const dominante = [...sports].sort((a, b) => b.pct - a.pct)[0]
+  if (dominante && dominante.pct >= 45) {
+    frase = `${dominante.label} concentra el ${dominante.pct}% de tu tiempo de entrenamiento.`
+  } else {
+    const altaIntensidad = sports
+      .filter(s => s.zonas && s.zonas.vo2 >= 18)
+      .sort((a, b) => b.zonas.vo2 - a.zonas.vo2)[0]
+    if (altaIntensidad) {
+      frase = `Tu ${altaIntensidad.label} acumula ${altaIntensidad.zonas.vo2}% de VO₂ en los últimos ${dias} días.`
+    }
+  }
+
+  const RING = 112, CX = RING / 2, CY = RING / 2, R = 42, STROKE = 8
+  const circ = 2 * Math.PI * R
+  const FF = "'Inter', system-ui, -apple-system, sans-serif"
+
+  function AnilloDeporte({ s }) {
+    const z = s.zonas
+    const cEnd = lighten(s.base, 0.38)
+    const cFtp = s.base
+    const cVo2 = darken(s.base, 0.16)
+    return (
+      <div style={{ position:'relative', width:RING, height:RING }}>
+        <div style={{
+          position:'absolute', inset:8, borderRadius:'50%',
+          background:`radial-gradient(circle, ${s.base}35 0%, transparent 72%)`,
+          filter:'blur(9px)', pointerEvents:'none',
+        }} />
+        <svg viewBox={`0 0 ${RING} ${RING}`} style={{ width:RING, height:RING, position:'relative' }}>
+          <circle cx={CX} cy={CY} r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={STROKE} />
+          {z ? (() => {
+            const eF = (z.endurance || 0) / 100
+            const tF = (z.threshold || 0) / 100
+            const vF = (z.vo2 || 0) / 100
+            const seg = (frac, offsetFrac, color, glow) => (
+              <circle cx={CX} cy={CY} r={R} fill="none"
+                stroke={color} strokeWidth={STROKE} strokeLinecap="butt"
+                strokeDasharray={`${frac * circ} ${circ}`}
+                strokeDashoffset={-(offsetFrac * circ)}
+                transform={`rotate(-90 ${CX} ${CY})`}
+                style={{
+                  transition:'stroke-dasharray 0.6s cubic-bezier(.4,0,.2,1), stroke-dashoffset 0.6s cubic-bezier(.4,0,.2,1)',
+                  filter: glow ? `drop-shadow(0 0 4px ${color}90)` : 'none',
+                }} />
+            )
+            return (
+              <>
+                {seg(eF, 0, cEnd, false)}
+                {seg(tF, eF, cFtp, false)}
+                {seg(vF, eF + tF, cVo2, true)}
+              </>
+            )
+          })() : (
+            <circle cx={CX} cy={CY} r={R} fill="none" stroke={`${s.base}45`} strokeWidth={STROKE} />
+          )}
+        </svg>
+        <div style={{
+          position:'absolute', inset:0, display:'flex', flexDirection:'column',
+          alignItems:'center', justifyContent:'center', pointerEvents:'none', fontFamily:FF,
+        }}>
+          <span style={{ fontSize:17, fontWeight:600, letterSpacing:'-0.02em', color:'#fff', lineHeight:1.1 }}>
+            {fmtHM(s.horas)}
+          </span>
+          <span style={{ fontSize:11.5, fontWeight:500, letterSpacing:'0.02em', color:'rgba(255,255,255,0.5)', marginTop:3 }}>
+            {s.pct}%
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  function FilaZona({ label, val, color }) {
+    if (val == null) return null
+    return (
+      <div style={{ width:'100%' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', fontFamily:FF }}>
+          <span style={{ fontSize:11.5, fontWeight:500, letterSpacing:'0.02em', color:'rgba(255,255,255,0.58)' }}>{label}</span>
+          <span style={{ fontSize:12, fontWeight:600, letterSpacing:'-0.01em', color:'rgba(255,255,255,0.92)' }}>{val}%</span>
+        </div>
+        <div style={{ width:'100%', height:3, borderRadius:2, background:'rgba(255,255,255,0.07)', marginTop:4, overflow:'hidden' }}>
+          <div style={{
+            width:`${Math.max(0, Math.min(100, val))}%`, height:'100%', borderRadius:2, background:color,
+            transition:'width 0.6s cubic-bezier(.4,0,.2,1)',
+          }} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ padding:'8px 16px 12px', fontFamily:FF }}>
+      <div style={{ maxWidth:1040, margin:'0 auto' }}>
+        {/* Header */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:16, padding:'0 4px' }}>
+          <span style={{ fontSize:11.5, fontWeight:600, color:'rgba(255,255,255,0.4)',
+            letterSpacing:'0.08em', textTransform:'uppercase' }}>Distribución del entrenamiento</span>
+          <div style={{ display:'flex', gap:12, fontSize:11.5, fontWeight:600 }}>
+            {[28, 42].map(d => (
+              <span key={d} onClick={() => setDias(d)} style={{
+                cursor:'pointer', color: dias === d ? '#fff' : 'rgba(255,255,255,0.3)',
+                transition:'color 0.25s ease',
+              }}>{d}d</span>
+            ))}
+          </div>
+        </div>
+
+        {/* Tres módulos: horizontales y simétricos en pantallas anchas,
+            apilados sin cortes de texto en pantallas angostas */}
+        <div style={{
+          display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(168px, 1fr))',
+          gap:16, alignItems:'stretch', justifyItems:'center',
+        }}>
+          {sports.map((s, idx) => (
+            <div key={s.key} className="noah-distrib-mod" style={{
+              width:'100%', maxWidth:220, display:'flex', flexDirection:'column', alignItems:'center',
+              gap:12, padding:'18px 16px 16px', borderRadius:22,
+              background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)',
+              backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+              boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)',
+              animation:`noah-distrib-in 0.5s cubic-bezier(.4,0,.2,1) both`,
+              animationDelay:`${idx * 70}ms`,
+            }}>
+              <span style={{ fontSize:12.5, fontWeight:600, letterSpacing:'0.04em',
+                color:s.base, textTransform:'uppercase' }}>{s.label}</span>
+
+              <AnilloDeporte s={s} />
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8, width:'100%', marginTop:2 }}>
+                {s.zonas ? (
+                  <>
+                    <FilaZona label="Endurance" val={s.zonas.endurance} color={lighten(s.base, 0.38)} />
+                    <FilaZona label="FTP"       val={s.zonas.threshold} color={s.base} />
+                    <FilaZona label="VO₂"       val={s.zonas.vo2}       color={darken(s.base, 0.16)} />
+                  </>
+                ) : (
+                  <span style={{ fontSize:11, color:'rgba(255,255,255,0.32)', textAlign:'center' }}>
+                    Sin datos de zona
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Microinterpretación */}
+        {frase && (
+          <div style={{ marginTop:16, padding:'0 4px', fontSize:11.5, color:'rgba(255,255,255,0.42)', lineHeight:1.4 }}>
+            {frase}
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes noah-distrib-in { from { opacity:0; transform:translateY(6px) scale(0.98); } to { opacity:1; transform:translateY(0) scale(1); } }
+        .noah-distrib-mod { transition: box-shadow 0.3s ease, transform 0.3s ease, background 0.3s ease; }
+        .noah-distrib-mod:hover { background: rgba(255,255,255,0.045); box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 8px 24px -8px rgba(0,0,0,0.35); transform: translateY(-1px); }
+      `}</style>
+    </div>
+  )
+}
+
+
 export default function AtletaDashboard({ atletaId }) {
   const [atleta, setAtleta]       = useState(null)
   const [estado, setEstado]       = useState(null)
@@ -4180,6 +4409,9 @@ export default function AtletaDashboard({ atletaId }) {
         })()}
       </div>
 
+
+      {/* TRAINING DISTRIBUTION ALIGNMENT */}
+      <DistribucionEntrenamiento atletaId={id} />
 
       {/* TABS — carrusel real 3D: centro grande, laterales chicas/borrosas, navegable por swipe/flecha/tap-lateral/dot */}
       {(() => {
