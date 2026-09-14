@@ -2101,6 +2101,77 @@ def get_torque_wbal(atleta_id, sesion_id):
             '3min': extra_row[6], '5min': extra_row[7], '20min': extra_row[8],
         }
 
+    # ── Fallback: si la tabla `sesiones` no tiene estos campos precalculados
+    # (columna NULL -- típicamente porque el pipeline de sync no los escribió
+    # para esta sesión), se calculan acá mismo a partir de `activity_samples`,
+    # que ya tenemos cargado en `rows`. Nunca se inventa un valor: si no hay
+    # suficiente señal de potencia, queda en None y el frontend lo muestra
+    # como "--" igual que antes.
+    faltan_curva = not curva_potencia or not any(curva_potencia.values())
+    if (trabajo_kj is None or variability_index is None or faltan_curva):
+        t0 = float(rows[0][0] or 0)
+        t_fin = float(rows[-1][0] or 0)
+        total_s = int(t_fin - t0)
+        if total_s > 0:
+            # Serie de potencia a 1Hz: se ubica cada muestra en su segundo
+            # relativo y se sostiene el último valor conocido en los huecos
+            # (mismo criterio que usan Garmin/TrainingPeaks para NP/curva).
+            serie = [0.0] * (total_s + 1)
+            ultimo = 0.0
+            idx_muestras = 0
+            for row in rows:
+                t = int(float(row[0] or 0) - t0)
+                if 0 <= t <= total_s:
+                    ultimo = float(row[1] or 0)
+                    serie[t] = ultimo
+                    idx_muestras += 1
+            # Los huecos entre muestras quedan en 0.0 (coasting/parado): es lo
+            # correcto para trabajo/curva de potencia -- rellenarlos con el
+            # último valor conocido inflaría el trabajo real.
+
+            avg_power_calc = sum(serie) / len(serie) if serie else 0
+
+            if trabajo_kj is None:
+                trabajo_kj = round(sum(serie) / 1000, 1)  # kJ ≈ Wh a 1Hz
+
+            def _mejor_promedio(dur_s):
+                if len(serie) < dur_s:
+                    return None
+                s = sum(serie[:dur_s])
+                mejor = s
+                for i in range(dur_s, len(serie)):
+                    s += serie[i] - serie[i - dur_s]
+                    if s > mejor:
+                        mejor = s
+                return round(mejor / dur_s)
+
+            if variability_index is None and avg_power_calc > 0:
+                WIN = 30
+                if len(serie) >= WIN:
+                    roll_sum = sum(serie[:WIN])
+                    suma_np = roll_sum ** 4
+                    n_roll = 1
+                    for i in range(WIN, len(serie)):
+                        roll_sum += serie[i] - serie[i - WIN]
+                        suma_np += (roll_sum / WIN) ** 4
+                        n_roll += 1
+                    np_calc = (suma_np / n_roll) ** 0.25 if n_roll else avg_power_calc
+                else:
+                    np_calc = avg_power_calc
+                variability_index = round(np_calc / avg_power_calc, 2) if avg_power_calc > 0 else None
+                if np_watts is None:
+                    np_watts = round(np_calc)
+
+            if faltan_curva:
+                curva_potencia = {
+                    '5s':    _mejor_promedio(5),
+                    '30s':   _mejor_promedio(30),
+                    '1min':  _mejor_promedio(60),
+                    '3min':  _mejor_promedio(180),
+                    '5min':  _mejor_promedio(300),
+                    '20min': _mejor_promedio(1200),
+                }
+
     MAX_PUNTOS_SAMPLES = 1200
     if len(samples) > MAX_PUNTOS_SAMPLES:
         paso_out = max(1, len(samples) // MAX_PUNTOS_SAMPLES)
