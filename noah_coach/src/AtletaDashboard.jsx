@@ -3466,6 +3466,15 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
     .filter((_,i) => i % step1 === 0 && samples[i].cadence > 0)
     .map(s => ({ x: s.cadence, y: s.torque, w: s.wbal_pct }))
 
+  // Rango de ejes calculado a partir de los datos reales de ESTA sesión (antes
+  // estaba fijo en 40-130 RPM: cualquier punto fuera de ese rango quedaba con
+  // coordenadas fuera del viewBox y el SVG lo recortaba -- invisible, aunque
+  // contara en el total de puntos mostrado).
+  const cadMin = scatterData.length ? Math.min(...scatterData.map(d => d.x)) : 40
+  const cadMax = scatterData.length ? Math.max(...scatterData.map(d => d.x)) : 130
+  const cadRange = Math.max(1, cadMax - cadMin)
+  const torqueMax = scatterData.length ? Math.max(...scatterData.map(d => d.y), torque_umbral * 2) : torque_umbral * 2
+
   const step2 = Math.max(1, Math.floor(samples.length / 350))
   const lineData = samples
     .filter((_,i) => i % step2 === 0)
@@ -3473,18 +3482,30 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
 
   return (
     <div style={{ padding:'12px 6px', borderBottom:`1px solid ${NOAH_C.border}` }}>
-      {/* Botones azules */}
-      <div style={{ display:'flex', gap:10, marginBottom: vista ? 14 : 0 }}>
-        {[['torque','⚙ Torque'],['wbal',"🔋 W'bal"]].map(([v, label]) => (
+      {/* Métricas avanzadas — antes eran 2 botones grandes con fondo azul
+          sólido; ahora son filas de navegación compactas (icono + label +
+          chevron), igual criterio visual que el resto del rediseño: sin
+          "botones gigantes", solo la fila activa se resalta. */}
+      <div style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.35)',
+        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8, padding:'0 2px' }}>
+        Métricas avanzadas
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom: vista ? 14 : 0 }}>
+        {[['torque', Zap, 'Torque'], ['wbal', BatteryFull, "W'bal"]].map(([v, Icon, label]) => (
           <button key={v} onClick={() => toggle(v)} style={{
-            flex:1, padding:'10px 0', borderRadius:10, fontSize:13, fontWeight:700,
-            background: vista===v ? '#007AFF' : 'rgba(0,122,255,0.12)',
-            color: vista===v ? '#fff' : '#007AFF',
-            border:`1.5px solid ${vista===v ? '#007AFF' : 'rgba(0,122,255,0.3)'}`,
-            cursor:'pointer',
-            boxShadow: vista===v ? '0 4px 12px rgba(0,122,255,0.35)' : 'none',
-            transition:'all 0.15s',
-          }}>{cargando && !data ? '⏳' : label}</button>
+            display:'flex', alignItems:'center', gap:10, width:'100%',
+            padding:'10px 12px', borderRadius:12, fontSize:13, fontWeight:600,
+            background: vista===v ? 'rgba(56,189,248,0.10)' : 'rgba(255,255,255,0.03)',
+            border:`1px solid ${vista===v ? 'rgba(56,189,248,0.35)' : 'rgba(255,255,255,0.07)'}`,
+            color: vista===v ? '#38BDF8' : 'rgba(255,255,255,0.75)',
+            cursor:'pointer', transition:'all 0.15s', textAlign:'left',
+          }}>
+            <Icon size={15} color={vista===v ? '#38BDF8' : 'rgba(255,255,255,0.4)'}/>
+            <span style={{ flex:1 }}>{cargando && !data && vista===v ? 'Calculando...' : label}</span>
+            <span style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>Ver análisis</span>
+            <ChevronRight size={14} color="rgba(255,255,255,0.3)"
+              style={{ transform: vista===v ? 'rotate(90deg)' : 'none', transition:'transform 0.2s' }}/>
+          </button>
         ))}
       </div>
 
@@ -3561,26 +3582,28 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
               </div>
               <svg width="100%" viewBox="0 0 300 200" style={{ background:'rgba(255,255,255,0.02)', borderRadius:8 }}>
                 {scatterData.map((d, i) => {
-                  const cx = ((d.x - 40) / 90) * 280 + 10
-                  const cy = 190 - ((d.y / (torque_umbral * 2)) * 180)
+                  const cx = ((d.x - cadMin) / cadRange) * 280 + 10
+                  const cy = 190 - (Math.min(1, d.y / torqueMax) * 180)
                   const alta_fuerza = d.y > torque_umbral
                   const alta_cad   = d.x >= cadenciaOptima
                   const q = alta_fuerza && alta_cad ? 'Q1'
                           : alta_fuerza && !alta_cad ? 'Q2'
                           : !alta_fuerza && !alta_cad ? 'Q3' : 'Q4'
-                  return <circle key={i} cx={cx} cy={Math.max(5,Math.min(195,cy))} r={2}
+                  return <circle key={i} cx={Math.max(2,Math.min(298,cx))} cy={Math.max(5,Math.min(195,cy))} r={2}
                     fill={Q_COLOR[q]} fillOpacity={0.6}/>
                 })}
                 {/* Líneas de referencia */}
-                <line x1={((cadenciaOptima-40)/90)*280+10} y1="0"
-                  x2={((cadenciaOptima-40)/90)*280+10} y2="200"
+                <line x1={((cadenciaOptima-cadMin)/cadRange)*280+10} y1="0"
+                  x2={((cadenciaOptima-cadMin)/cadRange)*280+10} y2="200"
                   stroke="rgba(255,255,255,0.2)" strokeDasharray="3 3"/>
-                <line x1="0" y1={190-((torque_umbral/(torque_umbral*2))*180)}
-                  x2="300" y2={190-((torque_umbral/(torque_umbral*2))*180)}
+                <line x1="0" y1={190-(Math.min(1, torque_umbral/torqueMax)*180)}
+                  x2="300" y2={190-(Math.min(1, torque_umbral/torqueMax)*180)}
                   stroke="rgba(255,255,255,0.2)" strokeDasharray="3 3"/>
                 {/* Labels ejes */}
                 <text x="5" y="10" fill="rgba(255,255,255,0.3)" fontSize="8">N·m↑</text>
                 <text x="260" y="198" fill="rgba(255,255,255,0.3)" fontSize="8">RPM→</text>
+                <text x="5" y="198" fill="rgba(255,255,255,0.3)" fontSize="7">{Math.round(cadMin)}</text>
+                <text x="240" y="198" fill="rgba(255,255,255,0.3)" fontSize="7">{Math.round(cadMax)} rpm</text>
               </svg>
               {/* Leyenda */}
               <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:4, marginTop:8 }}>
@@ -5073,10 +5096,33 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
 }
 
 
-// ── SeccionPerfil -- todo lo que NOAH aprendio del atleta, en texto/tarjetas ──
+// ── SeccionPerfil — "Glass Emerald": todo lo que NOAH aprendió del atleta,
+// resuelto con visualizaciones (anillo, donut, curva, medallas, chips,
+// timeline) en vez de párrafos. Paleta e identidad SOLO de esta sección
+// (no se toca NOAH_C global, que usan el resto de las pantallas). Usa
+// exactamente los mismos campos que ya devuelve /perfil -- ningún dato
+// nuevo, ningún valor inventado. Donde el backend no tiene datos todavía
+// (campo.disponible === false, o no existe granularidad para una
+// visualización -- ej. heatmap diario), se muestra un estado "NOAH está
+// aprendiendo" en vez de "no hay suficientes datos".
+const GE = {
+  bg:     '#05070D',
+  glass:  '#0B1220',
+  green:  '#22E6B8',
+  cyan:   '#00D4FF',
+  glow:   '#8EF7D7',
+  text:   '#FFFFFF',
+  text2:  '#93A4B8',
+  text3:  'rgba(147,164,184,0.55)',
+  danger: '#FF6B6B',
+  warn:   '#FFC857',
+  border: 'rgba(142,247,215,0.14)',
+}
+
 function SeccionPerfil({ atletaId }) {
   const [perfil, setPerfil] = useState(null)
   const [cargando, setCargando] = useState(true)
+  const [montado, setMontado] = useState(false)
 
   useEffect(() => {
     authFetch(`${API}/atletas/${atletaId}/perfil`)
@@ -5085,11 +5131,233 @@ function SeccionPerfil({ atletaId }) {
       .catch(() => setCargando(false))
   }, [atletaId])
 
-  if (cargando) {
-    return <div style={{ textAlign:'center', padding:30, color:NOAH_C.ink3, fontSize:13 }}>Analizando historial...</div>
+  useEffect(() => { const t = setTimeout(() => setMontado(true), 30); return () => clearTimeout(t) }, [])
+
+  // ── Primitivas visuales ──────────────────────────────────────────────
+  const Panel = ({ children, span, style, i=0 }) => (
+    <div style={{
+      gridColumn: span || 'auto',
+      background: 'linear-gradient(160deg, rgba(34,230,184,0.055), rgba(11,18,32,0.55))',
+      backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+      border: `1px solid ${GE.border}`, borderRadius: 28,
+      padding: '22px 22px 20px', position: 'relative', overflow: 'hidden',
+      boxShadow: '0 10px 34px -14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04)',
+      opacity: montado ? 1 : 0, transform: montado ? 'translateY(0)' : 'translateY(10px)',
+      transition: `opacity 0.5s cubic-bezier(.4,0,.2,1) ${i*60}ms, transform 0.5s cubic-bezier(.4,0,.2,1) ${i*60}ms`,
+      ...style,
+    }}>{children}</div>
+  )
+
+  const PanelTitle = ({ children, Icon }) => (
+    <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:16 }}>
+      {Icon && <Icon size={13} color={GE.text2}/>}
+      <span style={{ fontSize:10.5, fontWeight:600, color:GE.text2,
+        textTransform:'uppercase', letterSpacing:'0.08em' }}>{children}</span>
+    </div>
+  )
+
+  const Aprendiendo = ({ motivo }) => (
+    <div style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'6px 2px' }}>
+      <Brain size={19} color={GE.glow} style={{ opacity:0.7, flexShrink:0, marginTop:1 }}/>
+      <div>
+        <div style={{ fontSize:12.5, fontWeight:600, color:GE.text }}>NOAH está aprendiendo</div>
+        <div style={{ fontSize:10.5, color:GE.text2, marginTop:2, lineHeight:1.4 }}>
+          {motivo || 'Necesita algunas sesiones más para desbloquear este análisis.'}
+        </div>
+      </div>
+    </div>
+  )
+
+  const Chip = ({ Icon, label, value, sub, color=GE.green, empty, motivo }) => (
+    <div style={{
+      display:'flex', alignItems:'center', gap:10, padding:'11px 13px', borderRadius:16,
+      background:'rgba(255,255,255,0.03)', border:`1px solid ${GE.border}`, minWidth:0,
+    }}>
+      {empty ? <Aprendiendo motivo={motivo}/> : (
+        <>
+          <div style={{ width:32, height:32, borderRadius:11, flexShrink:0, display:'flex',
+            alignItems:'center', justifyContent:'center', background:`${color}1F` }}>
+            <Icon size={16} color={color}/>
+          </div>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:9.5, fontWeight:600, color:GE.text2, textTransform:'uppercase',
+              letterSpacing:'0.03em', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{label}</div>
+            <div style={{ fontSize:14.5, fontWeight:700, letterSpacing:'-0.01em', color:GE.text, marginTop:1 }}>{value}</div>
+            {sub && <div style={{ fontSize:9.5, color:GE.text3, marginTop:1 }}>{sub}</div>}
+          </div>
+        </>
+      )}
+    </div>
+  )
+
+  // Anillo grande respirando -- Hero
+  const RingHero = ({ pct, color }) => {
+    const R = 78, C = 2*Math.PI*R
+    const p = Math.max(0, Math.min(100, pct ?? 0))
+    return (
+      <div style={{ position:'relative', width:176, height:176, flexShrink:0 }}>
+        <div className="ge-breathe" style={{
+          position:'absolute', inset:-6, borderRadius:'50%',
+          background:`radial-gradient(circle, ${color}45 0%, transparent 68%)`, filter:'blur(14px)',
+        }}/>
+        <svg viewBox="0 0 176 176" style={{ width:176, height:176, position:'relative' }}>
+          <circle cx="88" cy="88" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="10"/>
+          <circle cx="88" cy="88" r={R} fill="none" stroke={color} strokeWidth="10" strokeLinecap="round"
+            strokeDasharray={`${(montado?p:0)/100*C} ${C}`} transform="rotate(-90 88 88)"
+            style={{ transition:'stroke-dasharray 1.1s cubic-bezier(.4,0,.2,1)', filter:`drop-shadow(0 0 8px ${color}90)` }}/>
+        </svg>
+        <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column',
+          alignItems:'center', justifyContent:'center' }}>
+          <span style={{ fontSize:34, fontWeight:700, letterSpacing:'-0.03em', color:GE.text, lineHeight:1 }}>{Math.round(p)}%</span>
+        </div>
+      </div>
+    )
   }
-  if (!perfil) {
-    return <div style={{ textAlign:'center', padding:30, color:NOAH_C.ink3, fontSize:13 }}>No hay suficientes datos todavía para armar el perfil.</div>
+
+  // Donut de 3 sectores -- Cómo entrena
+  const Donut = ({ segs }) => {
+    const R = 52, C = 2*Math.PI*R
+    let acc = 0
+    return (
+      <svg viewBox="0 0 130 130" style={{ width:130, height:130 }}>
+        <circle cx="65" cy="65" r={R} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="14"/>
+        {segs.map((s,i) => {
+          const frac = (montado ? s.val : 0) / 100
+          const el = (
+            <circle key={i} cx="65" cy="65" r={R} fill="none" stroke={s.color} strokeWidth="14" strokeLinecap="butt"
+              strokeDasharray={`${frac*C} ${C}`} strokeDashoffset={-(acc/100)*C}
+              transform="rotate(-90 65 65)"
+              style={{ transition:`stroke-dasharray 0.9s cubic-bezier(.4,0,.2,1) ${i*90}ms` }}/>
+          )
+          acc += s.val
+          return el
+        })}
+      </svg>
+    )
+  }
+
+  // Curva con glow + área degradada -- Evolución de la carga
+  const GlowCurve = ({ valores, color=GE.green }) => {
+    const idx = valores.map((v,i)=>({v,i})).filter(p=>p.v!=null)
+    if (idx.length < 2) return null
+    const vals = idx.map(p=>p.v)
+    const min = Math.min(...vals), max = Math.max(...vals), rango = (max-min) || 1
+    const W = 320, H = 92
+    const pts = idx.map(({v,i}) => ({
+      x: (i/(valores.length-1))*W,
+      y: H - ((v-min)/rango)*(H-16) - 8,
+    }))
+    const path = pts.map((p,i) => `${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+    const area = `${path} L${pts[pts.length-1].x.toFixed(1)},${H} L0,${H} Z`
+    const last = pts[pts.length-1]
+    const gid = `ge-area-${color.replace('#','')}`
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:H }}>
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.35"/>
+            <stop offset="100%" stopColor={color} stopOpacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d={area} fill={`url(#${gid})`} style={{ opacity: montado?1:0, transition:'opacity 0.8s ease 0.2s' }}/>
+        <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ filter:`drop-shadow(0 0 5px ${color}80)`,
+            strokeDasharray: 500, strokeDashoffset: montado ? 0 : 500, transition:'stroke-dashoffset 1s cubic-bezier(.4,0,.2,1)' }}/>
+        <circle cx={last.x} cy={last.y} r="4" fill={color} style={{ filter:`drop-shadow(0 0 6px ${color})` }}/>
+        <circle className="ge-breathe" cx={last.x} cy={last.y} r="4" fill="none" stroke={color} strokeWidth="1.5" opacity="0.5"/>
+      </svg>
+    )
+  }
+
+  const Medalla = ({ Icon, valor, sub, color }) => (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, textAlign:'center' }}>
+      <div style={{ position:'relative', width:56, height:56 }}>
+        <div style={{ position:'absolute', inset:-4, borderRadius:'50%',
+          background:`radial-gradient(circle, ${color}40 0%, transparent 70%)`, filter:'blur(6px)' }}/>
+        <div style={{ position:'relative', width:56, height:56, borderRadius:'50%',
+          background:'rgba(255,255,255,0.04)', border:`1.5px solid ${color}80`,
+          display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <Icon size={22} color={color}/>
+        </div>
+      </div>
+      <div style={{ fontSize:15, fontWeight:700, letterSpacing:'-0.01em', color:GE.text }}>{valor}</div>
+      <div style={{ fontSize:9.5, color:GE.text2 }}>{sub}</div>
+    </div>
+  )
+
+  // Wireframe deportivo -- decorativo, no representa datos
+  const WireframeAtleta = ({ color=GE.glow }) => (
+    <svg viewBox="0 0 90 110" width="72" height="88" style={{ opacity:0.55, flexShrink:0 }}>
+      <g fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
+        <circle cx="45" cy="14" r="9"/>
+        <path d="M45 23 L45 58"/>
+        <path d="M45 32 L25 46"/>
+        <path d="M45 32 L68 24"/>
+        <path d="M45 58 L28 100"/>
+        <path d="M45 58 L64 96"/>
+        <path d="M28 100 L20 100"/>
+        <path d="M64 96 L72 100"/>
+      </g>
+    </svg>
+  )
+
+  const Timeline = ({ items }) => {
+    const total = items.reduce((a,r) => a + r.dias, 0) || 1
+    return (
+      <div>
+        <div style={{ display:'flex', width:'100%', height:8, borderRadius:4, overflow:'hidden', gap:2 }}>
+          {items.map((r,i) => (
+            <div key={i} style={{ width:`${(r.dias/total)*100}%`, minWidth:6, background:GE.danger,
+              opacity: 0.55 + 0.45*(r.dias/Math.max(...items.map(x=>x.dias))),
+              transition:`width 0.7s cubic-bezier(.4,0,.2,1) ${i*70}ms` }}/>
+          ))}
+        </div>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:'6px 16px', marginTop:12 }}>
+          {items.map((r,i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:6 }}>
+              <div style={{ width:6, height:6, borderRadius:'50%', background:GE.danger, flexShrink:0 }}/>
+              <span style={{ fontSize:11, color:GE.text2 }}>{r.inicio} → {r.fin}</span>
+              <span style={{ fontSize:11, fontWeight:700, color:GE.text }}>{r.dias}d</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const styleTag = (
+    <style>{`
+      @keyframes gePulse { 0%,100% { opacity:0.55; transform:scale(1); } 50% { opacity:0.9; transform:scale(1.06); } }
+      .ge-breathe { animation: gePulse 3.2s ease-in-out infinite; }
+    `}</style>
+  )
+
+  if (cargando) {
+    return (
+      <div style={{ padding:'40px 0', display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
+        {styleTag}
+        <div className="ge-breathe" style={{ width:14, height:14, borderRadius:'50%', background:GE.glow }}/>
+        <span style={{ fontSize:11.5, color:GE.text2 }}>Analizando historial...</span>
+      </div>
+    )
+  }
+
+  if (!perfil || perfil.no_calculado) {
+    return (
+      <div style={{ padding:'6px 4px' }}>
+        {styleTag}
+        <Panel style={{ textAlign:'center', padding:'36px 24px' }}>
+          <div className="ge-breathe" style={{ display:'inline-flex', width:52, height:52, borderRadius:'50%',
+            background:'rgba(142,247,215,0.12)', alignItems:'center', justifyContent:'center', marginBottom:14 }}>
+            <Brain size={26} color={GE.glow}/>
+          </div>
+          <div style={{ fontSize:16, fontWeight:700, color:GE.text }}>NOAH está aprendiendo</div>
+          <div style={{ fontSize:12, color:GE.text2, marginTop:6 }}>
+            Necesita algunas sesiones más de este atleta para desbloquear su perfil.
+          </div>
+        </Panel>
+      </div>
+    )
   }
 
   const { patron_semanal, distribucion_zonas, mejores_marcas, punto_quiebre_tsb, consistencia, predicciones_ml,
@@ -5097,318 +5365,241 @@ function SeccionPerfil({ atletaId }) {
     umbral_tss_tecnica, dias_recuperacion, disciplina_mas_desgaste, fase_actual, rendimiento_por_dia,
     firma_recuperacion, analisis_random_forest } = perfil
 
-  const Tarjeta = ({ titulo, children }) => (
-    <div style={{ padding:'14px 16px', background:'rgba(15,15,28,0.92)', borderRadius:12,
-      border:'1px solid rgba(255,255,255,0.10)', marginBottom:12 }}>
-      <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.65)', textTransform:'uppercase',
-        letterSpacing:0.5, marginBottom:8 }}>{titulo}</div>
-      {children}
-    </div>
-  )
-  const Texto = ({ children, size=14, color, weight=500 }) => (
-    <div style={{ fontSize:size, color: color||'rgba(255,255,255,0.92)', fontWeight:weight, lineHeight:1.5 }}>{children}</div>
-  )
+  const semaforoColor = predicciones_ml?.semaforo === 'verde' ? GE.green
+    : predicciones_ml?.semaforo === 'rojo' ? GE.danger : GE.warn
+  const heroPct = predicciones_ml?.prob_buena_absorcion_pct
+    ?? (predicciones_ml?.prob_riesgo_sobrecarga_pct != null ? 100 - predicciones_ml.prob_riesgo_sobrecarga_pct : null)
 
-  const AcwrGauge = ({ valor }) => {
-    if (valor == null) return null
-    const W = 300, H = 56
-    const pct = Math.min(100, Math.max(0, (valor / 2.0) * 100))
-    let color = '#3B82F6'
-    if (valor > 1.5) color = '#EF4444'
-    else if (valor > 1.3) color = '#F59E0B'
-    else if (valor >= 0.8) color = '#22C55E'
-    return (
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:H, marginTop:4 }}>
-        <rect x="0" y="20" width={W} height="12" rx="6" fill="rgba(255,255,255,0.08)"/>
-        <rect x={(0.8/2.0)*W} y="20" width={((1.3-0.8)/2.0)*W} height="12" rx="6" fill="rgba(34,197,94,0.30)"/>
-        <rect x={(1.3/2.0)*W} y="20" width={((1.5-1.3)/2.0)*W} height="12" fill="rgba(245,158,11,0.30)"/>
-        <rect x={(1.5/2.0)*W} y="20" width={((2.0-1.5)/2.0)*W} height="12" rx="6" fill="rgba(239,68,68,0.30)"/>
-        <circle cx={(pct/100)*W} cy="26" r="9" fill={color} stroke="#0A0F1E" strokeWidth="2.5"/>
-        <text x={(pct/100)*W} y="50" textAnchor="middle" fontSize="13" fontWeight="800" fill={color}>{valor}</text>
-      </svg>
-    )
-  }
-
-  const LineChartSimple = ({ valores, color='#3B82F6', height=70 }) => {
-    const idxValidos = valores.map((v,i)=>({v,i})).filter(p=>p.v!=null)
-    if (idxValidos.length < 2) return null
-    const vals = idxValidos.map(p=>p.v)
-    const min = Math.min(...vals), max = Math.max(...vals)
-    const rango = (max - min) || 1
-    const W = 300
-    const puntos = idxValidos.map(({v,i}) => ({
-      x: (i / (valores.length - 1)) * W,
-      y: height - ((v - min) / rango) * (height - 10) - 5,
-    }))
-    const path = puntos.map((p,i) => `${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-    return (
-      <svg viewBox={`0 0 ${W} ${height}`} style={{ width:'100%', height, marginTop:6 }}>
-        <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-        {puntos.map((p,i) => <circle key={i} cx={p.x} cy={p.y} r="2.5" fill={color}/>)}
-      </svg>
-    )
-  }
+  const medallas = [
+    mejores_marcas?.mejor_ritmo_5min_run    && { Icon: Footprints, valor: mejores_marcas.mejor_ritmo_5min_run, sub: 'Run · 5 min', color: GE.green },
+    mejores_marcas?.mejor_potencia_5min     && { Icon: BikeIcon,   valor: `${mejores_marcas.mejor_potencia_5min}W`, sub: 'Bike · 5 min', color: GE.cyan },
+    mejores_marcas?.mejor_potencia_20min    && { Icon: BikeIcon,   valor: `${mejores_marcas.mejor_potencia_20min}W`, sub: 'Bike · 20 min', color: GE.cyan },
+    mejores_marcas?.mejor_ritmo_5min_swim   && { Icon: Waves,      valor: mejores_marcas.mejor_ritmo_5min_swim, sub: 'Swim · 5 min', color: GE.glow },
+  ].filter(Boolean)
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+    <div style={{ padding:'4px 2px 20px' }}>
+      {styleTag}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:16 }}>
 
-      <Tarjeta titulo="Cómo entrena">
-        <Texto>
-          {patron_semanal?.dia_mas_activo
-            ? `Su día más activo es el ${patron_semanal.dia_mas_activo}. `
-            : 'Todavía no hay un patrón semanal claro. '}
-          En los últimos 6 meses acumuló {patron_semanal?.total_sesiones||0} sesiones registradas.
-        </Texto>
-      </Tarjeta>
-
-      <Tarjeta titulo="Distribución de entrenamiento">
-        {distribucion_zonas?.patron ? (
-          <>
-            <Texto>Su entrenamiento es <b>{distribucion_zonas.patron}</b>.</Texto>
-            <div style={{ display:'flex', gap:8, marginTop:10 }}>
-              {[
-                ['Baja', distribucion_zonas.z_baja_pct, '#22C55E'],
-                ['Media', distribucion_zonas.z_media_pct, '#F59E0B'],
-                ['Alta', distribucion_zonas.z_alta_pct, '#EF4444'],
-              ].map(([label, pct, color]) => (
-                <div key={label} style={{ flex:1, textAlign:'center' }}>
-                  <div style={{ fontSize:20, fontWeight:800, color }}>{pct}%</div>
-                  <div style={{ fontSize:10, color:NOAH_C.ink3 }}>{label}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : <Texto color={NOAH_C.ink3}>No hay suficientes datos todavía.</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Lo que el modelo predice ahora mismo">
-        {predicciones_ml?.disponible ? (
-          <>
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-              <div style={{ width:10, height:10, borderRadius:'50%',
-                background: predicciones_ml.semaforo==='verde' ? '#22C55E'
-                  : predicciones_ml.semaforo==='rojo' ? '#EF4444' : '#F59E0B' }}/>
-              <Texto weight={700}>{predicciones_ml.interpretacion}</Texto>
-            </div>
-            <div style={{ display:'flex', gap:14, marginBottom:8, flexWrap:'wrap' }}>
-              {predicciones_ml.prob_riesgo_sobrecarga_pct != null &&
-                <Texto size={13} color="rgba(255,255,255,0.65)">Riesgo de sobrecarga <b style={{color:'#fff'}}>{predicciones_ml.prob_riesgo_sobrecarga_pct}%</b></Texto>}
-              {predicciones_ml.prob_buena_absorcion_pct != null &&
-                <Texto size={13} color="rgba(255,255,255,0.65)">Prob. buena absorción <b style={{color:'#fff'}}>{predicciones_ml.prob_buena_absorcion_pct}%</b></Texto>}
-            </div>
-            {predicciones_ml.tsb_predicho_7d != null &&
-              <Texto size={13} color="rgba(255,255,255,0.65)">TSB proyectado en 7 días: <b style={{color:'#fff'}}>{predicciones_ml.tsb_predicho_7d}</b></Texto>}
-            {predicciones_ml.factores_que_mas_pesan_en_su_riesgo?.length > 0 && (
-              <Texto size={12} color="rgba(255,255,255,0.5)" weight={400}>
-                Lo que más influye en su riesgo: {predicciones_ml.factores_que_mas_pesan_en_su_riesgo.join(', ')}.
-              </Texto>
-            )}
-          </>
-        ) : <Texto color="rgba(255,255,255,0.5)">{predicciones_ml?.motivo || 'El modelo de este atleta todavía no está entrenado.'}</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Mejores marcas registradas">
-        {(mejores_marcas?.mejor_ritmo_5min_run || mejores_marcas?.mejor_potencia_5min || mejores_marcas?.mejor_ritmo_5min_swim) ? (
-          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-            {mejores_marcas.mejor_ritmo_5min_run && <Texto>🏃 Mejor ritmo sostenido 5' (running): <b>{mejores_marcas.mejor_ritmo_5min_run}</b></Texto>}
-            {mejores_marcas.mejor_potencia_5min && <Texto>🚴 Mejor potencia sostenida 5': <b>{mejores_marcas.mejor_potencia_5min}W</b></Texto>}
-            {mejores_marcas.mejor_potencia_20min && <Texto>🚴 Mejor potencia sostenida 20': <b>{mejores_marcas.mejor_potencia_20min}W</b></Texto>}
-            {mejores_marcas.mejor_ritmo_5min_swim && <Texto>🏊 Mejor ritmo sostenido 5' (natación): <b>{mejores_marcas.mejor_ritmo_5min_swim}</b></Texto>}
-          </div>
-        ) : <Texto color={NOAH_C.ink3}>Todavía no hay marcas registradas.</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Sensibilidad al TSB (regresión real)">
-        {punto_quiebre_tsb?.disponible ? (
-          <>
-            <Texto>
-              Por cada 10 puntos que baja su TSB, su eficiencia cambia en{' '}
-              <b style={{color: punto_quiebre_tsb.cambio_eficiencia_por_10_tsb_pct >= 0 ? '#22C55E' : '#EF4444'}}>
-                {punto_quiebre_tsb.cambio_eficiencia_por_10_tsb_pct}%
-              </b>.
-            </Texto>
-            <Texto size={11} color="rgba(255,255,255,0.4)" weight={400}>
-              R²={punto_quiebre_tsb.r2} sobre {punto_quiebre_tsb.n_sesiones} sesiones —{' '}
-              {punto_quiebre_tsb.confiable ? 'relación detectable' : 'relación débil, tomar con cautela'}
-            </Texto>
-          </>
-        ) : <Texto color="rgba(255,255,255,0.5)">{punto_quiebre_tsb?.motivo || 'No hay suficientes datos todavía.'}</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Técnica vs. carga del día anterior (regresión real)">
-        {umbral_tss_tecnica?.disponible ? (
-          <>
-            <Texto>
-              Por cada 100 puntos de TSS el día anterior, su decoupling del día siguiente
-              cambia <b>{umbral_tss_tecnica.deterioro_decoupling_por_100_tss_previo} puntos</b>.
-            </Texto>
-            <Texto size={11} color="rgba(255,255,255,0.4)" weight={400}>
-              R²={umbral_tss_tecnica.r2} sobre {umbral_tss_tecnica.n_sesiones} sesiones —{' '}
-              {umbral_tss_tecnica.confiable ? 'relación detectable' : 'relación débil, tomar con cautela'}
-            </Texto>
-          </>
-        ) : <Texto color="rgba(255,255,255,0.5)">{umbral_tss_tecnica?.motivo || 'No hay suficientes datos todavía.'}</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Qué predice mejor su rendimiento (Random Forest)">
-        {analisis_random_forest?.disponible ? (
-          <>
-            <Texto size={12} color="rgba(255,255,255,0.5)" weight={400}>
-              Sobre {analisis_random_forest.n_sesiones} sesiones — ajuste del modelo R²={analisis_random_forest.r2_ajuste}
-            </Texto>
-            <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:8 }}>
-              {analisis_random_forest.factores_mas_importantes?.map((f,i) => (
-                <div key={i}>
-                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-                    <Texto size={13}>{f.factor}</Texto>
-                    <Texto size={13} weight={700}>{f.importancia_pct}%</Texto>
-                  </div>
-                  <div style={{ height:6, background:'rgba(255,255,255,0.08)', borderRadius:3 }}>
-                    <div style={{ height:6, width:`${f.importancia_pct}%`, background:'#A855F7', borderRadius:3 }}/>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : <Texto color="rgba(255,255,255,0.5)">{analisis_random_forest?.motivo || 'No hay suficientes sesiones todavía.'}</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Volumen histórico (km por mes)">
-        {volumen_historico?.disponible && volumen_historico.km_por_mes?.length >= 2 ? (
-          <>
-            <Texto size={13} color="rgba(255,255,255,0.65)">
-              Último mes: <b style={{color:'#fff'}}>{volumen_historico.km_por_mes[volumen_historico.km_por_mes.length-1]}km</b>
-              {' '}vs. primer mes registrado: <b style={{color:'#fff'}}>{volumen_historico.km_por_mes[0]}km</b>
-            </Texto>
-            <LineChartSimple valores={volumen_historico.km_por_mes} color="#F59E0B" />
-          </>
-        ) : <Texto color="rgba(255,255,255,0.5)">No hay suficiente historial todavía.</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Sesiones fuera de lo normal">
-        {sesiones_anomalas?.disponible && sesiones_anomalas.anomalas?.length > 0 ? (
-          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-            {sesiones_anomalas.anomalas.map((a,i) => (
-              <Texto key={i} size={13}>
-                {a.fecha} — {a.sport} — decoupling atípico ({a.decoupling_pct}%)
-              </Texto>
-            ))}
-          </div>
-        ) : <Texto color="rgba(255,255,255,0.5)">Sin sesiones fuera de lo normal detectadas — buena señal.</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Días para recuperarse tras una sesión fuerte">
-        {dias_recuperacion?.disponible ? (
-          <Texto>
-            En promedio tarda <b>{dias_recuperacion.dias_promedio_recuperacion} días</b> en volver
-            a un nivel de frescura razonable ({dias_recuperacion.muestras} casos analizados).
-          </Texto>
-        ) : <Texto color="rgba(255,255,255,0.5)">No hay suficientes datos todavía.</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Disciplina con más desgaste">
-        {disciplina_mas_desgaste?.disponible ? (
-          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-            {Object.entries(disciplina_mas_desgaste.decoupling_promedio_por_deporte).map(([sport,val]) => (
-              <Texto key={sport} size={13}>
-                {sport}: <b>{val}%</b> de decoupling promedio
-                {sport === disciplina_mas_desgaste.disciplina_mas_desgaste ? ' ← la que más desgasta' : ''}
-              </Texto>
-            ))}
-          </div>
-        ) : <Texto color="rgba(255,255,255,0.5)">No hay suficientes datos en más de un deporte todavía.</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Fase actual">
-        {fase_actual?.disponible ? (
-          <Texto>
-            Está en fase de <b style={{
-              color: fase_actual.fase==='mejora' ? '#22C55E' : fase_actual.fase==='declive' ? '#EF4444' : '#F59E0B'
-            }}>{fase_actual.fase}</b> ({fase_actual.cambio_ctl_pct > 0 ? '+' : ''}{fase_actual.cambio_ctl_pct}% de CTL en las últimas 2 semanas vs. las 2 anteriores).
-          </Texto>
-        ) : <Texto color="rgba(255,255,255,0.5)">No hay suficiente historial reciente todavía.</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Rendimiento por día de la semana (a igual fatiga)">
-        {rendimiento_por_dia?.disponible ? (
-          <Texto>
-            Su mejor día, comparando solo sesiones con nivel de fatiga similar, es el{' '}
-            <b>{rendimiento_por_dia.mejor_dia}</b>.
-          </Texto>
-        ) : <Texto color="rgba(255,255,255,0.5)">No hay suficientes datos comparables todavía.</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Firma de recuperación nocturna">
-        {firma_recuperacion?.disponible ? (
-          <Texto>
-            Su HRV nocturno promedia <b>{firma_recuperacion.hrv_tras_carga_suave}</b> tras días suaves,
-            {' '}y <b>{firma_recuperacion.hrv_tras_carga_fuerte}</b> tras días de carga fuerte.
-          </Texto>
-        ) : <Texto color="rgba(255,255,255,0.5)">{firma_recuperacion?.motivo || 'No hay biomarcadores de 24hs suficientes todavía.'}</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="ACWR — riesgo de lesión por carga">
-        {acwr?.disponible ? (
-          <>
-            <Texto size={13} color="rgba(255,255,255,0.65)">
-              Ratio agudo:crónico actual: <b style={{color:'#fff'}}>{acwr.actual}</b> — {acwr.zona}
-            </Texto>
-            <AcwrGauge valor={acwr.actual} />
-            {acwr.historial?.length > 5 && (
-              <>
-                <Texto size={11} color="rgba(255,255,255,0.4)" weight={400}>Últimos {acwr.historial.length} días</Texto>
-                <LineChartSimple valores={acwr.historial} color="#3B82F6" />
-              </>
-            )}
-          </>
-        ) : <Texto color="rgba(255,255,255,0.5)">{acwr?.motivo || 'No hay suficiente historial todavía.'}</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Progreso técnico (running)">
-        {progreso_tecnico?.disponible ? (
-          <>
-            <Texto>Su eficiencia está <b>{progreso_tecnico.tendencia_eficiencia || 'estable'}</b> en los últimos meses.</Texto>
-            {progreso_tecnico.efficiency_factor?.filter(v=>v!=null).length >= 2 && (
-              <LineChartSimple valores={progreso_tecnico.efficiency_factor} color="#22C55E" />
-            )}
-          </>
-        ) : <Texto color="rgba(255,255,255,0.5)">{progreso_tecnico?.motivo || 'No hay suficientes datos todavía.'}</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Su mejor marca, en contexto">
-        {marca_con_contexto?.disponible ? (
-          <Texto>
-            Su mejor ritmo sostenido ({marca_con_contexto.ritmo}) fue el {marca_con_contexto.fecha},
-            {' '}{marca_con_contexto.contexto}.
-          </Texto>
-        ) : <Texto color="rgba(255,255,255,0.5)">Todavía no hay marcas con suficiente contexto.</Texto>}
-      </Tarjeta>
-
-      <Tarjeta titulo="Rachas de fatiga sostenida">
-        {rachas_fatiga?.disponible && rachas_fatiga.rachas?.length > 0 ? (
-          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-            {rachas_fatiga.rachas.map((r,i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <div style={{ width:8, height:8, borderRadius:'50%', background:'#EF4444', flexShrink:0 }}/>
-                <Texto size={13}>{r.inicio} → {r.fin} <b>({r.dias} días)</b></Texto>
+        {/* HERO — anillo + mini paneles Riesgo/TSB/ACWR */}
+        <Panel span="1 / -1" i={0}>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:24, alignItems:'center' }}>
+            {predicciones_ml?.disponible && heroPct != null ? (
+              <RingHero pct={heroPct} color={semaforoColor}/>
+            ) : (
+              <div style={{ width:176, height:176, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <Brain size={40} color={GE.text3}/>
               </div>
-            ))}
+            )}
+            <div style={{ flex:1, minWidth:200 }}>
+              {predicciones_ml?.disponible ? (
+                <>
+                  <div style={{ fontSize:19, fontWeight:700, letterSpacing:'-0.01em', color:GE.text, marginBottom:4 }}>
+                    {predicciones_ml.interpretacion}
+                  </div>
+                  {predicciones_ml.factores_que_mas_pesan_en_su_riesgo?.length > 0 && (
+                    <div style={{ fontSize:11.5, color:GE.text2, marginBottom:16 }}>
+                      Influye más: {predicciones_ml.factores_que_mas_pesan_en_su_riesgo.slice(0,3).join(' · ')}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ marginBottom:16 }}><Aprendiendo motivo={predicciones_ml?.motivo}/></div>
+              )}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(120px, 1fr))', gap:10 }}>
+                <Chip Icon={AlertTriangle} label="Riesgo" color={GE.danger}
+                  empty={predicciones_ml?.prob_riesgo_sobrecarga_pct == null}
+                  value={predicciones_ml?.prob_riesgo_sobrecarga_pct != null ? `${predicciones_ml.prob_riesgo_sobrecarga_pct}%` : ''}/>
+                <Chip Icon={BatteryFull} label="TSB" color={GE.cyan}
+                  empty={predicciones_ml?.tsb_predicho_7d == null}
+                  value={predicciones_ml?.tsb_predicho_7d}
+                  sub={predicciones_ml?.tsb_predicho_7d != null ? 'proyectado 7d' : null}/>
+                <Chip Icon={Activity} label="ACWR" color={acwr?.actual > 1.5 ? GE.danger : acwr?.actual > 1.3 ? GE.warn : GE.green}
+                  empty={!acwr?.disponible} motivo={acwr?.motivo}
+                  value={acwr?.actual} sub={acwr?.zona}/>
+              </div>
+            </div>
           </div>
-        ) : <Texto color="rgba(255,255,255,0.5)">Sin rachas de fatiga sostenida detectadas — buena señal.</Texto>}
-      </Tarjeta>
+        </Panel>
 
-      <Tarjeta titulo="Consistencia">
-        {consistencia?.disponible ? (
-          <Texto>
-            En las últimas {consistencia.semanas_analizadas} semanas fue <b>{consistencia.nivel}</b>
-            {' '}(promedio de {consistencia.tss_semanal_promedio} TSS semanal).
-          </Texto>
-        ) : <Texto color={NOAH_C.ink3}>No hay suficientes semanas todavía para medir consistencia.</Texto>}
-      </Tarjeta>
+        {/* CÓMO ENTRENA — donut Baja/Media/Alta */}
+        <Panel i={1}>
+          <PanelTitle Icon={Target}>Cómo entrena</PanelTitle>
+          {distribucion_zonas?.patron ? (
+            <div style={{ display:'flex', alignItems:'center', gap:18 }}>
+              <Donut segs={[
+                { val: distribucion_zonas.z_baja_pct,  color: GE.green },
+                { val: distribucion_zonas.z_media_pct, color: GE.cyan  },
+                { val: distribucion_zonas.z_alta_pct,  color: GE.danger},
+              ]}/>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {[['Baja',distribucion_zonas.z_baja_pct,GE.green],['Media',distribucion_zonas.z_media_pct,GE.cyan],['Alta',distribucion_zonas.z_alta_pct,GE.danger]].map(([l,v,c]) => (
+                  <div key={l} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ width:7, height:7, borderRadius:'50%', background:c }}/>
+                    <span style={{ fontSize:11.5, color:GE.text2 }}>{l}</span>
+                    <span style={{ fontSize:12.5, fontWeight:700, color:GE.text }}>{v}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : <Aprendiendo/>}
+          {patron_semanal?.dia_mas_activo && (
+            <div style={{ display:'flex', gap:8, marginTop:16 }}>
+              <Chip Icon={CalendarDays} label="Día top" value={patron_semanal.dia_mas_activo} color={GE.green}/>
+              <Chip Icon={Activity} label="Sesiones" value={patron_semanal.total_sesiones} sub="6 meses" color={GE.cyan}/>
+            </div>
+          )}
+        </Panel>
 
+        {/* EVOLUCIÓN DE LA CARGA — curva glow */}
+        <Panel span="1 / -1" i={2}>
+          <PanelTitle Icon={TrendingUp}>Evolución de la carga</PanelTitle>
+          {volumen_historico?.disponible && volumen_historico.km_por_mes?.length >= 2 ? (
+            <>
+              <div style={{ display:'flex', gap:20, marginBottom:10 }}>
+                <div>
+                  <div style={{ fontSize:9.5, color:GE.text2, textTransform:'uppercase', letterSpacing:'0.04em' }}>Último mes</div>
+                  <div style={{ fontSize:20, fontWeight:700, color:GE.text }}>{volumen_historico.km_por_mes[volumen_historico.km_por_mes.length-1]} km</div>
+                </div>
+                <div>
+                  <div style={{ fontSize:9.5, color:GE.text2, textTransform:'uppercase', letterSpacing:'0.04em' }}>Primer mes</div>
+                  <div style={{ fontSize:20, fontWeight:700, color:GE.text3 }}>{volumen_historico.km_por_mes[0]} km</div>
+                </div>
+              </div>
+              <GlowCurve valores={volumen_historico.km_por_mes} color={GE.green}/>
+            </>
+          ) : <Aprendiendo/>}
+        </Panel>
+
+        {/* MEJORES MARCAS — medallas de vidrio */}
+        {medallas.length > 0 && (
+          <Panel span="1 / -1" i={3}>
+            <PanelTitle Icon={Flag}>Mejores marcas</PanelTitle>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:28, justifyContent:'space-around' }}>
+              {medallas.map((m,i) => <Medalla key={i} {...m}/>)}
+            </div>
+          </Panel>
+        )}
+
+        {/* LO QUE NOAH DETECTÓ — chips + wireframe */}
+        <Panel span="1 / -1" i={4}>
+          <PanelTitle Icon={Brain}>Lo que NOAH detectó</PanelTitle>
+          <div style={{ display:'flex', gap:20, alignItems:'center' }}>
+            <div style={{ flex:1, display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:10 }}>
+              <Chip Icon={Zap} label="TSB sensible" color="#A855F7"
+                empty={!punto_quiebre_tsb?.disponible} motivo={punto_quiebre_tsb?.motivo}
+                value={punto_quiebre_tsb?.disponible ? `${punto_quiebre_tsb.cambio_eficiencia_por_10_tsb_pct}%` : ''}
+                sub={punto_quiebre_tsb?.disponible ? 'por -10 TSB' : null}/>
+              <Chip Icon={Moon} label="HRV nocturno" color={GE.cyan}
+                empty={!firma_recuperacion?.disponible} motivo={firma_recuperacion?.motivo}
+                value={firma_recuperacion?.disponible ? firma_recuperacion.hrv_tras_carga_suave : ''}
+                sub={firma_recuperacion?.disponible ? `vs ${firma_recuperacion.hrv_tras_carga_fuerte} en carga fuerte` : null}/>
+              <Chip Icon={TrendingUp} label="Fase actual" color={fase_actual?.fase==='mejora'?GE.green:fase_actual?.fase==='declive'?GE.danger:GE.warn}
+                empty={!fase_actual?.disponible} motivo={fase_actual?.motivo}
+                value={fase_actual?.disponible ? fase_actual.fase : ''}
+                sub={fase_actual?.disponible ? `${fase_actual.cambio_ctl_pct>0?'+':''}${fase_actual.cambio_ctl_pct}% CTL` : null}/>
+              <Chip Icon={BarChart3} label="Factor #1 (RF)" color={GE.green}
+                empty={!analisis_random_forest?.disponible || !analisis_random_forest.factores_mas_importantes?.length}
+                motivo={analisis_random_forest?.motivo}
+                value={analisis_random_forest?.factores_mas_importantes?.[0]?.factor}
+                sub={analisis_random_forest?.factores_mas_importantes?.[0] ? `${analisis_random_forest.factores_mas_importantes[0].importancia_pct}% peso` : null}/>
+              <Chip Icon={Activity} label="Más desgaste" color={GE.cyan}
+                empty={!disciplina_mas_desgaste?.disponible}
+                value={disciplina_mas_desgaste?.disciplina_mas_desgaste}
+                sub={disciplina_mas_desgaste?.disponible ? 'mayor decoupling' : null}/>
+              <Chip Icon={CalendarDays} label="Mejor día" color={GE.green}
+                empty={!rendimiento_por_dia?.disponible}
+                value={rendimiento_por_dia?.mejor_dia}
+                sub={rendimiento_por_dia?.disponible ? 'a igual fatiga' : null}/>
+              <Chip Icon={TrendingUp} label="Eficiencia técnica" color="#A855F7"
+                empty={!progreso_tecnico?.disponible} motivo={progreso_tecnico?.motivo}
+                value={progreso_tecnico?.disponible ? progreso_tecnico.tendencia_eficiencia : ''}
+                sub={progreso_tecnico?.disponible ? 'running, últimos meses' : null}/>
+              <Chip Icon={Zap} label="Técnica bajo carga" color={GE.warn}
+                empty={!umbral_tss_tecnica?.disponible} motivo={umbral_tss_tecnica?.motivo}
+                value={umbral_tss_tecnica?.disponible ? umbral_tss_tecnica.deterioro_decoupling_por_100_tss_previo : ''}
+                sub={umbral_tss_tecnica?.disponible ? 'decoupling / +100 TSS previo' : null}/>
+            </div>
+            <WireframeAtleta/>
+          </div>
+        </Panel>
+
+        {/* RECUPERACIÓN */}
+        <Panel i={5}>
+          <PanelTitle Icon={Moon}>Recuperación</PanelTitle>
+          {dias_recuperacion?.disponible ? (
+            <div>
+              <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                <span style={{ fontSize:32, fontWeight:700, letterSpacing:'-0.02em', color:GE.text }}>{dias_recuperacion.dias_promedio_recuperacion}</span>
+                <span style={{ fontSize:13, color:GE.text2 }}>días</span>
+              </div>
+              <div style={{ position:'relative', height:3, borderRadius:2, background:'rgba(255,255,255,0.08)', marginTop:14 }}>
+                <div style={{ position:'absolute', left:0, top:0, height:3, borderRadius:2, background:GE.cyan,
+                  width: montado ? `${Math.min(100,(dias_recuperacion.dias_promedio_recuperacion/10)*100)}%` : 0,
+                  transition:'width 0.9s cubic-bezier(.4,0,.2,1)' }}/>
+                <div className="ge-breathe" style={{ position:'absolute', top:-3, width:9, height:9, borderRadius:'50%', background:GE.cyan,
+                  left: `calc(${Math.min(100,(dias_recuperacion.dias_promedio_recuperacion/10)*100)}% - 4px)`,
+                  filter:`drop-shadow(0 0 5px ${GE.cyan})` }}/>
+              </div>
+              <div style={{ fontSize:10, color:GE.text3, marginTop:8 }}>{dias_recuperacion.muestras} casos analizados</div>
+            </div>
+          ) : <Aprendiendo/>}
+        </Panel>
+
+        {/* CONSISTENCIA */}
+        <Panel i={6}>
+          <PanelTitle Icon={CheckCircle2}>Consistencia</PanelTitle>
+          {consistencia?.disponible ? (
+            <div>
+              <div style={{ fontSize:20, fontWeight:700, color:GE.text, textTransform:'capitalize' }}>{consistencia.nivel}</div>
+              <div style={{ fontSize:11, color:GE.text2, marginTop:4 }}>
+                {consistencia.tss_semanal_promedio} TSS/semana · {consistencia.semanas_analizadas} semanas
+              </div>
+            </div>
+          ) : <Aprendiendo/>}
+        </Panel>
+
+        {/* ESTADO GENERAL */}
+        <Panel i={7}>
+          <PanelTitle Icon={sesiones_anomalas?.anomalas?.length ? AlertTriangle : CheckCircle2}>Estado general</PanelTitle>
+          {sesiones_anomalas?.disponible && sesiones_anomalas.anomalas?.length > 0 ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {sesiones_anomalas.anomalas.slice(0,4).map((a,i) => (
+                <div key={i} style={{ fontSize:11, color:GE.text2 }}>
+                  <span style={{ color:GE.text }}>{a.fecha}</span> · {a.sport} · decoupling {a.decoupling_pct}%
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <CheckCircle2 size={26} color={GE.green}/>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:GE.text }}>Sin sesiones fuera de lo normal</div>
+                <div style={{ fontSize:10.5, color:GE.text2 }}>Buena señal</div>
+              </div>
+            </div>
+          )}
+        </Panel>
+
+        {/* RACHAS DE FATIGA — timeline */}
+        <Panel span="1 / -1" i={8}>
+          <PanelTitle Icon={Flame}>Rachas de fatiga sostenida</PanelTitle>
+          {rachas_fatiga?.disponible && rachas_fatiga.rachas?.length > 0 ? (
+            <Timeline items={rachas_fatiga.rachas}/>
+          ) : (
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <CheckCircle2 size={22} color={GE.green}/>
+              <span style={{ fontSize:12.5, color:GE.text }}>Sin rachas de fatiga sostenida detectadas — buena señal.</span>
+            </div>
+          )}
+        </Panel>
+
+      </div>
     </div>
   )
 }
+
 
 // -- SeccionAsistente -- chat con NOAH (Groq), usando los datos reales del atleta --
 function _horaAhora() {

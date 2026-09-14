@@ -169,10 +169,14 @@ export default function GraficoActividadStreams({
   // Colapsar/expandir el grafico principal para ahorrar espacio -- abierto
   // por defecto, el usuario lo puede cerrar tocando el chevron del header.
   const [chartOpen, setChartOpen]     = useState(true)
-  const defaultCanales = sport === 'cycling'
-    ? { hr: false, power: true, pace: false, cadence: false, alt: false, temp: false, vert_osc: false, gct: false, stride: false, resp: false }
-    : { hr: true,  power: true, pace: true,  cadence: false, alt: false, temp: false, vert_osc: false, gct: false, stride: false, resp: false }
-  const [canalesOn, setCanalesOn] = useState(defaultCanales)
+  // Un solo canal visible a la vez -- como en Garmin/TrainingPeaks. Antes se
+  // mostraban FC + Potencia + Pace superpuestos por default, lo que generaba
+  // el efecto "arcoíris" (varias líneas de colores compitiendo en el mismo
+  // gráfico). El selector de abajo pasa a comportarse como tabs exclusivos.
+  const CANAL_DEFAULT = sport === 'cycling' ? 'power' : 'hr'
+  const CANALES_KEYS = ['hr','power','pace','cadence','alt','temp','vert_osc','gct','stride','resp']
+  const soloEste = (key) => Object.fromEntries(CANALES_KEYS.map(k => [k, k === key]))
+  const [canalesOn, setCanalesOn] = useState(soloEste(CANAL_DEFAULT))
 
   useEffect(() => {
     if (!sesionId || !atletaId) return
@@ -344,6 +348,21 @@ export default function GraficoActividadStreams({
     ? (_zonasData?.css || cssProp || act?.css_100m || act?.css || null)
     : (_zonasData?.pace_umbral || paceUmbralProp || act?.pace_umbral || act?.pace_umbral_run || null)
 
+  // Suavizado rolling average para potencia en cycling
+  const smoothWindow = sport === 'cycling' ? 3 : 1
+  if (smoothWindow > 1) {
+    for (let i = 0; i < series.length; i++) {
+      if (series[i].power == null) continue
+      let sum = 0, cnt = 0
+      const half = Math.floor(smoothWindow / 2)
+      for (let j = Math.max(0, i - half); j <= Math.min(series.length - 1, i + half); j++) {
+        if (series[j].power != null && series[j].power > 0) { sum += series[j].power; cnt++ }
+      }
+      if (cnt > 0) series[i]._powerSmooth = Math.round(sum / cnt)
+    }
+    series.forEach(s => { if (s._powerSmooth != null) s.power = s._powerSmooth })
+  }
+
   const hrVals   = series.map(s => s.hr).filter(v => v && v > 40 && v < 250)
   const powVals  = series.map(s => s.power).filter(v => v && v > 0 && v < 3000)
   const paceVals = series.map(s => s.pace).filter(v => v && v > 1.5 && v < 20)
@@ -444,7 +463,9 @@ export default function GraficoActividadStreams({
   const ejeIzqPace  = sport !== 'cycling'
   const ejeIzqPower = sport === 'cycling'
 
-  const toggleCanal = key => setCanalesOn(prev => ({ ...prev, [key]: !prev[key] }))
+  // Selección exclusiva: tocar un canal lo activa y apaga el resto (tabs),
+  // en vez del multi-toggle anterior que permitía superponer varias líneas.
+  const toggleCanal = key => setCanalesOn(soloEste(key))
 
   const CANALES = [
     { key: 'hr',       label: 'FC',        color: D.hr.line,    show: hrVals.length > 0 },
@@ -461,41 +482,31 @@ export default function GraficoActividadStreams({
     { key: 'resp',     label: 'Resp',      color: '#67E8F9',    show: respVals.length > 0 },
   ].filter(c => c.show)
 
+  // Si el canal activo no tiene datos disponibles en esta sesión (ej: no
+  // hay FC pero sí potencia), pasar automáticamente al primero disponible
+  // en vez de dejar el gráfico vacío.
+  useEffect(() => {
+    if (CANALES.length === 0) return
+    const activoKey = CANALES_KEYS.find(k => canalesOn[k])
+    if (!CANALES.some(c => c.key === activoKey)) {
+      setCanalesOn(soloEste(CANALES[0].key))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [CANALES.map(c => c.key).join(',')])
+
   return (
     <div style={{ borderRadius: 0, overflow: 'visible', background: 'transparent' }}>
-      {/* HEADER -- sin caja, solo un separador sutil abajo */}
+      {/* HEADER -- grilla simétrica de métricas (reemplaza las chips sueltas
+          de antes), estilo Garmin/Apple: número grande, etiqueta chica */}
       <div style={{
-        padding: '10px 4px 10px',
+        padding: '10px 4px 14px',
         borderBottom: `1px solid ${D.border}`,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <SportIconC size={20} color={sportColor}/>
-          {[
-            act?.duration_min && { Icon: Clock, val: fmtDur(act.duration_min), color: D.text2 },
-            distKm            && { Icon: Ruler, val: fmtDist(distKm),          color: D.text2 },
-            (act?.hr_avg||stats.hr_avg) && { Icon: HeartPulse, val: `${Math.round(act?.hr_avg||stats.hr_avg)} bpm`, color: D.hr.line },
-            (act?.hr_max||stats.hr_max) && { Icon: Flame, val: `máx ${Math.round(act?.hr_max||stats.hr_max)}`, color: '#F97316' },
-            (act?.np_watts||stats.power_np) && { Icon: Zap, val: `${act?.np_watts||stats.power_np}W NP`, color: D.power.line },
-            (act?.potencia_media||stats.power_avg) && { Icon: BarChart3, val: `${Math.round(act?.potencia_media||stats.power_avg)}W avg`, color: '#84CC16' },
-            act?.wkg       && { Icon: Scale, val: `${act.wkg.toFixed(2)} w/kg`,      color: '#A78BFA' },
-            act?.tss_total && { Icon: Target, val: `TSS ${act.tss_total.toFixed(0)}`,  color: '#38BDF8' },
-            (sport==='cycling' && (act?.intensity_factor || (act?.np_watts && (act?.ftp_watts||act?.ftp)))) && {
-              Icon: BarChart3,
-              val: `IF ${act?.intensity_factor ? act.intensity_factor.toFixed(2) : ((act.np_watts/(act.ftp_watts||act.ftp)).toFixed(2))}`,
-              color: '#FCD34D'
-            },
-            act?.calorias  && { Icon: Flame, val: `${act.calorias} kcal`,             color: '#F97316' },
-            (act?.pace&&sport==='running') && { Icon: Footprints, val: fmtPace(act.pace)+'/km', color: sportColor },
-          ].filter(Boolean).map((m, i) => (
-            <div key={i} style={{
-              display:'flex', alignItems:'center', gap:5,
-              padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:600,
-              background: D.glass, border:`1px solid ${D.border}`, color: m.color,
-            }}>
-              <m.Icon size={12} color={m.color}/>
-              <span style={{ color: D.text }}>{m.val}</span>
-            </div>
-          ))}
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+          <SportIconC size={17} color={sportColor}/>
+          <span style={{ fontSize:11, fontWeight:600, color:D.text2, textTransform:'uppercase', letterSpacing:'0.04em' }}>
+            {sport === 'cycling' ? 'Ciclismo' : sport === 'swimming' ? 'Natación' : 'Running'}
+          </span>
           <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:8 }}>
             {loading && (
               <div style={{ fontSize:10, color:D.text3, display:'flex', alignItems:'center', gap:4 }}>
@@ -511,6 +522,29 @@ export default function GraficoActividadStreams({
               }}>▾</button>
             )}
           </div>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', rowGap:16, columnGap:8 }}>
+          {[
+            act?.duration_min && { Icon: Clock, label:'Duración', val: fmtDur(act.duration_min), color: D.text2 },
+            distKm != null    && { Icon: Ruler, label:'Distancia', val: fmtDist(distKm),          color: D.text2 },
+            (act?.hr_avg||stats.hr_avg) && { Icon: HeartPulse, label:'FC media', val: `${Math.round(act?.hr_avg||stats.hr_avg)} bpm`, color: D.hr.line },
+            (act?.hr_max||stats.hr_max) && { Icon: Flame, label:'FC máxima', val: `${Math.round(act?.hr_max||stats.hr_max)} bpm`, color: '#F97316' },
+            sport === 'cycling'
+              ? ((act?.potencia_media||stats.power_avg) && { Icon: BarChart3, label:'Potencia media', val:`${Math.round(act?.potencia_media||stats.power_avg)} W`, color: D.power.line })
+              : (act?.pace && { Icon: Footprints, label:'Ritmo medio', val:`${fmtPace(act.pace)} ${paceUnit}`, color: sportColor }),
+            sport === 'cycling'
+              ? ((act?.np_watts||stats.power_np) && { Icon: Zap, label:'NP', val:`${act?.np_watts||stats.power_np} W`, color:'#84CC16' })
+              : (act?.tss_total && { Icon: Target, label:'TSS', val: act.tss_total.toFixed(0), color:'#38BDF8' }),
+          ].filter(Boolean).slice(0, 6).map((m, i) => (
+            <div key={i}>
+              <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:3 }}>
+                <m.Icon size={12} color={m.color}/>
+                <span style={{ fontSize:10.5, fontWeight:500, color:D.text2, letterSpacing:'0.01em' }}>{m.label}</span>
+              </div>
+              <div style={{ fontSize:17, fontWeight:600, letterSpacing:'-0.02em', color:D.text }}>{m.val}</div>
+            </div>
+          ))}
         </div>
         {hS && (
           <div style={{
@@ -929,32 +963,30 @@ export default function GraficoActividadStreams({
           streamZonas={streamZonas} lthr={actLthr} sesionId={sesionId}/>
       )}
 
-      {/* LEYENDA — mínima */}
-      {series.length >= 1 && (
-        <div style={{
-          padding:'6px 16px 8px', borderTop:`1px solid ${D.border}`,
-          display:'flex', gap:14, alignItems:'center', flexWrap:'wrap',
-        }}>
-          {CANALES.filter(c => canalesOn[c.key]).map(c => (
-            <div key={c.key} style={{ display:'flex', alignItems:'center', gap:4 }}>
-              <div style={{ width:14, height:2, borderRadius:1, background:c.color }}/>
-              <span style={{ fontSize:9, color:D.text2 }}>{c.label}</span>
+      {/* ZONAS — reemplaza la leyenda de canales (ahora hay uno solo activo,
+          así que repetir su nombre/color acá era redundante con el tab ya
+          seleccionado arriba). Etiquetas completas Z1-Z5 + %, con la franja
+          de color de cada zona debajo -- igual criterio que Endurance/FTP/VO2
+          en Distribución: mismo lenguaje de zonas en toda la app. */}
+      {series.length >= 1 && streamZonas && (() => {
+        const zonasConDatos = Object.entries(streamZonas).filter(([,v]) => v.pct > 0)
+        if (!zonasConDatos.length) return null
+        return (
+          <div style={{ padding:'10px 16px 12px', borderTop:`1px solid ${D.border}` }}>
+            <div style={{ fontSize:10, fontWeight:600, color:D.text2, textTransform:'uppercase',
+              letterSpacing:'0.06em', marginBottom:8 }}>Zonas</div>
+            <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
+              {zonasConDatos.map(([z, v]) => (
+                <div key={z} style={{ minWidth:44 }}>
+                  <div style={{ fontSize:11, fontWeight:500, color:D.text2 }}>{z}</div>
+                  <div style={{ fontSize:14, fontWeight:600, letterSpacing:'-0.01em', color:D.zone[z] }}>{Math.round(v.pct)}%</div>
+                  <div style={{ height:3, borderRadius:2, background:D.zone[z], opacity:0.85, marginTop:4 }}/>
+                </div>
+              ))}
             </div>
-          ))}
-          {streamZonas && (
-            <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:5 }}>
-              <span style={{ fontSize:9, color:D.text3 }}>Zonas</span>
-              <div style={{ height:5, borderRadius:2, overflow:'hidden', display:'flex', width:70 }}>
-                {Object.entries(streamZonas)
-                  .filter(([,v]) => v.pct > 0)
-                  .map(([z,v]) => (
-                    <div key={z} style={{ width:`${v.pct}%`, background:D.zone[z] }}/>
-                  ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+          </div>
+        )
+      })()}
 
       {/* TABLA LAPS */}
       {tieneLaps && (
