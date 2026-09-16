@@ -2563,6 +2563,90 @@ def entrenar_noah_intel(atleta_id):
         return error(str(e))
 
 
+# ── Digital Twin ─────────────────────────────────────────────────────────────
+@app.route('/api/atletas/<int:atleta_id>/twin', methods=['GET'])
+@requiere_login
+def get_twin_prescripcion(atleta_id):
+    """
+    Digital Twin: genera escenarios de semana completa con sesiones reales.
+    Calibra modelo fisiológico per-disciplina, simula 100+ semanas,
+    devuelve las 5 mejores.
+    """
+    conn = get_conn()
+    try:
+        from noah_twin_v2 import twin_prescripcion
+
+        tipo_sem = request.args.get('tipo_sem', 'carga')
+        tss = request.args.get('tss')
+        tss = float(tss) if tss else None
+        n = int(request.args.get('n', 200))
+
+        resultado = twin_prescripcion(conn, atleta_id,
+                                       tss=tss, tipo_sem=tipo_sem, n=n)
+        conn.close()
+        return ok(_limpiar_nan(resultado))
+    except Exception as e:
+        conn.close()
+        import traceback
+        traceback.print_exc()
+        return error(str(e))
+
+
+# ── Twin: elegir escenario ──
+@app.route('/api/atletas/<int:atleta_id>/twin/elegir', methods=['POST'])
+@requiere_login
+def twin_elegir_esc(atleta_id):
+    conn = get_conn()
+    try:
+        from noah_twin_v2 import twin_elegir
+        data = request.get_json() or {}
+        semana = data.get('semana')
+        rank = data.get('escenario_rank', 1)
+        if not semana:
+            from datetime import date
+            semana = date.today().strftime('%G-%V')
+        resultado = twin_elegir(conn, atleta_id, semana, rank)
+        conn.close()
+        return ok(resultado)
+    except Exception as e:
+        conn.close()
+        return error(str(e))
+
+
+# ── Twin: evaluar semana pasada ──
+@app.route('/api/atletas/<int:atleta_id>/twin/evaluar', methods=['POST'])
+@requiere_login
+def twin_evaluar_sem(atleta_id):
+    conn = get_conn()
+    try:
+        from noah_twin_v2 import twin_evaluar
+        data = request.get_json() or {}
+        semana = data.get('semana')  # None = semana pasada
+        resultado = twin_evaluar(conn, atleta_id, semana)
+        conn.close()
+        return ok(_limpiar_nan(resultado))
+    except Exception as e:
+        conn.close()
+        import traceback
+        traceback.print_exc()
+        return error(str(e))
+
+
+# ── Twin: historial de aciertos ──
+@app.route('/api/atletas/<int:atleta_id>/twin/historial', methods=['GET'])
+@requiere_login
+def twin_historial_ep(atleta_id):
+    conn = get_conn()
+    try:
+        from noah_twin_v2 import twin_historial
+        resultado = twin_historial(conn, atleta_id)
+        conn.close()
+        return ok(_limpiar_nan(resultado))
+    except Exception as e:
+        conn.close()
+        return error(str(e))
+
+
 @app.route('/api/atletas/<int:atleta_id>/periodizacion', methods=['GET'])
 @requiere_login
 def get_periodizacion(atleta_id):
