@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import GraficoActividadStreams from './GraficoActividadStreams'
 import SeccionRace from './SeccionRace'
 import SeccionTecnica from './SeccionTecnica'
+import { TwinAtleta } from './SeccionTwin'
 import SeccionTests from './SeccionTests'
 import axios from 'axios'
 import {
@@ -4039,6 +4040,7 @@ export default function AtletaDashboard({ atletaId }) {
     {id:'race',          label:'Race',          icon: Flag},
     {id:'tests',         label:'Tests',         icon: FlaskConical},
     {id:'tecnica',       label:'Técnica',       icon: Target},
+    {id:'twin',          label:'Mi Twin',       icon: Brain},
     {id:'perfil',        label:'Perfil',        icon: UserCircle},
     {id:'asistente',     label:'Asistente',     icon: MessageCircle},
   ]
@@ -4625,6 +4627,9 @@ export default function AtletaDashboard({ atletaId }) {
       )}
 
       {tab==='tecnica'&&<SeccionTecnica atletaId={id} />}
+
+      {tab==='twin' && <TwinAtleta atletaId={id} />}
+
         {tab==='tests' && (
         <SeccionTests atletaId={atletaId} modoAtleta={true} />
       )}
@@ -5137,7 +5142,7 @@ function SeccionPerfil({ atletaId }) {
   const Panel = ({ children, span, style, i=0 }) => (
     <div style={{
       gridColumn: span || 'auto',
-      background: 'linear-gradient(160deg, rgba(34,230,184,0.055), rgba(11,18,32,0.55))',
+      background: 'linear-gradient(160deg, rgba(255,255,255,0.035), rgba(11,18,32,0.55))',
       backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
       border: `1px solid ${GE.border}`, borderRadius: 28,
       padding: '22px 22px 20px', position: 'relative', overflow: 'hidden',
@@ -5168,12 +5173,25 @@ function SeccionPerfil({ atletaId }) {
     </div>
   )
 
-  const Chip = ({ Icon, label, value, sub, color=GE.green, empty, motivo }) => (
+  // Explicación corta debajo de cada panel: qué mide, por qué importa,
+  // cómo se lee. Sin esto, un número como "ACWR 1.29" no le dice nada a
+  // nadie -- la explicación es tan parte del dato como el número mismo.
+  const Nota = ({ children }) => (
+    <div style={{ fontSize:10.5, color:GE.text3, lineHeight:1.55, marginTop:14,
+      paddingTop:12, borderTop:`1px solid ${GE.border}` }}>{children}</div>
+  )
+
+  const Chip = ({ Icon, label, value, sub, color=GE.green, empty }) => (
     <div style={{
-      display:'flex', alignItems:'center', gap:10, padding:'11px 13px', borderRadius:16,
-      background:'rgba(255,255,255,0.03)', border:`1px solid ${GE.border}`, minWidth:0,
+      display:'flex', alignItems:'center', gap:10, padding: empty ? '9px 12px' : '11px 13px',
+      borderRadius:16, background:'rgba(255,255,255,0.03)', border:`1px solid ${GE.border}`, minWidth:0,
     }}>
-      {empty ? <Aprendiendo motivo={motivo}/> : (
+      {empty ? (
+        <>
+          <Brain size={14} color={GE.text3} style={{ flexShrink:0 }}/>
+          <span style={{ fontSize:10.5, color:GE.text3 }}>{label} — en aprendizaje</span>
+        </>
+      ) : (
         <>
           <div style={{ width:32, height:32, borderRadius:11, flexShrink:0, display:'flex',
             alignItems:'center', justifyContent:'center', background:`${color}1F` }}>
@@ -5421,6 +5439,12 @@ function SeccionPerfil({ atletaId }) {
               </div>
             </div>
           </div>
+          <Nota>
+            Este anillo resume qué tan bien está absorbiendo la carga reciente, cruzando tres señales:
+            <b style={{color:GE.text2}}> TSB</b> (fitness acumulado menos fatiga reciente — negativo de más es la antesala de una lesión o un bajón de rendimiento),
+            <b style={{color:GE.text2}}> ACWR</b> (si la carga de esta semana es proporcional a la del último mes; zona segura 0.8–1.3, fuera de ahí sube el riesgo ya sea por subir muy rápido o por perder forma), y
+            <b style={{color:GE.text2}}> Riesgo</b> (un puntaje de 0 a 100 armado con esas mismas señales, no una predicción de una caja negra — cuantas más señales de alarma activas, más alto). Verde no significa "puede entrenar más fuerte": significa que hoy no hay ninguna señal de alarma prendida.
+          </Nota>
         </Panel>
 
         {/* CÓMO ENTRENA — donut Baja/Media/Alta */}
@@ -5429,12 +5453,12 @@ function SeccionPerfil({ atletaId }) {
           {distribucion_zonas?.patron ? (
             <div style={{ display:'flex', alignItems:'center', gap:18 }}>
               <Donut segs={[
-                { val: distribucion_zonas.z_baja_pct,  color: GE.green },
-                { val: distribucion_zonas.z_media_pct, color: GE.cyan  },
+                { val: distribucion_zonas.z_baja_pct,  color: GE.cyan },
+                { val: distribucion_zonas.z_media_pct, color: GE.warn  },
                 { val: distribucion_zonas.z_alta_pct,  color: GE.danger},
               ]}/>
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {[['Baja',distribucion_zonas.z_baja_pct,GE.green],['Media',distribucion_zonas.z_media_pct,GE.cyan],['Alta',distribucion_zonas.z_alta_pct,GE.danger]].map(([l,v,c]) => (
+                {[['Baja',distribucion_zonas.z_baja_pct,GE.cyan],['Media',distribucion_zonas.z_media_pct,GE.warn],['Alta',distribucion_zonas.z_alta_pct,GE.danger]].map(([l,v,c]) => (
                   <div key={l} style={{ display:'flex', alignItems:'center', gap:6 }}>
                     <div style={{ width:7, height:7, borderRadius:'50%', background:c }}/>
                     <span style={{ fontSize:11.5, color:GE.text2 }}>{l}</span>
@@ -5447,9 +5471,15 @@ function SeccionPerfil({ atletaId }) {
           {patron_semanal?.dia_mas_activo && (
             <div style={{ display:'flex', gap:8, marginTop:16 }}>
               <Chip Icon={CalendarDays} label="Día top" value={patron_semanal.dia_mas_activo} color={GE.green}/>
-              <Chip Icon={Activity} label="Sesiones" value={patron_semanal.total_sesiones} sub="6 meses" color={GE.cyan}/>
+              <Chip Icon={Activity} label="Sesiones" value={patron_semanal.total_sesiones} sub="2 años" color={GE.cyan}/>
             </div>
           )}
+          <Nota>
+            Baja = aeróbico suave (a ritmo de charla), Media = umbral/tempo sostenido, Alta = series cortas muy intensas (VO₂max).
+            La ciencia del entrenamiento de resistencia dice que la mayoría del volumen debería ser Baja (70-80%) para construir
+            una base aeróbica sólida sin acumular fatiga de más — si Media o Alta dominan, hay riesgo de estancarse o quemarse
+            antes de llegar a la carrera importante.
+          </Nota>
         </Panel>
 
         {/* EVOLUCIÓN DE LA CARGA — curva glow */}
@@ -5470,6 +5500,11 @@ function SeccionPerfil({ atletaId }) {
               <GlowCurve valores={volumen_historico.km_por_mes} color={GE.green}/>
             </>
           ) : <Aprendiendo/>}
+          <Nota>
+            Volumen mensual (km) de los últimos meses. Sirve para ver si la progresión fue gradual (lo recomendado: no más
+            de ~10% de aumento por semana) o si hubo saltos bruscos — esos saltos son la causa más común de lesiones por
+            sobreuso, mucho más que el volumen total en sí.
+          </Nota>
         </Panel>
 
         {/* MEJORES MARCAS — medallas de vidrio */}
@@ -5479,50 +5514,84 @@ function SeccionPerfil({ atletaId }) {
             <div style={{ display:'flex', flexWrap:'wrap', gap:28, justifyContent:'space-around' }}>
               {medallas.map((m,i) => <Medalla key={i} {...m}/>)}
             </div>
+            <Nota>
+              Su mejor esfuerzo sostenido en ventanas estándar (5 y 20 minutos) por disciplina, de los últimos 2 años —
+              el mismo benchmark que se usa para calcular sus zonas de entrenamiento (FTP, pace umbral). Si estos números
+              mejoran con el tiempo, la forma física está subiendo de verdad, más allá de cómo se haya sentido un día puntual.
+            </Nota>
           </Panel>
         )}
 
-        {/* LO QUE NOAH DETECTÓ — chips + wireframe */}
+        {/* LO QUE NOAH DETECTÓ — chips + wireframe. Solo se muestran en
+            grande los insights que SÍ tienen dato; los que todavía no
+            tienen suficiente historial se resumen en una sola línea chica
+            al final (antes se repetía "NOAH está aprendiendo" hasta 8
+            veces, uno por insight -- quedaba pesado). */}
         <Panel span="1 / -1" i={4}>
           <PanelTitle Icon={Brain}>Lo que NOAH detectó</PanelTitle>
-          <div style={{ display:'flex', gap:20, alignItems:'center' }}>
-            <div style={{ flex:1, display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:10 }}>
-              <Chip Icon={Zap} label="TSB sensible" color="#A855F7"
-                empty={!punto_quiebre_tsb?.disponible} motivo={punto_quiebre_tsb?.motivo}
-                value={punto_quiebre_tsb?.disponible ? `${punto_quiebre_tsb.cambio_eficiencia_por_10_tsb_pct}%` : ''}
-                sub={punto_quiebre_tsb?.disponible ? 'por -10 TSB' : null}/>
-              <Chip Icon={Moon} label="HRV nocturno" color={GE.cyan}
-                empty={!firma_recuperacion?.disponible} motivo={firma_recuperacion?.motivo}
-                value={firma_recuperacion?.disponible ? firma_recuperacion.hrv_tras_carga_suave : ''}
-                sub={firma_recuperacion?.disponible ? `vs ${firma_recuperacion.hrv_tras_carga_fuerte} en carga fuerte` : null}/>
-              <Chip Icon={TrendingUp} label="Fase actual" color={fase_actual?.fase==='mejora'?GE.green:fase_actual?.fase==='declive'?GE.danger:GE.warn}
-                empty={!fase_actual?.disponible} motivo={fase_actual?.motivo}
-                value={fase_actual?.disponible ? fase_actual.fase : ''}
-                sub={fase_actual?.disponible ? `${fase_actual.cambio_ctl_pct>0?'+':''}${fase_actual.cambio_ctl_pct}% CTL` : null}/>
-              <Chip Icon={BarChart3} label="Factor #1 (RF)" color={GE.green}
-                empty={!analisis_random_forest?.disponible || !analisis_random_forest.factores_mas_importantes?.length}
-                motivo={analisis_random_forest?.motivo}
-                value={analisis_random_forest?.factores_mas_importantes?.[0]?.factor}
-                sub={analisis_random_forest?.factores_mas_importantes?.[0] ? `${analisis_random_forest.factores_mas_importantes[0].importancia_pct}% peso` : null}/>
-              <Chip Icon={Activity} label="Más desgaste" color={GE.cyan}
-                empty={!disciplina_mas_desgaste?.disponible}
-                value={disciplina_mas_desgaste?.disciplina_mas_desgaste}
-                sub={disciplina_mas_desgaste?.disponible ? 'mayor decoupling' : null}/>
-              <Chip Icon={CalendarDays} label="Mejor día" color={GE.green}
-                empty={!rendimiento_por_dia?.disponible}
-                value={rendimiento_por_dia?.mejor_dia}
-                sub={rendimiento_por_dia?.disponible ? 'a igual fatiga' : null}/>
-              <Chip Icon={TrendingUp} label="Eficiencia técnica" color="#A855F7"
-                empty={!progreso_tecnico?.disponible} motivo={progreso_tecnico?.motivo}
-                value={progreso_tecnico?.disponible ? progreso_tecnico.tendencia_eficiencia : ''}
-                sub={progreso_tecnico?.disponible ? 'running, últimos meses' : null}/>
-              <Chip Icon={Zap} label="Técnica bajo carga" color={GE.warn}
-                empty={!umbral_tss_tecnica?.disponible} motivo={umbral_tss_tecnica?.motivo}
-                value={umbral_tss_tecnica?.disponible ? umbral_tss_tecnica.deterioro_decoupling_por_100_tss_previo : ''}
-                sub={umbral_tss_tecnica?.disponible ? 'decoupling / +100 TSS previo' : null}/>
-            </div>
-            <WireframeAtleta/>
-          </div>
+          {(() => {
+            const candidatos = [
+              punto_quiebre_tsb?.disponible && { Icon:Zap, label:'TSB sensible', color:'#A855F7',
+                value:`${punto_quiebre_tsb.cambio_eficiencia_por_10_tsb_pct}%`, sub:'por -10 TSB',
+                nota:'Cuánto cae su eficiencia (ritmo/esfuerzo) por cada 10 puntos que baja el TSB. Le dice qué tan sensible es SU cuerpo a la fatiga acumulada.' },
+              firma_recuperacion?.disponible && { Icon:Moon, label:'HRV nocturno', color:GE.cyan,
+                value:firma_recuperacion.hrv_tras_carga_suave, sub:`vs ${firma_recuperacion.hrv_tras_carga_fuerte} en carga fuerte`,
+                nota:'Compara su HRV la noche después de una sesión suave vs. una fuerte. Diferencia grande = su sistema nervioso reacciona fuerte a la carga, hay que cuidar el sueño esos días.' },
+              fase_actual?.disponible && { Icon:TrendingUp, label:'Fase actual',
+                color: fase_actual.fase==='mejora'?GE.green:fase_actual.fase==='declive'?GE.danger:GE.warn,
+                value:fase_actual.fase, sub:`${fase_actual.cambio_ctl_pct>0?'+':''}${fase_actual.cambio_ctl_pct}% CTL`,
+                nota:'Si su fitness acumulado (CTL) viene subiendo, bajando o estable. "Declive" puede ser un taper buscado a propósito, o pérdida de consistencia — hay que mirar el contexto de la carrera.' },
+              (analisis_random_forest?.disponible && analisis_random_forest.factores_mas_importantes?.[0]) && {
+                Icon:BarChart3, label:'Factor que más pesa', color:GE.green,
+                value:analisis_random_forest.factores_mas_importantes[0].factor,
+                sub:`${analisis_random_forest.factores_mas_importantes[0].importancia_pct}% de peso`,
+                nota:'De todo lo que se midió (TSB, fatiga, deriva de cadencia), qué explica mejor SUS mejores y peores días — calculado con sus propios datos, no una regla genérica.' },
+              disciplina_mas_desgaste?.disponible && { Icon:Activity, label:'Más desgaste', color:GE.cyan,
+                value:disciplina_mas_desgaste.disciplina_mas_desgaste, sub:'mayor decoupling',
+                nota:'La disciplina donde más se separan el esfuerzo (FC) y el rendimiento real (ritmo/potencia) — indica dónde se fatiga más rápido en relación al esfuerzo que hace.' },
+              rendimiento_por_dia?.disponible && { Icon:CalendarDays, label:'Mejor día', color:GE.green,
+                value:rendimiento_por_dia.mejor_dia, sub:'a igual fatiga',
+                nota:'En qué día de la semana rinde mejor, comparando solo momentos con el mismo nivel de fatiga — útil para poner ahí las sesiones clave (series, fondo largo).' },
+              progreso_tecnico?.disponible && { Icon:TrendingUp, label:'Eficiencia técnica', color:'#A855F7',
+                value:progreso_tecnico.tendencia_eficiencia, sub:'running, últimos meses',
+                nota:'Tendencia del ritmo por latido de corazón en running. Si mejora, corre más rápido con el mismo esfuerzo cardíaco — la señal más confiable de progreso aeróbico real.' },
+              umbral_tss_tecnica?.disponible && { Icon:Zap, label:'Técnica bajo carga', color:GE.warn,
+                value:`${umbral_tss_tecnica.deterioro_decoupling_por_100_tss_previo} pts`, sub:'decoupling / +100 TSS previo',
+                nota:'Cuánto empeora su decoupling cuando entrena con mucha carga acumulada los días previos. Si empeora fuerte, la fatiga le rompe la técnica antes que el motor aeróbico.' },
+            ].filter(Boolean)
+            const total = 8
+            const faltan = total - candidatos.length
+            if (!candidatos.length) {
+              return <Aprendiendo motivo="Todavía no hay suficiente historial de este atleta para estos análisis."/>
+            }
+            return (
+              <div>
+                <div style={{ display:'flex', gap:20, alignItems:'flex-start' }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:10 }}>
+                      {candidatos.map((c,i) => <Chip key={i} {...c}/>)}
+                    </div>
+                    {faltan > 0 && (
+                      <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:12 }}>
+                        <Brain size={12} color={GE.text3}/>
+                        <span style={{ fontSize:10.5, color:GE.text3 }}>
+                          NOAH sigue aprendiendo {faltan} {faltan===1?'análisis más':'análisis más'} de este atleta.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <WireframeAtleta/>
+                </div>
+                <Nota>
+                  {candidatos.map((c,i) => (
+                    <div key={i} style={{ marginBottom:6 }}>
+                      <b style={{ color:GE.text2 }}>{c.label}:</b> {c.nota}
+                    </div>
+                  ))}
+                </Nota>
+              </div>
+            )
+          })()}
         </Panel>
 
         {/* RECUPERACIÓN */}
@@ -5545,6 +5614,10 @@ function SeccionPerfil({ atletaId }) {
               <div style={{ fontSize:10, color:GE.text3, marginTop:8 }}>{dias_recuperacion.muestras} casos analizados</div>
             </div>
           ) : <Aprendiendo/>}
+          <Nota>
+            Días promedio que tarda en volver a un TSB neutro/positivo después de una sesión exigente — su tiempo de
+            recuperación real, medido con sus propios datos, no con una tabla genérica de edad o nivel.
+          </Nota>
         </Panel>
 
         {/* CONSISTENCIA */}
@@ -5558,6 +5631,11 @@ function SeccionPerfil({ atletaId }) {
               </div>
             </div>
           ) : <Aprendiendo/>}
+          <Nota>
+            Qué tan estable fue su carga semanal en el tiempo. La consistencia predice mejoras a largo plazo mucho mejor
+            que semanas muy fuertes seguidas de bajones — sostener un volumen parecido semana a semana rinde más que
+            picos aislados.
+          </Nota>
         </Panel>
 
         {/* ESTADO GENERAL */}
@@ -5580,6 +5658,11 @@ function SeccionPerfil({ atletaId }) {
               </div>
             </div>
           )}
+          <Nota>
+            Sesiones cuyo decoupling se salió mucho de lo normal PARA ESTE atleta — pueden avisar un mal día, una
+            enfermedad incubándose, o un error del sensor. Que no haya ninguna es buena señal, no significa que no
+            haya nada para revisar en otras secciones.
+          </Nota>
         </Panel>
 
         {/* RACHAS DE FATIGA — timeline */}
@@ -5593,6 +5676,55 @@ function SeccionPerfil({ atletaId }) {
               <span style={{ fontSize:12.5, color:GE.text }}>Sin rachas de fatiga sostenida detectadas — buena señal.</span>
             </div>
           )}
+          <Nota>
+            Períodos donde el TSB se mantuvo negativo de forma sostenida (no solo un día malo aislado). Rachas largas y
+            frecuentes son la señal más directa de que el plan no está dejando margen de recuperación suficiente — vale
+            la pena revisar qué pasó en el bloque de entrenamiento de cada racha marcada.
+          </Nota>
+        </Panel>
+
+        {/* EN RESUMEN — único bloque de texto de toda la sección: un
+            párrafo corto que ata los datos reales de arriba en palabras
+            simples, para quien prefiera leerlo en vez de interpretar los
+            gráficos. Se arma dinámicamente solo con datos disponibles. */}
+        <Panel span="1 / -1" i={9}>
+          <PanelTitle Icon={ClipboardList}>En resumen</PanelTitle>
+          <p style={{ fontSize:13, lineHeight:1.7, color:GE.text2, margin:0, maxWidth:780 }}>
+            {(() => {
+              const frases = []
+              if (predicciones_ml?.disponible) {
+                frases.push(`Hoy el modelo lo describe como "${predicciones_ml.interpretacion}"${predicciones_ml.prob_riesgo_sobrecarga_pct!=null?`, con ${predicciones_ml.prob_riesgo_sobrecarga_pct}% de riesgo de sobrecarga estimado`:''}.`)
+              }
+              if (acwr?.disponible) {
+                frases.push(`Su ACWR actual es ${acwr.actual} (zona ${acwr.zona}), lo que indica cómo viene su carga aguda respecto a la crónica.`)
+              }
+              if (distribucion_zonas?.patron) {
+                frases.push(`Entrena mayormente en zona ${distribucion_zonas.z_baja_pct>=distribucion_zonas.z_media_pct && distribucion_zonas.z_baja_pct>=distribucion_zonas.z_alta_pct?'baja':distribucion_zonas.z_media_pct>=distribucion_zonas.z_alta_pct?'media':'alta'} (${distribucion_zonas.z_baja_pct}% baja, ${distribucion_zonas.z_media_pct}% media, ${distribucion_zonas.z_alta_pct}% alta)${patron_semanal?.dia_mas_activo?`, y su día más activo suele ser el ${patron_semanal.dia_mas_activo}`:''}.`)
+              }
+              if (dias_recuperacion?.disponible) {
+                frases.push(`En promedio tarda ${dias_recuperacion.dias_promedio_recuperacion} días en recuperarse tras una sesión exigente.`)
+              }
+              if (consistencia?.disponible) {
+                frases.push(`Su consistencia general es ${consistencia.nivel}, sosteniendo unos ${consistencia.tss_semanal_promedio} TSS por semana en las últimas ${consistencia.semanas_analizadas} semanas.`)
+              }
+              if (rachas_fatiga?.disponible && rachas_fatiga.rachas?.length > 0) {
+                frases.push(`Tuvo ${rachas_fatiga.rachas.length} racha${rachas_fatiga.rachas.length>1?'s':''} de fatiga sostenida en el período analizado.`)
+              } else if (rachas_fatiga?.disponible) {
+                frases.push('No se detectaron rachas de fatiga sostenida en el período analizado.')
+              }
+              const mejorMarca = medallas[0]
+              if (mejorMarca) {
+                frases.push(`Su mejor marca reciente es ${mejorMarca.valor} en ${mejorMarca.sub}.`)
+              }
+              if (fase_actual?.disponible) {
+                frases.push(`Su fase actual de forma física es de ${fase_actual.fase}.`)
+              }
+              if (!frases.length) {
+                return 'NOAH todavía no tiene suficiente historial de este atleta para armar un resumen. A medida que registre más sesiones, este párrafo se va a completar solo.'
+              }
+              return frases.join(' ')
+            })()}
+          </p>
         </Panel>
 
       </div>
