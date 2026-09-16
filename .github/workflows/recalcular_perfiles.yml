@@ -1,0 +1,32 @@
+name: Recalcular perfiles de atletas
+
+on:
+  schedule:
+    # Todos los lunes a las 05:00 UTC (02:00 Argentina). Alcanza de sobra:
+    # estos análisis (patrón semanal, ACWR, zonas de 2 años, tendencias)
+    # no cambian de un día para el otro. Si algún atleta necesita un
+    # recálculo puntual antes del lunes, se puede disparar a mano con
+    # "Run workflow" desde la pestaña Actions, o corriendo
+    # generar_perfil_atleta.py --atleta N en la PC.
+    - cron: '0 5 * * 1'
+  workflow_dispatch: {}  # permite tocar "Run workflow" a mano desde GitHub también
+
+jobs:
+  recalcular:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repo
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install psycopg2-binary --break-system-packages || pip install psycopg2-binary
+
+      - name: Recalcular perfil de todos los atletas
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python generar_perfil_atleta.py --todos
