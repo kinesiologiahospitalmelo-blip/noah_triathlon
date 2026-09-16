@@ -22,7 +22,7 @@ def _dia_semana_es(fecha_str):
         return None
 
 
-def _patron_semanal(conn, atleta_id, meses=600):
+def _patron_semanal(conn, atleta_id, meses=24):
     desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     filas = conn.execute("""
         SELECT fecha, tss_total, sport
@@ -49,7 +49,7 @@ def _patron_semanal(conn, atleta_id, meses=600):
     return {'por_dia': resultado, 'dia_mas_activo': dia_mas_activo, 'total_sesiones': len(filas)}
 
 
-def _distribucion_zonas(conn, atleta_id, meses=600):
+def _distribucion_zonas(conn, atleta_id, meses=24):
     desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     fila = conn.execute("""
         SELECT SUM(tss_z12) as z12, SUM(tss_z34) as z34, SUM(tss_z56) as z56
@@ -107,15 +107,16 @@ def _ctl_atl_tsb_actual(conn, atleta_id):
             'tsb': round(tsb,1) if tsb else None, 'estado': estado}
 
 
-def _mejores_marcas(conn, atleta_id):
+def _mejores_marcas(conn, atleta_id, meses=24):
+    desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     fila = conn.execute("""
         SELECT
             MIN(bio_mejor_ritmo_5min) FILTER (WHERE sport='running')  as mejor_ritmo_run,
             MAX(bio_mejor_potencia_5min) FILTER (WHERE sport='cycling') as mejor_pot_5min,
             MAX(bio_potencia_20min) FILTER (WHERE sport='cycling')      as mejor_pot_20min,
             MIN(bio_mejor_ritmo_5min) FILTER (WHERE sport='swimming') as mejor_ritmo_swim
-        FROM sesiones WHERE atleta_id=%s
-    """, (atleta_id,)).fetchone()
+        FROM sesiones WHERE atleta_id=%s AND fecha >= %s
+    """, (atleta_id, desde)).fetchone()
 
     if not fila:
         return {}
@@ -134,18 +135,19 @@ def _mejores_marcas(conn, atleta_id):
     }
 
 
-def _punto_quiebre_tsb(conn, atleta_id):
+def _punto_quiebre_tsb(conn, atleta_id, meses=24):
     """
     Regresion lineal REAL (no baldes genericos): cuanto cae exactamente
     su eficiencia por cada 10 puntos que baja el TSB -- un numero propio
-    de este atleta, calculado sobre TODO su historial disponible.
+    de este atleta, calculado sobre los ultimos `meses` (rolling, no fijo).
     """
+    desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     filas = conn.execute("""
         SELECT tsb, bio_efficiency_factor
         FROM sesiones
-        WHERE atleta_id=%s AND sport='running' AND tsb IS NOT NULL
+        WHERE atleta_id=%s AND fecha >= %s AND sport='running' AND tsb IS NOT NULL
           AND bio_efficiency_factor IS NOT NULL
-    """, (atleta_id,)).fetchall()
+    """, (atleta_id, desde)).fetchall()
 
     if len(filas) < 20:
         return {'disponible': False, 'motivo': 'no hay suficientes sesiones con TSB y eficiencia para calcularlo'}
@@ -174,19 +176,22 @@ def _punto_quiebre_tsb(conn, atleta_id):
     }
 
 
-def _analisis_random_forest_rendimiento(conn, atleta_id):
+def _analisis_random_forest_rendimiento(conn, atleta_id, meses=24):
     """
-    Random Forest entrenado sobre TODO el historial de running: que
-    factores predicen mejor su rendimiento (eficiencia) -- hallazgos
-    reales de su propio historial, no obviedades genericas.
+    Random Forest chico (200 arboles, profundidad maxima 5) sobre los
+    ultimos `meses` de running: que factores predicen mejor su
+    rendimiento (eficiencia) -- hallazgos reales de su propio historial,
+    no obviedades genericas. Acotado a rolling window para que no mezcle
+    un atleta de hace 2 años con el de hoy.
     """
+    desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     filas = conn.execute("""
         SELECT fecha, tsb, atl, ctl, bio_cadencia_deriva_pct, bio_efficiency_factor
         FROM sesiones
-        WHERE atleta_id=%s AND sport='running'
+        WHERE atleta_id=%s AND fecha >= %s AND sport='running'
           AND tsb IS NOT NULL AND atl IS NOT NULL AND ctl IS NOT NULL
           AND bio_efficiency_factor IS NOT NULL
-    """, (atleta_id,)).fetchall()
+    """, (atleta_id, desde)).fetchall()
 
     if len(filas) < 40:
         return {'disponible': False, 'motivo': 'se necesitan al menos 40 sesiones con datos completos'}
@@ -235,7 +240,7 @@ def _analisis_random_forest_rendimiento(conn, atleta_id):
     }
 
 
-def _consistencia(conn, atleta_id, meses=600):
+def _consistencia(conn, atleta_id, meses=24):
     desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     filas = conn.execute("""
         SELECT fecha, tss_total FROM sesiones
@@ -278,86 +283,110 @@ def _consistencia(conn, atleta_id, meses=600):
 
 def _predicciones_ml(conn, atleta_id):
     """
-    Carga el modelo YA ENTRENADO de este atleta (predictor_respuesta.pkl)
-    y le pide predicciones reales sobre su estado actual -- no
-    estadistica descriptiva, es el modelo de ML aplicado en vivo.
+    Estado actual + proyeccion a 7 dias, calculado con reglas explicables
+    y la formula estandar de Banister (CTL/ATL/TSB) -- la misma que usa
+    TrainingPeaks para "proyectar forma". NO depende de un modelo
+    entrenado por atleta: funciona desde la primera sesion cargada, sin
+    pickle, sin joblib, sin entrenamiento previo. Nunca inventa una
+    "probabilidad de ML" -- lo que se llama abajo "riesgo" es un score
+    compuesto de 0 a 100 armado con señales reales (TSB, ACWR, variacion
+    de carga), y cada señal que lo compone queda explicita en
+    `factores_que_mas_pesan_en_su_riesgo`.
+
+    Cuando haya masa critica de atletas (decenas, con meses de historial
+    cada uno), este es el punto donde se conecta el NOAHFoundationModel
+    de noah_ml.py (Foundation + fine-tune por atleta) como reemplazo de
+    este calculo -- manteniendo el mismo shape de salida para no romper
+    el frontend. Hoy, con pocos atletas, un modelo asi no tiene con que
+    generalizar y este calculo por reglas es la opcion mas confiable.
     """
-    import os
+    estado = _ctl_atl_tsb_actual(conn, atleta_id)
+    if estado.get('ctl') is None:
+        return {'disponible': False, 'motivo': 'no hay CTL/ATL/TSB calculado todavía para este atleta'}
 
-    # FIX: se invierte el orden -- primero se prepara el dataset (pandas),
-    # RECIEN DESPUES se carga el modelo con joblib. Se confirmo con pruebas
-    # aisladas que construir_dataset() funciona perfecto solo, pero se
-    # colgaba sin error cuando corria justo despues de joblib.load() --
-    # un conflicto de hilos conocido entre joblib/sklearn y numpy/pandas
-    # en Windows. Invertir el orden evita el conflicto.
-    try:
-        from noah_ml import construir_dataset
-        df = construir_dataset(conn, atleta_id)
-    except Exception as e:
-        return {'disponible': False, 'motivo': f'error preparando datos: {e}'}
+    ctl, atl, tsb = estado['ctl'], estado['atl'], estado['tsb']
 
-    if df is None or df.empty:
-        return {'disponible': False, 'motivo': 'no hay datos suficientes para evaluar'}
+    acwr_data = _acwr(conn, atleta_id)
+    acwr_actual = acwr_data.get('actual') if acwr_data.get('disponible') else None
 
-    ultima_fila = df.iloc[-1]
-    estado = {col: ultima_fila[col] for col in df.columns if col != 'fecha'}
+    # TSS promedio de los ultimos 7 dias (para la proyeccion) y de los
+    # 7 dias previos (para medir si la carga esta acelerando o frenando).
+    desde_14 = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
+    filas = conn.execute("""
+        SELECT fecha, tss_total FROM sesiones
+        WHERE atleta_id=%s AND fecha >= %s
+          AND (fuente IS NULL OR fuente NOT IN ('prescripcion','simulacion','generada'))
+    """, (atleta_id, desde_14)).fetchall()
+    tss_por_dia = {}
+    for fecha, tss in filas:
+        d = fecha[:10]
+        tss_por_dia[d] = tss_por_dia.get(d, 0) + (tss or 0)
+    hoy = datetime.now()
+    tss_ult_7 = sum(tss_por_dia.get((hoy - timedelta(days=i)).strftime('%Y-%m-%d'), 0) for i in range(7))
+    tss_prev_7 = sum(tss_por_dia.get((hoy - timedelta(days=i)).strftime('%Y-%m-%d'), 0) for i in range(7, 14))
+    tss_dia_promedio = tss_ult_7 / 7
 
-    try:
-        import joblib
-    except ImportError:
-        return {'disponible': False, 'motivo': 'falta la libreria joblib'}
+    # Proyeccion Banister a 7 dias: si mantiene el promedio diario de
+    # carga de la ultima semana, donde queda su CTL/ATL/TSB.
+    ctl_p, atl_p = ctl, atl
+    for _ in range(7):
+        ctl_p = ctl_p + (tss_dia_promedio - ctl_p) / 42
+        atl_p = atl_p + (tss_dia_promedio - atl_p) / 7
+    tsb_predicho_7d = round(ctl_p - atl_p, 1)
+    ctl_predicho_7d = round(ctl_p, 1)
 
-    raiz = os.path.dirname(os.path.abspath(__file__))
-    ruta_modelo = os.path.join(raiz, 'noah_modelos', f'atleta_{atleta_id}', 'predictor_respuesta.pkl')
-    if not os.path.exists(ruta_modelo):
-        return {'disponible': False, 'motivo': f'este atleta todavía no tiene un modelo entrenado (buscado en {ruta_modelo})'}
+    # Score de riesgo (0-100): suma de señales reales, cada una acotada
+    # y documentada -- no es una "probabilidad" de un modelo, es una
+    # heuristica transparente sobre 3 variables validadas en ciencias
+    # del deporte (TSB, ACWR, variacion semanal de carga).
+    riesgo = 0
+    factores = []
 
-    try:
-        modelo = joblib.load(ruta_modelo)
-    except Exception as e:
-        return {'disponible': False, 'motivo': f'error cargando el modelo: {e}'}
+    if tsb < -25:
+        riesgo += 40; factores.append(f'TSB muy negativo ({tsb})')
+    elif tsb < -15:
+        riesgo += 25; factores.append(f'TSB negativo ({tsb})')
+    elif tsb < -5:
+        riesgo += 10
 
-    if not getattr(modelo, 'entrenado', False):
-        return {'disponible': False, 'motivo': 'el modelo de este atleta no llegó a entrenarse'}
+    if acwr_actual is not None:
+        if acwr_actual > 1.5:
+            riesgo += 35; factores.append(f'ACWR en zona de riesgo alto ({acwr_actual})')
+        elif acwr_actual > 1.3:
+            riesgo += 18; factores.append(f'ACWR elevado ({acwr_actual})')
+        elif acwr_actual < 0.8:
+            riesgo += 8; factores.append(f'ACWR bajo, posible desentrenamiento ({acwr_actual})')
 
-    try:
-        pred = modelo.predecir(estado)
-    except Exception as e:
-        return {'disponible': False, 'motivo': f'error en predecir(): {type(e).__name__}: {e}'}
+    if tss_prev_7 > 0:
+        variacion_pct = round(((tss_ult_7 - tss_prev_7) / tss_prev_7) * 100, 1)
+        if variacion_pct > 40:
+            riesgo += 15; factores.append(f'la carga subió {variacion_pct}% respecto a la semana previa')
 
-    if not pred.get('disponible'):
-        return {'disponible': False, 'motivo': 'el modelo no pudo generar una predicción'}
+    riesgo = max(0, min(100, riesgo))
 
-    importancias = {}
-    try:
-        importancias = modelo.importancia_features()
-    except Exception:
-        pass
+    if riesgo >= 55:
+        semaforo = 'rojo'
+    elif riesgo >= 28:
+        semaforo = 'amarillo'
+    else:
+        semaforo = 'verde'
 
-    # Traducir los nombres tecnicos de features a texto legible
-    NOMBRES_LEGIBLES = {
-        'ctl': 'fitness acumulado (CTL)', 'atl': 'fatiga reciente (ATL)',
-        'tsb': 'frescura (TSB)', 'tss_7d': 'carga de la semana',
-        'hrv_7d_avg': 'HRV promedio semanal', 'stress_7d_avg': 'estrés promedio semanal',
-        'sleep_7d_avg': 'sueño promedio semanal', 'hrv_ratio_7d': 'relación de HRV semanal',
-        'delta_hrv': 'variación diaria de HRV', 'sesion_intensa': 'sesiones intensas recientes',
-        'tss_dia': 'carga del día', 'hrv_rmssd': 'HRV del día', 'stress_avg': 'estrés del día',
-        'sleep_h': 'horas de sueño',
-    }
-    factores_riesgo = []
-    if importancias.get('riesgo'):
-        top3 = list(importancias['riesgo'].items())[:3]
-        factores_riesgo = [NOMBRES_LEGIBLES.get(k, k) for k, v in top3]
+    if semaforo == 'rojo':
+        interpretacion = 'Carga elevada — señales claras de riesgo de sobrecarga'
+    elif semaforo == 'amarillo':
+        interpretacion = 'Absorción moderada — conviene monitorear de cerca'
+    else:
+        interpretacion = 'Buena absorción de la carga actual'
 
     return {
         'disponible': True,
-        'semaforo': pred.get('semaforo'),
-        'interpretacion': pred.get('interpretacion'),
-        'prob_riesgo_sobrecarga_pct': round(pred.get('prob_riesgo_sobrecarga', 0) * 100, 1) if pred.get('prob_riesgo_sobrecarga') is not None else None,
-        'prob_buena_absorcion_pct': round(pred.get('prob_absorcion', 0) * 100, 1) if pred.get('prob_absorcion') is not None else None,
-        'ctl_predicho_7d': pred.get('ctl_predicho_7d'),
-        'tsb_predicho_7d': pred.get('tsb_predicho_7d'),
-        'factores_que_mas_pesan_en_su_riesgo': factores_riesgo,
+        'semaforo': semaforo,
+        'interpretacion': interpretacion,
+        'prob_riesgo_sobrecarga_pct': riesgo,
+        'prob_buena_absorcion_pct': round(100 - riesgo, 1),
+        'ctl_predicho_7d': ctl_predicho_7d,
+        'tsb_predicho_7d': tsb_predicho_7d,
+        'factores_que_mas_pesan_en_su_riesgo': factores,
     }
 
 
@@ -418,7 +447,7 @@ def _acwr(conn, atleta_id, dias_historial=120):
     return {'disponible': True, 'actual': actual, 'zona': zona, 'historial': historial_grafico}
 
 
-def _progreso_tecnico(conn, atleta_id, meses=600):
+def _progreso_tecnico(conn, atleta_id, meses=24):
     """Evolucion mensual de eficiencia y decoupling en running -- progreso real, no solo volumen."""
     desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     filas = conn.execute("""
@@ -458,14 +487,15 @@ def _progreso_tecnico(conn, atleta_id, meses=600):
             'tendencia_eficiencia': tendencia_ef}
 
 
-def _marcas_con_contexto(conn, atleta_id):
+def _marcas_con_contexto(conn, atleta_id, meses=24):
     """Su mejor marca, cruzada con el TSB de ese dia -- para saber si fue genuina o 'prestada'."""
+    desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     fila = conn.execute("""
         SELECT fecha, bio_mejor_ritmo_5min, tsb
         FROM sesiones
-        WHERE atleta_id=%s AND sport='running' AND bio_mejor_ritmo_5min IS NOT NULL AND tsb IS NOT NULL
+        WHERE atleta_id=%s AND fecha >= %s AND sport='running' AND bio_mejor_ritmo_5min IS NOT NULL AND tsb IS NOT NULL
         ORDER BY bio_mejor_ritmo_5min ASC LIMIT 1
-    """, (atleta_id,)).fetchone()
+    """, (atleta_id, desde)).fetchone()
 
     if not fila:
         return {'disponible': False}
@@ -485,7 +515,7 @@ def _marcas_con_contexto(conn, atleta_id):
             'tsb_ese_dia': round(tsb, 1), 'contexto': contexto}
 
 
-def _rachas_fatiga(conn, atleta_id, umbral=-20, meses=600):
+def _rachas_fatiga(conn, atleta_id, umbral=-20, meses=24):
     """Rachas de TSB muy negativo sostenido -- distinto de un mal dia puntual."""
     desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     filas = conn.execute("""
@@ -516,7 +546,7 @@ def _rachas_fatiga(conn, atleta_id, umbral=-20, meses=600):
     return {'disponible': True, 'rachas': rachas[-5:], 'total_rachas': len(rachas)}
 
 
-def _volumen_historico(conn, atleta_id, meses=600):
+def _volumen_historico(conn, atleta_id, meses=24):
     """Volumen (km) mes a mes -- para ver si crece o se estanca en el tiempo."""
     desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     filas = conn.execute("""
@@ -537,7 +567,7 @@ def _volumen_historico(conn, atleta_id, meses=600):
             'km_por_mes': [round(por_mes[m]['km'], 1) for m in meses_ordenados]}
 
 
-def _sesiones_anomalas(conn, atleta_id, meses=600):
+def _sesiones_anomalas(conn, atleta_id, meses=24):
     """Sesiones con decoupling muy fuera de lo normal para este atleta -- posible enfermedad, mal dia, o error del reloj."""
     desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     filas = conn.execute("""
@@ -558,7 +588,7 @@ def _sesiones_anomalas(conn, atleta_id, meses=600):
     return {'disponible': True, 'anomalas': anomalas[:5], 'total': len(anomalas)}
 
 
-def _umbral_tss_tecnica(conn, atleta_id, meses=600):
+def _umbral_tss_tecnica(conn, atleta_id, meses=24):
     """
     Regresion lineal REAL (no baldes): cuanto se deteriora exactamente
     su decoupling del dia siguiente por cada 100 puntos de TSS del dia
@@ -613,7 +643,7 @@ def _umbral_tss_tecnica(conn, atleta_id, meses=600):
     }
 
 
-def _dias_recuperacion(conn, atleta_id, meses=600):
+def _dias_recuperacion(conn, atleta_id, meses=24):
     """Cuantos dias tarda en volver el TSB a un nivel razonable tras una sesion fuerte."""
     desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     filas = conn.execute("""
@@ -647,7 +677,7 @@ def _dias_recuperacion(conn, atleta_id, meses=600):
             'muestras': len(recuperaciones)}
 
 
-def _disciplina_mas_desgaste(conn, atleta_id, meses=600):
+def _disciplina_mas_desgaste(conn, atleta_id, meses=24):
     """Que disciplina acumula mas señales de sobrecarga (deriva de decoupling), para triatletas."""
     desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     resultado = {}
@@ -686,7 +716,7 @@ def _fase_actual(conn, atleta_id):
     return {'disponible': True, 'fase': fase, 'cambio_ctl_pct': cambio_pct}
 
 
-def _rendimiento_por_dia_controlado(conn, atleta_id, meses=600):
+def _rendimiento_por_dia_controlado(conn, atleta_id, meses=24):
     """Rendimiento por dia de semana, SOLO comparando dias con TSB similar (control justo)."""
     desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     filas = conn.execute("""
@@ -709,7 +739,7 @@ def _rendimiento_por_dia_controlado(conn, atleta_id, meses=600):
     return {'disponible': True, 'promedios_por_dia': promedios, 'mejor_dia': mejor[0]}
 
 
-def _firma_recuperacion(conn, atleta_id, meses=600):
+def _firma_recuperacion(conn, atleta_id, meses=24):
     """HRV nocturno tras cargas suaves vs fuertes -- su propia cinetica de recuperacion."""
     desde = (datetime.now() - timedelta(days=meses*30)).strftime('%Y-%m-%d')
     filas_tss = conn.execute("""
