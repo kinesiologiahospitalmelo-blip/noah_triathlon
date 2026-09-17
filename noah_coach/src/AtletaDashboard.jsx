@@ -199,6 +199,18 @@ function fmtPaceStr(pace) {
   return `${m}:${String(s).padStart(2,'0')} /km`
 }
 function getDiaKey(f) { return f ? f.slice(0, 10) : null }
+// ¿Hay una sesión prescripta exigente (TSS >= 70) al día siguiente de
+// `fecha`? Se usa para avisarle a la recomendación de nutrición
+// post-entreno si conviene cargar carbohidratos fuerte en las próximas 4h
+// o alcanza con una comida normal -- antes este dato nunca se calculaba y
+// la recomendación siempre daba el mensaje genérico "depende".
+function hayExigenteManana(sesiones, fecha) {
+  if (!sesiones?.length || !fecha) return false
+  const manana = new Date(fecha + 'T12:00:00')
+  manana.setDate(manana.getDate() + 1)
+  const mananaKey = manana.toISOString().slice(0, 10)
+  return sesiones.some(s => getDiaKey(s.fecha) === mananaKey && (s.tss || 0) >= 70)
+}
 function fmtPace(p) {
   if (!p) return '--'
   const m = Math.floor(p), s = Math.round((p - m) * 60)
@@ -888,16 +900,17 @@ function SesionRealizada({ sesionReal, sesionPresc, sport }) {
 
 
 // ── Vista de actividad realizada — estilo Garmin/TrainingPeaks ───────────────
-function NutricionPost({ atletaId, fecha }) {
+function NutricionPost({ atletaId, fecha, proxima24h }) {
   const [nut, setNut] = useState(null)
 
   useEffect(() => {
     if (!atletaId || !fecha) return
-    authFetch(`${API}/atletas/${atletaId}/nutricion_post?fecha=${fecha}`)
+    const q = proxima24h != null ? `&proxima_24h=${proxima24h}` : ''
+    authFetch(`${API}/atletas/${atletaId}/nutricion_post?fecha=${fecha}${q}`)
       .then(r=>r.json())
       .then(r=>setNut(r.data))
       .catch(()=>setNut(null))
-  }, [atletaId, fecha])
+  }, [atletaId, fecha, proxima24h])
 
   if (!nut || nut.sin_actividad) return null
 
@@ -912,9 +925,14 @@ function NutricionPost({ atletaId, fecha }) {
   if (!nut.recuperacion) return null
 
   const r = nut.recuperacion
+  // Color propio para esta card (no NOAH_C.success): ese verde se usa en
+  // el resto de la app para "completado / buena señal" -- reutilizarlo acá
+  // confundía nutrición con un estado de cumplimiento. Celeste, en línea
+  // con el ícono de hidratación.
+  const NUT_COLOR = '#38BDF8', NUT_COLOR_L = 'rgba(56,189,248,0.12)'
   return (
-    <div style={{ marginTop:12, padding:'12px 14px', background:NOAH_C.successL,
-      border:`1px solid ${NOAH_C.success}40`, borderRadius:8, fontSize:12, color:NOAH_C.success, lineHeight:1.6 }}>
+    <div style={{ marginTop:12, padding:'12px 14px', background:NUT_COLOR_L,
+      border:`1px solid ${NUT_COLOR}40`, borderRadius:8, fontSize:12, color:NUT_COLOR, lineHeight:1.6 }}>
       <div style={{ fontWeight:700, marginBottom:6, display:'flex', alignItems:'center', gap:5 }}>
         <GlassWater size={14}/> Recuperación post-entreno
       </div>
@@ -1229,9 +1247,14 @@ function SesionDelDia({ atletaId, presc }) {
         </div>
       )}
 
-      {/* Nutricion post-entreno -- solo tiene sentido si hubo actividad ese día */}
+      {/* Nutricion post-entreno -- solo tiene sentido si hubo actividad ese día.
+          Le pasamos si hay una sesión exigente al día siguiente (ya la
+          tenemos en `sesiones`, la prescripción de la semana) para que el
+          backend pueda dar una recomendación de CHO concreta en vez del
+          mensaje genérico "depende" que daba antes (nunca se le mandaba
+          este dato). */}
       {acts !== null && acts.length > 0 && (
-        <NutricionPost atletaId={atletaId} fecha={fechaSel} />
+        <NutricionPost atletaId={atletaId} fecha={fechaSel} proxima24h={hayExigenteManana(sesiones, fechaSel)} />
       )}
 
       {/* Sin actividad ese día */}
@@ -4930,8 +4953,25 @@ function SwimEnergyTimeline({ atletaId, sesionId }) {
   const hP = hIdx!=null&&hIdx<n?samples[hIdx]:null
   const onM = e => {const r=e.currentTarget.getBoundingClientRect();const ratio=(e.clientX-r.left-(PL*(r.width/W)))/(iW*(r.width/W));const idx=Math.round(ratio*(n-1));if(idx>=0&&idx<n)setHIdx(idx);else setHIdx(null)}
   return (
-    <div style={{padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-      <button onClick={toggle} style={{width:'100%',padding:'11px 0',borderRadius:10,fontSize:13,fontWeight:700,background:open?'rgba(52,211,153,0.15)':'rgba(52,211,153,0.06)',color:'#34D399',border:`1px solid ${open?'rgba(52,211,153,0.35)':'rgba(52,211,153,0.12)'}`,cursor:'pointer',letterSpacing:'0.5px'}}>Energy Reserve (Swim)</button>
+    <div style={{padding:'12px 6px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+      <div style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.35)',
+        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8, padding:'0 2px' }}>
+        Métricas avanzadas
+      </div>
+      <button onClick={toggle} style={{
+        display:'flex', alignItems:'center', gap:10, width:'100%',
+        padding:'10px 12px', borderRadius:12, fontSize:13, fontWeight:600,
+        background: open ? 'rgba(52,211,153,0.10)' : 'rgba(255,255,255,0.03)',
+        border:`1px solid ${open ? 'rgba(52,211,153,0.35)' : 'rgba(255,255,255,0.07)'}`,
+        color: open ? '#34D399' : 'rgba(255,255,255,0.75)',
+        cursor:'pointer', transition:'all 0.15s', textAlign:'left',
+      }}>
+        <BatteryFull size={15} color={open ? '#34D399' : 'rgba(255,255,255,0.4)'}/>
+        <span style={{ flex:1 }}>{loading ? 'Calculando...' : 'Reserva energética'}</span>
+        <span style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>Ver análisis</span>
+        <ChevronRight size={14} color="rgba(255,255,255,0.3)"
+          style={{ transform: open ? 'rotate(90deg)' : 'none', transition:'transform 0.2s' }}/>
+      </button>
       {open && data && data.disponible && (
         <div style={{marginTop:14,background:'#0D1117',borderRadius:12,padding:'14px 10px',border:'1px solid rgba(255,255,255,0.06)'}}>
           <div style={{display:'flex',gap:14}}>
@@ -5026,13 +5066,25 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
   const tNar = Math.round((metricas.tiempo_naranja_s||0)/60)
 
   return (
-    <div style={{padding:'8px 0',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+    <div style={{padding:'12px 6px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+      <div style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.35)',
+        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8, padding:'0 2px' }}>
+        Métricas avanzadas
+      </div>
       <button onClick={toggle} style={{
-        width:'100%',padding:'11px 0',borderRadius:10,fontSize:13,fontWeight:700,
-        background:open?'rgba(74,222,128,0.15)':'rgba(74,222,128,0.06)',
-        color:'#4ADE80',border:`1px solid ${open?'rgba(74,222,128,0.35)':'rgba(74,222,128,0.12)'}`,
-        cursor:'pointer',letterSpacing:'0.5px'
-      }}>Energy Reserve Timeline</button>
+        display:'flex', alignItems:'center', gap:10, width:'100%',
+        padding:'10px 12px', borderRadius:12, fontSize:13, fontWeight:600,
+        background: open ? 'rgba(74,222,128,0.10)' : 'rgba(255,255,255,0.03)',
+        border:`1px solid ${open ? 'rgba(74,222,128,0.35)' : 'rgba(255,255,255,0.07)'}`,
+        color: open ? '#4ADE80' : 'rgba(255,255,255,0.75)',
+        cursor:'pointer', transition:'all 0.15s', textAlign:'left',
+      }}>
+        <BatteryFull size={15} color={open ? '#4ADE80' : 'rgba(255,255,255,0.4)'}/>
+        <span style={{ flex:1 }}>{loading ? 'Calculando...' : 'Reserva energética'}</span>
+        <span style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>Ver análisis</span>
+        <ChevronRight size={14} color="rgba(255,255,255,0.3)"
+          style={{ transform: open ? 'rotate(90deg)' : 'none', transition:'transform 0.2s' }}/>
+      </button>
 
       {open && data && data.disponible && (
         <div style={{marginTop:14,background:'#0D1117',borderRadius:12,padding:'14px 10px',border:'1px solid rgba(255,255,255,0.06)'}}>
