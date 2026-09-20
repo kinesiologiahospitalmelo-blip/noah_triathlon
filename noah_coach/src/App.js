@@ -10,6 +10,8 @@ import {
 import AtletaDashboard from './AtletaDashboard'
 import SeccionRace from './SeccionRace'
 import SeccionTests from './SeccionTests'
+import SeccionTecnica from './SeccionTecnica'
+import { TwinAtleta } from './SeccionTwin'
 import OnboardingAtleta from './OnboardingAtleta'
 import GraficoActividadStreams from './GraficoActividadStreams'
 import PantallaCarga from './PantallaCarga'
@@ -1286,7 +1288,15 @@ function CoachSemana({ presc, atletaId, onCambio, atleta }) {
     </div>
   )
 
-  const sesiones = presc.prescripcion.sesiones
+  const _hoy = new Date()
+  const _diaSemana = _hoy.getDay() === 0 ? 7 : _hoy.getDay()
+  const _lunes = new Date(_hoy); _lunes.setDate(_hoy.getDate() - _diaSemana + 1); _lunes.setHours(0,0,0,0)
+  const _domingo = new Date(_lunes); _domingo.setDate(_lunes.getDate() + 6); _domingo.setHours(23,59,59,999)
+  const sesiones = (presc.prescripcion.sesiones || []).filter(s => {
+    if (!s.fecha) return true
+    const f = new Date(s.fecha + 'T12:00:00')
+    return f >= _lunes && f <= _domingo
+  })
   const yaAprobada = presc.prescripcion.estado === 'aprobada'
 
   const aprobarSemana = async () => {
@@ -3063,19 +3073,29 @@ function NOAHIntelPanel({ atletaId }) {
             </div>
           )}
 
-          {/* Cumplimiento */}
-          {data.cumplimiento && data.cumplimiento.prob_cumplimiento && (
+          {/* Adherencia -- reemplaza a "Cumplimiento" (binario, ML) por un
+              dato medido real: % de TSS prescripto que efectivamente
+              completó, semana a semana, más la tendencia. */}
+          {data.adherencia?.disponible && (
             <div>
-              <SectionTitle>Probabilidad de cumplimiento esta semana</SectionTitle>
+              <SectionTitle>Adherencia al plan</SectionTitle>
               <Card>
                 <div style={{ padding:'14px 18px', display:'flex', gap:16, alignItems:'center' }}>
                   <div style={{ fontSize:32, fontWeight:800,
-                    color: data.cumplimiento.prob_cumplimiento >= 0.75 ? C.done :
-                           data.cumplimiento.prob_cumplimiento >= 0.5 ? C.amber : C.miss }}>
-                    {Math.round(data.cumplimiento.prob_cumplimiento * 100)}%
+                    color: data.adherencia.semaforo === 'verde' ? C.done :
+                           data.adherencia.semaforo === 'amarillo' ? C.amber :
+                           data.adherencia.semaforo === 'naranja' ? C.amber : C.miss }}>
+                    {Math.round(data.adherencia.adherencia_tss_pct)}%
                   </div>
-                  <div style={{ fontSize:13, color:C.text2 }}>
-                    {data.cumplimiento.interpretacion}
+                  <div>
+                    <div style={{ fontSize:13, color:C.text2, textTransform:'capitalize' }}>
+                      Adherencia {data.adherencia.clasificacion} · % de TSS prescripto realmente completado
+                    </div>
+                    {data.adherencia.tendencia !== 'sin_datos' && (
+                      <div style={{ fontSize:12, color: adaptColor(data.adherencia.tendencia), marginTop:4 }}>
+                        {adaptIcon(data.adherencia.tendencia)} Tendencia {data.adherencia.tendencia}
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -3173,7 +3193,8 @@ function DashboardAtleta({ atletaId, atleta }) {
     {id:'intel',label:'NOAH Intel'},{id:'race',label:'Race'},
     {id:'tests',label:'Tests'},{id:'clustering',label:'Clusters'},
     {id:'optimizer',label:'Optimizer'},{id:'perfil',label:'Perfil'},
-    {id:'aprendizaje',label:'Aprendizaje'},{id:'analisis_ciclismo',label:'Análisis Ciclismo'}
+    {id:'twin',label:'Twin'},
+    {id:'aprendizaje',label:'Aprendizaje'},{id:'tecnica',label:'Técnica'},{id:'analisis_ciclismo',label:'Análisis Ciclismo'}
   ]
 
   return (
@@ -3310,7 +3331,9 @@ function DashboardAtleta({ atletaId, atleta }) {
       {tab==='clustering'&&atletaId&&<ClusteringPanel atletaId={atletaId} atleta={atleta} />}
       {tab==='optimizer'&&atletaId&&<OptimizerPanel atletaId={atletaId} atleta={atleta} />}
       {tab==='perfil'&&atletaId&&(<><PerfilFisiologico atletaId={atletaId} atleta={atleta} /><PerfilDisponibilidad atletaId={atletaId} atleta={atleta} /></>)}
+      {tab==='twin'&&atletaId&&<TwinAtleta atletaId={atletaId} />}
       {tab==='aprendizaje'&&atletaId&&<AprendizajePanel atletaId={atletaId} atleta={atleta} />}
+      {tab==='tecnica'&&atletaId&&<SeccionTecnica atletaId={atletaId} />}
       {tab==='analisis_ciclismo'&&atletaId&&<AnalisisCiclismoPanel atletaId={atletaId} atleta={atleta} ftp={atleta?.ftp_watts||200} cadenciaOptima={atleta?.cadencia_optima||85} />}
       {tab==='plan'&&atletaId&&(
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
