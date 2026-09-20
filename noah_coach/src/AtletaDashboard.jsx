@@ -71,8 +71,8 @@ const NOAH_C = {
 
   // Deportes — derivados del acento, no colores nuevos sin relación
   run:     '#A78BFA', runL: 'rgba(167,139,250,0.14)',
-  bike:    '#38BDF8', bikeL: 'rgba(56,189,248,0.12)',
-  swim:    '#34D399', swimL: 'rgba(52,211,153,0.12)',
+  bike:    '#F59E0B', bikeL: 'rgba(245,158,11,0.12)',
+  swim:    '#38BDF8', swimL: 'rgba(56,189,248,0.12)',
 
   // Métricas de carga
   ctl:     '#8B5CF6', atl: '#F87171',
@@ -1052,9 +1052,9 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
     : `${Math.abs(pct)}% bajo`
 
   return (
-    <div style={{ borderTop:`2px solid ${s.color}`, paddingTop:14 }}>
+    <div style={{ paddingTop:10 }}>
 
-      {/* Header -- sin fondo, sin caja: el color del deporte es la unica marca */}
+      {/* Header -- icono del deporte + cumplimiento */}
       <div style={{padding:'0 2px 12px',display:'flex',alignItems:'center',gap:12}}>
         <div style={{width:40,height:40,borderRadius:10,background:s.light,
           display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:1,flexShrink:0}}>
@@ -1062,20 +1062,10 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
           <span style={{fontSize:7.5,fontWeight:800,color:s.color}}>{s.short}</span>
         </div>
         <div style={{flex:1}}>
-          <div style={{fontSize:15,fontWeight:700,color:NOAH_C.ink}}>
-          </div>
-          <div style={{fontSize:11,color:NOAH_C.ink3}}>
-            {act.fecha}
+          <div style={{fontSize:13,fontWeight:700,color:s.color}}>
+            {s.label}
           </div>
         </div>
-        <div style={{fontSize:11,fontWeight:700,color:cumplColor,flexShrink:0}}>
-          {cumplLabel}
-        </div>
-        <button onClick={()=>setExpandido(e=>!e)} style={{
-          background:'transparent',border:'none',borderRadius:7,
-          padding:'4px 6px',cursor:'pointer',fontSize:11,color:NOAH_C.ink3}}>
-          {expandido?'▲':'▼'}
-        </button>
       </div>
 
       {/* Métricas se muestran en GraficoActividadStreams — sin duplicar */}
@@ -1123,7 +1113,7 @@ function MiniCalendarioAtleta({ fechaSeleccionada, onSelect, actividades7dias })
     dias.push(d.toISOString().slice(0, 10))
   }
   const DIAS_CORTO = ['D','L','M','M','J','V','S']
-  const sportColors = { running: NOAH_C.run, cycling: NOAH_C.bike, swimming: NOAH_C.success }
+  const sportColors = { running: NOAH_C.run, cycling: NOAH_C.bike, swimming: NOAH_C.swim }
 
   return (
     <div style={{ display:'flex', gap:5, alignItems:'center' }}>
@@ -1231,10 +1221,6 @@ function SesionDelDia({ atletaId, presc }) {
       {/* Actividades del día seleccionado */}
       {acts !== null && acts.length > 0 && (
         <div>
-          <div style={{fontSize:11,fontWeight:700,color:NOAH_C.ink4,textTransform:'uppercase',
-            letterSpacing:1,marginBottom:12,display:'flex',alignItems:'center',gap:5}}>
-            <Footprints size={12}/> {labelActividad}
-          </div>
           {acts.map((act,i) => (
             <div key={act.sesion_id || act.id || `act-${act.fecha}-${act.sport}`} style={{marginBottom:i<acts.length-1?16:0}}>
               <ActividadCard

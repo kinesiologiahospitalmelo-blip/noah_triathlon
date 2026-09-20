@@ -14,6 +14,7 @@
 //     content: {tab==='twin'&&atletaId&&<TwinCoach atletaId={atletaId} atleta={atleta} />}
 
 import React, { useState, useEffect } from 'react'
+import { Footprints, Bike as BikeIcon, Waves } from 'lucide-react'
 
 const API = (window.location.hostname === 'localhost' || window.location.hostname.match(/^192\./))
   ? 'http://localhost:5000/api' : '/api'
@@ -37,14 +38,18 @@ const authFetch = (url, opts = {}) => {
 
 // ── Colors (NOAH_C match) ──
 const NC = {
-  run: '#A78BFA', bike: '#38BDF8', swim: '#34D399',
+  run: '#A78BFA', bike: '#F59E0B', swim: '#38BDF8',
   accent: '#8B5CF6', cyan: '#06B6D4',
   ok: '#10B981', warn: '#F59E0B', bad: '#EF4444',
   ink: 'rgba(255,255,255,0.92)', ink2: 'rgba(255,255,255,0.70)',
   ink3: 'rgba(255,255,255,0.45)', ink4: 'rgba(255,255,255,0.28)',
   border: 'rgba(255,255,255,0.08)',
 }
-const SP = { running: { c: NC.run, icon: '🏃', l: 'Run' }, cycling: { c: NC.bike, icon: '🚴', l: 'Bike' }, swimming: { c: NC.swim, icon: '🏊', l: 'Swim' } }
+const SP = {
+  running:  { c: NC.run, Icon: Footprints, l: 'Run' },
+  cycling:  { c: NC.bike, Icon: BikeIcon, l: 'Bike' },
+  swimming: { c: NC.swim, Icon: Waves, l: 'Swim' },
+}
 const INT_COL = { Recovery: NC.ink4, Endurance: NC.swim, Threshold: NC.warn, VO2max: NC.bad }
 
 // ── SVG Ring ──
@@ -111,9 +116,9 @@ function WeekStrip({ plan }) {
           return (
             <g key={i}>
               <rect x={x} y={50-h1-h2-2} width={14} height={h1} rx={3}
-                fill={c1} opacity={0.8} style={{ filter: `drop-shadow(0 2px 4px ${c1}55)` }} />
+                fill={c1} opacity={0.95} style={{ filter: `drop-shadow(0 2px 4px ${c1}55)` }} />
               <rect x={x+16} y={50-h2} width={14} height={h2} rx={3}
-                fill={c2} opacity={0.8} style={{ filter: `drop-shadow(0 2px 4px ${c2}55)` }} />
+                fill={c2} opacity={0.95} style={{ filter: `drop-shadow(0 2px 4px ${c2}55)` }} />
               <text x={x+15} y={60} textAnchor="middle" fontSize={8} fill={NC.ink4} fontWeight={600}>{dias[i]||''}</text>
               <text x={x+15} y={44-h1-h2} textAnchor="middle" fontSize={7} fill={NC.ink3}>{totalTSS}</text>
             </g>
@@ -126,7 +131,7 @@ function WeekStrip({ plan }) {
         return (
           <g key={i}>
             <rect x={x} y={50-h} width={30} height={h} rx={4}
-              fill={color} opacity={0.7}
+              fill={color} opacity={0.9}
               style={{ filter: `drop-shadow(0 2px 6px ${color}55)` }} />
             <text x={x+15} y={60} textAnchor="middle" fontSize={8} fill={NC.ink4} fontWeight={600}>{dias[i]||''}</text>
             <text x={x+15} y={47-h} textAnchor="middle" fontSize={7} fill={NC.ink3}>{totalTSS}</text>
@@ -142,9 +147,11 @@ function WeekStrip({ plan }) {
 //  VISTA ATLETA
 // ═══════════════════════════════════════════════════════════════
 
+
 export function TwinAtleta({ atletaId }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [vista, setVista] = useState('prescripcion')
 
   useEffect(() => {
     if (!atletaId) return
@@ -157,7 +164,7 @@ export function TwinAtleta({ atletaId }) {
 
   if (loading) return (
     <div style={{ padding: 50, textAlign: 'center' }}>
-      <div style={{ fontSize: 36, marginBottom: 10, animation: 'pulse 2s infinite' }}>🧬</div>
+      <div style={{ fontSize: 36, marginBottom: 10, animation: 'pulse 2s infinite' }}>◎</div>
       <div style={{ fontSize: 12, color: NC.ink3 }}>Calibrando tu Digital Twin...</div>
       <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
     </div>
@@ -169,140 +176,189 @@ export function TwinAtleta({ atletaId }) {
     </div>
   )
 
-  const best = (data.mejores || [])[0]
-  const met = data.metricas_calibracion || {}
+  const presc = data.prescripcion || {}
+  const best = (presc.mejores || [])[0]
+  const met = presc.metricas_calibracion || data.metricas_calibracion || {}
+  const evaluacion = data.evaluacion || {}
+  const historial = data.historial || {}
+
+  const tabs = [
+    { id: 'prescripcion', label: 'Próxima semana', sub: data.semana_prescripcion },
+    { id: 'evaluacion',   label: 'Semana pasada',  sub: data.semana_evaluacion },
+  ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-      {/* ── Header con gradiente ── */}
-      <div style={{
-        background: 'linear-gradient(135deg, #0F172A, #1E293B)',
-        borderRadius: 14, padding: '20px 22px',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <div style={{
-            fontSize: 10, color: NC.cyan, fontWeight: 700,
-            letterSpacing: 1.5, textTransform: 'uppercase',
-          }}>🧬 Digital Twin</div>
-          <div style={{
-            fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, marginLeft: 'auto',
-            background: 'rgba(139,92,246,0.15)', color: NC.accent,
+      {/* Toggle tabs */}
+      <div style={{ display: 'flex', gap: 0, borderRadius: 12, overflow: 'hidden',
+        border: '1px solid rgba(255,255,255,0.08)' }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setVista(t.id)} style={{
+            flex: 1, padding: '12px 8px', border: 'none', cursor: 'pointer',
+            background: vista === t.id
+              ? 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(56,189,248,0.10))'
+              : 'rgba(255,255,255,0.02)',
+            borderBottom: vista === t.id ? `2px solid ${NC.accent}` : '2px solid transparent',
+            transition: 'all 0.2s',
           }}>
-            {data.n_evaluados} escenarios
-          </div>
-        </div>
-
-        {/* Anillos R² por disciplina */}
-        <div style={{ display: 'flex', justifyContent: 'space-around', gap: 8 }}>
-          {['running', 'cycling', 'swimming'].map(disc => {
-            const m = met[disc]
-            const r2 = m?.r2 || m?.ok && m.r2 || 0
-            const sp = SP[disc]
-            if (!m?.ok && r2 <= 0) return (
-              <div key={disc} style={{ textAlign: 'center', opacity: 0.3 }}>
-                <Ring pct={0} color={sp.c} size={62} stroke={4}>
-                  <span style={{ fontSize: 18 }}>{sp.icon}</span>
-                </Ring>
-                <div style={{ fontSize: 9, color: NC.ink4, marginTop: 4 }}>{sp.l}</div>
-              </div>
-            )
-            return (
-              <div key={disc} style={{ textAlign: 'center' }}>
-                <Ring pct={r2} color={sp.c} size={62} stroke={4}>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: sp.c,
-                    textShadow: `0 0 12px ${sp.c}66` }}>{(r2*100).toFixed(0)}%</span>
-                </Ring>
-                <div style={{ fontSize: 9, color: NC.ink3, marginTop: 4, fontWeight: 600 }}>{sp.l}</div>
-              </div>
-            )
-          })}
-        </div>
-
-        <div style={{ fontSize: 11, color: NC.ink3, marginTop: 14, lineHeight: 1.6, textAlign: 'center' }}>
-          NOAH analizó tu historial, creó un modelo fisiológico personal
-          y evaluó <strong style={{ color: NC.accent }}>{data.n_evaluados}</strong> formas
-          distintas de entrenar para encontrar tu semana óptima.
-        </div>
+            <div style={{ fontSize: 12, fontWeight: vista === t.id ? 700 : 500,
+              color: vista === t.id ? NC.ink : NC.ink3 }}>{t.label}</div>
+            <div style={{ fontSize: 9, color: NC.ink4, marginTop: 2 }}>{t.sub}</div>
+          </button>
+        ))}
       </div>
 
-      {/* ── Semana recomendada ── */}
-      {best && (
-        <div style={{
-          background: 'linear-gradient(165deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
-          borderRadius: 14, padding: '18px 20px',
-          border: '1px solid rgba(255,255,255,0.09)',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <div style={{ fontSize: 10, color: NC.cyan, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-              ⚡ Tu semana óptima
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
-                background: best.riesgo < 0.15 ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
-                color: best.riesgo < 0.15 ? NC.ok : NC.warn,
-              }}>
-                Riesgo {(best.riesgo * 100).toFixed(0)}%
-              </span>
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
-                background: 'rgba(139,92,246,0.15)', color: NC.accent,
-              }}>
-                TSS {best.tss_total}
-              </span>
-            </div>
-          </div>
-
-          {/* Visual strip */}
-          <WeekStrip plan={best.plan || []} />
-
-          {/* Detalle por día */}
-          <div style={{ marginTop: 10 }}>
-            {(best.plan || []).map((dia, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0',
-                borderBottom: i < (best.plan?.length || 0) - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
-              }}>
-                <div style={{ width: 28, fontSize: 10, fontWeight: 700, color: NC.ink4, paddingTop: 2 }}>
-                  {(dia.dia || '').substring(0, 3)}
-                </div>
-                {dia.sesion === 'DESCANSO' ? (
-                  <div style={{ fontSize: 11, color: NC.ink4, fontStyle: 'italic' }}>Descanso</div>
-                ) : (
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ width: 5, height: 5, borderRadius: 3,
-                        background: SP[dia.sport]?.c || NC.ink4, boxShadow: `0 0 4px ${SP[dia.sport]?.c || NC.ink4}66` }} />
-                      <span style={{ fontSize: 11, fontWeight: 600, color: NC.ink }}>{dia.tipo}</span>
-                      <span style={{ fontSize: 9, color: INT_COL[dia.intensidad] || NC.ink4,
-                        padding: '1px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.04)' }}>
-                        {dia.intensidad}
-                      </span>
-                      <span style={{ fontSize: 9, color: NC.ink4, marginLeft: 'auto' }}>
-                        TSS {dia.tss}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 10, color: NC.ink3, marginTop: 3, lineHeight: 1.4 }}>
-                      {dia.descripcion}
-                    </div>
+      {/* PRESCRIPCIÓN */}
+      {vista === 'prescripcion' && (
+        <>
+          <div style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)',
+            borderRadius: 14, padding: '18px 20px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-around', gap: 8, marginBottom: 14 }}>
+              {['running', 'cycling', 'swimming'].map(disc => {
+                const m = met[disc]; const r2 = m?.r2 || 0; const sp = SP[disc]
+                if (!m?.ok && r2 <= 0) return (
+                  <div key={disc} style={{ textAlign: 'center', opacity: 0.3 }}>
+                    <Ring pct={0} color={sp.c} size={58} stroke={4}>
+                      <sp.Icon size={18} color={sp.c} style={{ opacity: 0.4 }} />
+                    </Ring>
+                    <div style={{ fontSize: 9, color: NC.ink4, marginTop: 4 }}>{sp.l}</div>
                   </div>
-                )}
-              </div>
-            ))}
+                )
+                return (
+                  <div key={disc} style={{ textAlign: 'center' }}>
+                    <Ring pct={r2} color={sp.c} size={58} stroke={4}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: sp.c,
+                        textShadow: `0 0 12px ${sp.c}66` }}>{(r2*100).toFixed(0)}%</span>
+                    </Ring>
+                    <div style={{ fontSize: 9, color: NC.ink3, marginTop: 4, fontWeight: 600 }}>{sp.l}</div>
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ fontSize: 11, color: NC.ink3, lineHeight: 1.6, textAlign: 'center' }}>
+              NOAH evaluó <strong style={{ color: NC.accent }}>{presc.n_evaluados || 200}</strong> formas
+              distintas de entrenar y encontró tu semana óptima.
+              {presc.desde_cache ? ' Se mantiene hasta el domingo.' : ''}
+            </div>
           </div>
+
+          {best && (
+            <div style={{ background: 'linear-gradient(165deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)',
+              borderRadius: 14, padding: '18px 20px', border: '1px solid rgba(255,255,255,0.09)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <div style={{ fontSize: 10, color: NC.cyan, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+                  Tu semana óptima</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                    background: best.riesgo < 0.15 ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                    color: best.riesgo < 0.15 ? NC.ok : NC.warn }}>Riesgo {(best.riesgo*100).toFixed(0)}%</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                    background: 'rgba(139,92,246,0.15)', color: NC.accent }}>TSS {best.tss_total}</span>
+                </div>
+              </div>
+              <WeekStrip plan={best.plan || []} />
+              <div style={{ marginTop: 10 }}>
+                {(best.plan || []).map((dia, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0',
+                    borderBottom: i < (best.plan?.length||0)-1 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+                    <div style={{ width: 28, fontSize: 10, fontWeight: 700, color: NC.ink4, paddingTop: 2 }}>
+                      {(dia.dia||'').substring(0,3)}</div>
+                    {dia.sesion === 'DESCANSO' ? (
+                      <div style={{ fontSize: 11, color: NC.ink4, fontStyle: 'italic' }}>Descanso</div>
+                    ) : (
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ width: 5, height: 5, borderRadius: 3,
+                            background: SP[dia.sport]?.c || NC.ink4, boxShadow: `0 0 4px ${SP[dia.sport]?.c||NC.ink4}66` }} />
+                          <span style={{ fontSize: 11, fontWeight: 600, color: NC.ink }}>{dia.tipo}</span>
+                          <span style={{ fontSize: 9, color: INT_COL[dia.intensidad]||NC.ink4,
+                            padding: '1px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.04)' }}>{dia.intensidad}</span>
+                          <span style={{ fontSize: 9, color: NC.ink4, marginLeft: 'auto' }}>TSS {dia.tss}</span>
+                        </div>
+                        <div style={{ fontSize: 10, color: NC.ink3, marginTop: 3, lineHeight: 1.4 }}>{dia.descripcion}</div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* EVALUACIÓN */}
+      {vista === 'evaluacion' && (
+        <div style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)',
+          borderRadius: 14, padding: '22px 22px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)' }}>
+          {evaluacion.ok ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 20 }}>
+                <Ring pct={evaluacion.acierto||0} color={
+                  (evaluacion.acierto||0) >= 0.7 ? NC.ok : (evaluacion.acierto||0) >= 0.4 ? NC.warn : NC.bad
+                } size={80} stroke={5}>
+                  <span style={{ fontSize: 22, fontWeight: 800,
+                    color: (evaluacion.acierto||0) >= 0.7 ? NC.ok : NC.warn }}>{evaluacion.acierto_pct||0}</span>
+                  <span style={{ fontSize: 8, color: NC.ink4 }}>acierto</span>
+                </Ring>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: NC.ink, marginBottom: 6 }}>
+                    Semana {evaluacion.semana}</div>
+                  <div style={{ fontSize: 11, color: NC.ink3, lineHeight: 1.6 }}>
+                    {(evaluacion.acierto||0) >= 0.7 ? 'La predicción fue precisa — el Twin conoce bien tu cuerpo.'
+                      : (evaluacion.acierto||0) >= 0.4 ? 'Predicción parcial — el Twin está aprendiendo.'
+                      : 'El Twin necesita más datos para mejorar.'}</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+                {[
+                  { label: 'TSS predicho', value: evaluacion.tss_predicho, color: NC.ink },
+                  { label: 'TSS real', value: evaluacion.tss_real, color: NC.accent },
+                  { label: 'HRV', value: evaluacion.hrv_ok===true?'Mantenida ✓':evaluacion.hrv_ok===false?'Cayó ✗':'Sin datos',
+                    color: evaluacion.hrv_ok===true?NC.ok:evaluacion.hrv_ok===false?NC.bad:NC.ink4 },
+                  { label: 'CTL', value: evaluacion.absorcion_ok===true?'Subió ✓':evaluacion.absorcion_ok===false?'Bajó ✗':'Sin datos',
+                    color: evaluacion.absorcion_ok===true?NC.ok:evaluacion.absorcion_ok===false?NC.bad:NC.ink4 },
+                ].map((m,i) => (
+                  <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '10px 14px' }}>
+                    <div style={{ fontSize: 9, color: NC.ink4, fontWeight: 600, marginBottom: 3 }}>{m.label}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: m.color }}>{m.value}</div>
+                  </div>
+                ))}
+              </div>
+              {historial.n_evaluaciones > 0 && (
+                <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 10, padding: '12px 16px',
+                  display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ fontSize: 24 }}>
+                    {historial.tendencia==='mejorando'?'▲':historial.tendencia==='empeorando'?'▼':'—'}</div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color:
+                      historial.tendencia==='mejorando'?NC.ok:historial.tendencia==='empeorando'?NC.bad:NC.ink2 }}>
+                      {historial.tendencia==='mejorando'?'El Twin está mejorando'
+                        :historial.tendencia==='empeorando'?'Necesita más datos':'Rendimiento estable'}</div>
+                    <div style={{ fontSize: 10, color: NC.ink3, marginTop: 2 }}>
+                      Acierto promedio: {((historial.promedio_acierto||0)*100).toFixed(0)}%
+                      {' · '}{historial.n_evaluaciones} semanas</div>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: 20 }}>
+              <div style={{ fontSize: 28, marginBottom: 10, opacity: 0.5 }}>◉</div>
+              <div style={{ fontSize: 12, color: NC.ink3 }}>
+                {evaluacion.error || 'Sin evaluación para la semana pasada'}</div>
+              <div style={{ fontSize: 10, color: NC.ink4, marginTop: 6 }}>
+                La evaluación se activa cuando hay una predicción guardada y la semana terminó.</div>
+            </div>
+          )}
         </div>
       )}
     </div>
   )
 }
-
-
-// ═══════════════════════════════════════════════════════════════
-//  VISTA COACH
-// ═══════════════════════════════════════════════════════════════
 
 export function TwinCoach({ atletaId, atleta }) {
   const [data, setData]           = useState(null)
@@ -338,7 +394,7 @@ export function TwinCoach({ atletaId, atleta }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <div>
             <div style={{ fontSize: 10, color: NC.cyan, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-              🧬 Digital Twin
+              DIGITAL TWIN
             </div>
             <div style={{ fontSize: 12, color: NC.ink3, marginTop: 3 }}>{nombre}</div>
           </div>
@@ -348,7 +404,7 @@ export function TwinCoach({ atletaId, atleta }) {
             color: '#fff', fontSize: 12, fontWeight: 700,
             boxShadow: loading ? 'none' : '0 6px 20px -4px rgba(139,92,246,0.5), inset 0 1px 0 rgba(255,255,255,0.25)',
           }}>
-            {loading ? '⏳ Calibrando...' : '🧬 Ejecutar Twin'}
+            {loading ? 'Calibrando...' : '◎ Ejecutar Twin'}
           </button>
         </div>
 
