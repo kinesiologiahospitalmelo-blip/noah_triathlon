@@ -2568,23 +2568,113 @@ def entrenar_noah_intel(atleta_id):
 @requiere_login
 def get_twin_prescripcion(atleta_id):
     """
-    Digital Twin: genera escenarios de semana completa con sesiones reales.
-    Calibra modelo fisiológico per-disciplina, simula 100+ semanas,
-    devuelve las 5 mejores.
+    Digital Twin con dos modos:
+
+    1. RETROSPECTIVO (semana pasada):
+       - ¿Qué hubiera sido lo mejor la semana que ya entrenó?
+       - Compara predicción vs realidad → acierto → el Twin aprende
+
+    2. PROSPECTIVO (semana que viene):
+       - ¿Qué debería hacer la semana que viene?
+       - Basado en estado actual + lo que aprendió
+
+    Devuelve ambos en una sola respuesta.
+    Cache: si ya calculó para esta semana, devuelve lo guardado.
+    ?forzar=1 para recalcular.
     """
     conn = get_conn()
     try:
-        from noah_twin_v2 import twin_prescripcion
+        from datetime import date, timedelta
+        import json as _json
+        from noah_twin_v2 import twin_prescripcion, twin_evaluar, twin_historial
 
+        forzar = request.args.get('forzar', '0') == '1'
         tipo_sem = request.args.get('tipo_sem', 'carga')
         tss = request.args.get('tss')
         tss = float(tss) if tss else None
         n = int(request.args.get('n', 200))
 
+        hoy = date.today()
+
+        # ── Semana que viene (prospectivo) ──
+        dias_hasta_lunes = (7 - hoy.weekday()) % 7
+        if dias_hasta_lunes == 0:
+            dias_hasta_lunes = 7
+        if hoy.weekday() == 6:
+            dias_hasta_lunes = 1
+        prox_lunes = hoy + timedelta(days=dias_hasta_lunes)
+        semana_prox = prox_lunes.strftime('%G-%V')
+
+        # ── Semana pasada (retrospectivo) ──
+        lunes_pasado = hoy - timedelta(days=hoy.weekday() + 7)
+        semana_pasada = lunes_pasado.strftime('%G-%V')
+
+        respuesta = {
+            'ok': True,
+            'semana_prescripcion': semana_prox,
+            'semana_evaluacion': semana_pasada,
+        }
+
+        # ── 1. RETROSPECTIVO: evaluar semana pasada ──
+        try:
+            evaluacion = twin_evaluar(conn, atleta_id, semana_pasada)
+            respuesta['evaluacion'] = evaluacion
+        except Exception as e:
+            respuesta['evaluacion'] = {'ok': False, 'error': str(e)}
+
+        # ── 2. HISTORIAL de aciertos ──
+        try:
+            hist = twin_historial(conn, atleta_id)
+            respuesta['historial'] = hist
+        except Exception:
+            respuesta['historial'] = None
+
+        # ── 3. PROSPECTIVO: prescripción semana que viene ──
+        # Buscar cache primero
+        if not forzar:
+            cur = conn.cursor()
+            cur.execute('''
+                SELECT plan, tss_predicho, riesgo_predicho, score_predicho,
+                       escenario_rank, elegido, fecha_gen
+                FROM twin_predicciones
+                WHERE atleta_id=%s AND semana_iso=%s
+                ORDER BY escenario_rank
+            ''', [atleta_id, semana_prox])
+            rows = cur.fetchall()
+
+            if rows:
+                mejores = []
+                for r in rows:
+                    plan_data = r[0] if isinstance(r[0], list) else _json.loads(r[0]) if r[0] else []
+                    mejores.append({
+                        'id': r[4],
+                        'plan': plan_data,
+                        'tss_total': r[1] or 0,
+                        'riesgo': r[2] or 0,
+                        'ranking': r[3] or 0,
+                        'elegido': r[5] or False,
+                    })
+                respuesta['prescripcion'] = {
+                    'ok': True,
+                    'semana': semana_prox,
+                    'desde_cache': True,
+                    'fecha_calculo': str(rows[0][6]) if rows[0][6] else None,
+                    'mejores': mejores,
+                    'n_evaluados': len(mejores),
+                }
+                conn.close()
+                return ok(_limpiar_nan(respuesta))
+
+        # No hay cache → calcular
         resultado = twin_prescripcion(conn, atleta_id,
                                        tss=tss, tipo_sem=tipo_sem, n=n)
+        if resultado.get('ok'):
+            resultado['semana'] = semana_prox
+            resultado['desde_cache'] = False
+        respuesta['prescripcion'] = resultado
+
         conn.close()
-        return ok(_limpiar_nan(resultado))
+        return ok(_limpiar_nan(respuesta))
     except Exception as e:
         conn.close()
         import traceback
