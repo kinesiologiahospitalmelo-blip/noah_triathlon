@@ -70,8 +70,8 @@ const D = {
   },
   sport: {
     running:  '#A78BFA',
-    cycling:  '#F59E0B',
-    swimming: '#38BDF8',
+    cycling:  '#22D3EE',
+    swimming: '#34D399',
   },
 }
 
@@ -495,12 +495,37 @@ export default function GraficoActividadStreams({
   }, [CANALES.map(c => c.key).join(',')])
 
   return (
-    <div style={{ borderRadius: 0, overflow: 'visible', background: 'transparent' }}>
-      {/* Métricas individuales */}
-      <div style={{ padding: '8px 2px 12px' }}>
+    <div style={{ borderRadius: 0, overflow: 'hidden', background: 'transparent', maxWidth: '100%' }}>
+      {/* HEADER -- grilla simétrica de métricas (reemplaza las chips sueltas
+          de antes), estilo Garmin/Apple: número grande, etiqueta chica */}
+      <div style={{
+        padding: '10px 4px 14px',
+        borderBottom: `1px solid ${D.border}`,
+      }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+          <SportIconC size={17} color={sportColor}/>
+          <span style={{ fontSize:11, fontWeight:600, color:D.text2, textTransform:'uppercase', letterSpacing:'0.04em' }}>
+            {sport === 'cycling' ? 'Ciclismo' : sport === 'swimming' ? 'Natación' : 'Running'}
+          </span>
+          <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:8 }}>
+            {loading && (
+              <div style={{ fontSize:10, color:D.text3, display:'flex', alignItems:'center', gap:4 }}>
+                <div style={{ width:6, height:6, borderRadius:'50%', background:'#38BDF8' }}/>
+                Cargando streams...
+              </div>
+            )}
+            {series.length >= 1 && (
+              <button onClick={() => setChartOpen(o => !o)} title={chartOpen ? 'Ocultar gráfico' : 'Mostrar gráfico'} style={{
+                background:'transparent', border:`1px solid ${D.border}`, borderRadius:7,
+                padding:'3px 9px', cursor:'pointer', fontSize:11, color:D.text3,
+                transition:'transform 0.2s', transform: chartOpen ? 'none' : 'rotate(180deg)',
+              }}>▾</button>
+            )}
+          </div>
+        </div>
 
-        {(() => {
-          const metrics = [
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', rowGap:16, columnGap:8 }}>
+          {[
             act?.duration_min && { Icon: Clock, label:'Duración', val: fmtDur(act.duration_min), color: D.text2 },
             distKm != null    && { Icon: Ruler, label:'Distancia', val: fmtDist(distKm),          color: D.text2 },
             (act?.hr_avg||stats.hr_avg) && { Icon: HeartPulse, label:'FC media', val: `${Math.round(act?.hr_avg||stats.hr_avg)} bpm`, color: D.hr.line },
@@ -510,28 +535,17 @@ export default function GraficoActividadStreams({
               : (act?.pace && { Icon: Footprints, label:'Ritmo medio', val:`${fmtPace(act.pace)} ${paceUnit}`, color: sportColor }),
             sport === 'cycling'
               ? ((act?.np_watts||stats.power_np) && { Icon: Zap, label:'NP', val:`${act?.np_watts||stats.power_np} W`, color:'#84CC16' })
-              : (act?.tss_total && { Icon: Target, label:'TSS', val: act.tss_total.toFixed(0), color: sportColor }),
-          ].filter(Boolean).slice(0, 6)
-          return (
-            <div style={{ display:'flex', flexWrap:'wrap', gap:8, justifyContent:'center' }}>
-              {metrics.map((m, i) => (
-                <div key={i} style={{
-                  flex: '1 1 calc(33.3% - 8px)', minWidth: 90, maxWidth: 160,
-                  background: 'linear-gradient(165deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
-                  borderRadius: 10, padding: '10px 12px',
-                  border: '1px solid rgba(255,255,255,0.07)',
-                  textAlign: 'center',
-                }}>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4, marginBottom:4 }}>
-                    <m.Icon size={11} color={m.color} style={{ opacity: 0.7 }}/>
-                    <span style={{ fontSize:9.5, fontWeight:600, color:D.text3, letterSpacing:'0.02em' }}>{m.label}</span>
-                  </div>
-                  <div style={{ fontSize:16, fontWeight:700, letterSpacing:'-0.02em', color:D.text }}>{m.val}</div>
-                </div>
-              ))}
+              : (act?.tss_total && { Icon: Target, label:'TSS', val: act.tss_total.toFixed(0), color:'#38BDF8' }),
+          ].filter(Boolean).slice(0, 6).map((m, i) => (
+            <div key={i}>
+              <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:3 }}>
+                <m.Icon size={12} color={m.color}/>
+                <span style={{ fontSize:10.5, fontWeight:500, color:D.text2, letterSpacing:'0.01em' }}>{m.label}</span>
+              </div>
+              <div style={{ fontSize:17, fontWeight:600, letterSpacing:'-0.02em', color:D.text }}>{m.val}</div>
             </div>
-          )
-        })()}
+          ))}
+        </div>
         {hS && (
           <div style={{
             marginTop:8, display:'flex', gap:12, alignItems:'center',
@@ -700,7 +714,7 @@ export default function GraficoActividadStreams({
                 <g key={i}>
                   {/* Barra con color de zona */}
                   <rect x={x1+0.5} y={blockTop} width={w-1} height={blockH}
-                    fill={zoneCol} opacity={isHov ? 0.85 : (_lapsNorm.length <= 1 ? 0.25 : 0.75)} rx="1"/>
+                    fill={zoneCol} opacity={isHov ? 0.6 : (_lapsNorm.length <= 1 ? 0.15 : 0.5)} rx="1"/>
                   {/* Separador entre laps */}
                   {i > 0 && (
                     <line x1={x1} y1={PT} x2={x1} y2={PT+iH}
@@ -859,7 +873,7 @@ export default function GraficoActividadStreams({
               const w  = Math.max(1, x2 - x1 - 0.5)
               const z  = getLapZone(lap, actLthr, sport, paceUmbral)
               return <rect key={i} x={x1} y={barY} width={w} height={barH}
-                fill={D.zone[z] || D.zone.Z1} opacity="0.85" rx="1"/>
+                fill={D.zone[z] || D.zone.Z1} opacity="0.75" rx="1"/>
             })
           })()}
           {(!tieneLaps || _lapsNorm.length < 1) && canalesOn.hr && hrVals.length > 0 && (() => {
@@ -873,7 +887,7 @@ export default function GraficoActividadStreams({
               const x1 = xs(i)
               const x2 = i + step < n ? xs(i + step) : PL + iW
               return <rect key={idx} x={x1} y={barY} width={Math.max(1, x2 - x1)}
-                height={barH} fill={D.zone[z]} opacity="0.85"/>
+                height={barH} fill={D.zone[z]} opacity="0.7"/>
             })
           })()}
 
@@ -1040,7 +1054,7 @@ function SinGrafico({ act, distKm, sport, loading, streamZonas, lthr, sesionId }
               act?.calorias  && { Icon: Flame, label:'kcal',    v:`${act.calorias}` },
             ].filter(Boolean).map((m,i) => (
               <div key={i} style={{
-                flex:1, minWidth:80,
+                flex:1, minWidth:0,
                 background:D.glass, border:`1px solid ${D.border}`,
                 borderTop:`2px solid ${m.c||'rgba(255,255,255,0.15)'}`,
                 borderRadius:10, padding:'10px 13px',

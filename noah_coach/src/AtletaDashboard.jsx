@@ -651,7 +651,7 @@ function SemanaCompleta({ presc, atletaId, sesionExpandida, setSesionExpandida }
         )
       })}
       {presc.prescripcion && (
-        <div style={{ background:`linear-gradient(135deg,${NOAH_C.headerBg},#1F2937)`, borderRadius:12, padding:'14px 20px', display:'flex', gap:28, alignItems:'center', flexWrap:'wrap', boxShadow:'0 4px 12px rgba(0,0,0,0.12)' }}>
+        <div style={{ background:`linear-gradient(135deg,${NOAH_C.headerBg},#1F2937)`, borderRadius:12, padding:'14px 20px', display:'flex', gap:12, alignItems:'center', flexWrap:'wrap', boxShadow:'0 4px 12px rgba(0,0,0,0.12)' }}>
           {[['TSS Semana',presc.prescripcion.tss_total,NOAH_C.run],['Fase',presc.prescripcion.fase,'#fff'],['Generado',presc.prescripcion.fecha_generada,'#6B7280']].map(([l,v,col]) => (
             <div key={l}><div style={{ fontSize:9, color:'#6B7280', fontWeight:600, textTransform:'uppercase', letterSpacing:1.5, marginBottom:4 }}>{l}</div><div style={{ fontSize:20, fontWeight:700, color:col }}>{v}</div></div>
           ))}
@@ -765,7 +765,7 @@ function CurvaPeriodizacionAtleta({ atletaId }) {
       </svg>
       <div style={{ display:'flex', gap:8, marginTop:12, flexWrap:'wrap' }}>
         {data.fases.map((f,i) => (
-          <div key={i} style={{ flex:1, minWidth:120, padding:'10px 12px',
+          <div key={i} style={{ flex:1, minWidth:0, padding:'10px 12px',
             borderRadius:8, background:`${FASE_COLOR[f.fase]}11`,
             border:`1px solid ${FASE_COLOR[f.fase]}33` }}>
             <div style={{ fontSize:12, fontWeight:700, color:FASE_COLOR[f.fase] }}>
@@ -3528,7 +3528,7 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
               { label:'Trabajo total', value: metricas?.trabajo_kj ? `${Math.round(metricas.trabajo_kj)}kJ` : '--', color:'#F97316' },
               { label:'Variability Index', value: metricas?.variability_index ? metricas.variability_index.toFixed(2) : '--', color:'#A855F7' },
             ].map(({label,value,color}) => (
-              <div key={label} style={{ flex:1, minWidth:100, background:`${color}12`, borderRadius:8,
+              <div key={label} style={{ flex:1, minWidth:0, background:`${color}12`, borderRadius:8,
                 padding:'8px 12px', border:`1px solid ${color}25` }}>
                 <div style={{ fontSize:10, color:NOAH_C.ink3 }}>{label}</div>
                 <div style={{ fontSize:16, fontWeight:800, color }}>{value}</div>
@@ -4060,7 +4060,7 @@ export default function AtletaDashboard({ atletaId }) {
   ].filter(t => t.show)
 
   return (
-    <div style={{ minHeight:'100vh', background:`
+    <div style={{ maxWidth:'100vw', overflowX:'hidden', minHeight:'100vh', background:`
         radial-gradient(circle at 12% -5%, rgba(167,139,250,0.13) 0%, transparent 42%),
         radial-gradient(circle at 88% 8%, rgba(56,189,248,0.10) 0%, transparent 42%),
         radial-gradient(circle at 50% 105%, rgba(52,211,153,0.07) 0%, transparent 50%),
@@ -4076,7 +4076,7 @@ export default function AtletaDashboard({ atletaId }) {
             background-repeat: no-repeat !important;
           }
           .hero-content { min-height: 0 !important; height: auto !important; }
-          .hero-container { overflow: visible !important; }
+          .hero-container { overflow: hidden !important; }
         }
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -4482,7 +4482,7 @@ export default function AtletaDashboard({ atletaId }) {
               onTouchEnd={isCenter ? onTouchEnd : undefined}
               style={{
                 flexShrink: 0,
-                width: isCenter ? 168 : 96,
+                width: isCenter ? 'min(168px, 44vw)' : 'min(96px, 24vw)',
                 padding: isCenter ? '12px 18px' : '10px 8px',
                 borderRadius: 16,
                 border: `1px solid ${isCenter ? NOAH_C.accent+'55' : 'rgba(255,255,255,0.08)'}`,
@@ -4521,7 +4521,7 @@ export default function AtletaDashboard({ atletaId }) {
             position: 'sticky', top: 0, zIndex: 50,
             padding: '14px 10px 12px',
           }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, overflow:'hidden', maxWidth:'100%' }}>
               <button onClick={()=>goTo(activeTabIdx-1)} aria-label="Tab anterior" style={{
                 width:28, height:28, borderRadius:'50%', flexShrink:0,
                 background:'rgba(255,255,255,0.06)', border:`1px solid ${NOAH_C.border2}`,
@@ -4561,7 +4561,7 @@ export default function AtletaDashboard({ atletaId }) {
       })()}
 
       {/* CONTENT */}
-      <div style={{ padding:'20px 16px' }}>
+      <div style={{ padding:'20px 12px', maxWidth:'100%', overflowX:'hidden' }}>
         {tab==='hoy' && <SesionDelDia atletaId={id} presc={presc} />}
         {tab==='semana' && <SemanaCompleta presc={presc} atletaId={id} sesionExpandida={sesionExp} setSesionExpandida={setSesionExp} />}
 
@@ -5448,7 +5448,7 @@ function SeccionPerfil({ atletaId }) {
                 <Brain size={40} color={GE.text3}/>
               </div>
             )}
-            <div style={{ flex:1, minWidth:200 }}>
+            <div style={{ flex:1, minWidth:0 }}>
               {predicciones_ml?.disponible ? (
                 <>
                   <div style={{ fontSize:19, fontWeight:700, letterSpacing:'-0.01em', color:GE.text, marginBottom:4 }}>
