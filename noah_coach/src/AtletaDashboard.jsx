@@ -4179,7 +4179,7 @@ export default function AtletaDashboard({ atletaId }) {
                 <AlertTriangle size={11}/> Sin sync hace {syncStatus.dias_sin_sync}d
               </div>
             )}
-            <div style={{ display:'flex', gap:10 }}>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
               <button className="noah-sync-btn" onClick={async () => {
                 setSyncBioLoad(true); setSyncResult(null)
                 try {
@@ -4192,12 +4192,12 @@ export default function AtletaDashboard({ atletaId }) {
                 } catch { setSyncResult({tipo:'bio', ok:false, msg:'Error al sincronizar'}) }
                 setSyncBioLoad(false)
               }} disabled={syncBioLoading} style={{
-                flex:1, padding:'11px 16px', borderRadius:10, fontSize:13, fontWeight:700,
+                flex:'1 1 45%', minWidth:0, padding:'11px 12px', borderRadius:10, fontSize:12, fontWeight:700,
                 background:'#007AFF', color:'#fff', border:'none', cursor:'pointer',
-                display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:5,
                 boxShadow:'0 4px 14px rgba(0,122,255,0.45)',
               }}>
-                {syncBioLoading ? <RotateCw size={13} className="noah-spin"/> : <Moon size={13}/>} Sincronizar Bio
+                {syncBioLoading ? <RotateCw size={13} className="noah-spin"/> : <Moon size={13}/>} Bio
               </button>
               <button className="noah-sync-btn" onClick={async () => {
                 setSyncLoading(true); setSyncResult(null)
@@ -4214,9 +4214,9 @@ export default function AtletaDashboard({ atletaId }) {
                 } catch { setSyncResult({tipo:'actividad', ok:false, msg:'Error al sincronizar'}) }
                 setSyncLoading(false)
               }} disabled={syncLoading} style={{
-                flex:1, padding:'11px 16px', borderRadius:10, fontSize:13, fontWeight:700,
+                flex:'1 1 45%', minWidth:0, padding:'11px 12px', borderRadius:10, fontSize:12, fontWeight:700,
                 background:'#007AFF', color:'#fff', border:'none', cursor:'pointer',
-                display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:5,
                 boxShadow:'0 4px 14px rgba(0,122,255,0.45)',
               }}>
                 {syncLoading ? <RotateCw size={13} className="noah-spin"/> : <Footprints size={13}/>} Actividad
