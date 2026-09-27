@@ -1690,9 +1690,12 @@ def twin_evaluar(conn, atleta_id: int, semana_iso: str = None) -> dict:
     df_real = _sql('''
         SELECT fecha, sport, tss_total, hr_avg, pace, np_watts, duration_min
         FROM sesiones
-        WHERE atleta_id=%s AND fecha BETWEEN %s AND %s AND tss_total > 0
+        WHERE atleta_id=%s AND fecha::text BETWEEN %s AND %s AND tss_total > 0
         ORDER BY fecha
-    ''', conn, [atleta_id, lunes, domingo])
+    ''', conn, [atleta_id, str(lunes), str(domingo)])
+
+    if not df_real.empty:
+        df_real['fecha'] = pd.to_datetime(df_real['fecha'])
 
     if df_real.empty:
         return {'ok': False, 'error': f'Sin sesiones reales en semana {semana_iso}'}
@@ -1708,9 +1711,12 @@ def twin_evaluar(conn, atleta_id: int, semana_iso: str = None) -> dict:
     # HRV de esa semana y la siguiente
     df_bio = _sql('''
         SELECT fecha, hrv_rmssd FROM sleep_hrv
-        WHERE atleta_id=%s AND fecha BETWEEN %s AND %s
+        WHERE atleta_id=%s AND fecha::text BETWEEN %s AND %s
         ORDER BY fecha
-    ''', conn, [atleta_id, lunes, domingo + timedelta(days=7)])
+    ''', conn, [atleta_id, str(lunes), str(domingo + timedelta(days=7))])
+
+    if not df_bio.empty:
+        df_bio['fecha'] = pd.to_datetime(df_bio['fecha'])
 
     hrv_sem = df_bio[df_bio['fecha'] <= pd.Timestamp(domingo)]['hrv_rmssd'].dropna()
     hrv_post = df_bio[df_bio['fecha'] > pd.Timestamp(domingo)]['hrv_rmssd'].dropna()
@@ -1753,14 +1759,14 @@ def twin_evaluar(conn, atleta_id: int, semana_iso: str = None) -> dict:
     # 4. Absorción (CTL subió o se mantuvo)
     max_puntos += 25
     cur.execute('''
-        SELECT ctl FROM sesiones WHERE atleta_id=%s AND fecha <= %s AND ctl IS NOT NULL
+        SELECT ctl FROM sesiones WHERE atleta_id=%s AND fecha::text <= %s AND ctl IS NOT NULL
         ORDER BY fecha DESC LIMIT 1
-    ''', [atleta_id, lunes - timedelta(days=1)])
+    ''', [atleta_id, str(lunes - timedelta(days=1))])
     ctl_pre = cur.fetchone()
     cur.execute('''
-        SELECT ctl FROM sesiones WHERE atleta_id=%s AND fecha <= %s AND ctl IS NOT NULL
+        SELECT ctl FROM sesiones WHERE atleta_id=%s AND fecha::text <= %s AND ctl IS NOT NULL
         ORDER BY fecha DESC LIMIT 1
-    ''', [atleta_id, domingo])
+    ''', [atleta_id, str(domingo)])
     ctl_post = cur.fetchone()
     absorcion_ok = None
     if ctl_pre and ctl_post:
