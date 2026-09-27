@@ -2,8 +2,10 @@
 import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import GraficoActividadStreams from './GraficoActividadStreams'
 import SeccionRace from './SeccionRace'
+import SeccionRoute from './SeccionRoute'
 import SeccionTecnica from './SeccionTecnica'
 import { TwinAtleta } from './SeccionTwin'
+import NoahFuel from './NoahFuel'
 import SeccionTests from './SeccionTests'
 import axios from 'axios'
 import {
@@ -1075,6 +1077,11 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
         <GraficoActividad act={act} laps={laps} sport={sport} lthr={LTHR}
           sesionId={act.sesion_id || act.id} atletaId={atletaId}
           css={cssVal} paceUmbral={paceUmbralVal}/>
+      </div>
+
+      {/* NOAH ROUTE — mapa GPS de la actividad */}
+      <div style={{padding:'12px 4px',borderBottom:`1px solid ${NOAH_C.border}`}}>
+        <SeccionRoute sesionId={act.sesion_id || act.id} atletaId={atletaId} sport={sport} />
       </div>
 
       {/* Torque y W'bal — solo para ciclismo, bajo demanda */}
@@ -4050,6 +4057,7 @@ export default function AtletaDashboard({ atletaId }) {
     {id:'tests',         label:'Tests',         icon: FlaskConical},
     {id:'tecnica',       label:'Técnica',       icon: Target},
     {id:'twin',          label:'Mi Twin',       icon: Brain},
+    {id:'fuel',          label:'Nutrición',     icon: Flame},
     {id:'perfil',        label:'Perfil',        icon: UserCircle},
     {id:'asistente',     label:'Asistente',     icon: MessageCircle},
   ]
@@ -4179,7 +4187,7 @@ export default function AtletaDashboard({ atletaId }) {
                 <AlertTriangle size={11}/> Sin sync hace {syncStatus.dias_sin_sync}d
               </div>
             )}
-            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            <div style={{ display:'flex', gap:10 }}>
               <button className="noah-sync-btn" onClick={async () => {
                 setSyncBioLoad(true); setSyncResult(null)
                 try {
@@ -4192,12 +4200,12 @@ export default function AtletaDashboard({ atletaId }) {
                 } catch { setSyncResult({tipo:'bio', ok:false, msg:'Error al sincronizar'}) }
                 setSyncBioLoad(false)
               }} disabled={syncBioLoading} style={{
-                flex:'1 1 45%', minWidth:0, padding:'11px 12px', borderRadius:10, fontSize:12, fontWeight:700,
+                flex:1, padding:'11px 16px', borderRadius:10, fontSize:13, fontWeight:700,
                 background:'#007AFF', color:'#fff', border:'none', cursor:'pointer',
-                display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:6,
                 boxShadow:'0 4px 14px rgba(0,122,255,0.45)',
               }}>
-                {syncBioLoading ? <RotateCw size={13} className="noah-spin"/> : <Moon size={13}/>} Bio
+                {syncBioLoading ? <RotateCw size={13} className="noah-spin"/> : <Moon size={13}/>} Sincronizar Bio
               </button>
               <button className="noah-sync-btn" onClick={async () => {
                 setSyncLoading(true); setSyncResult(null)
@@ -4214,9 +4222,9 @@ export default function AtletaDashboard({ atletaId }) {
                 } catch { setSyncResult({tipo:'actividad', ok:false, msg:'Error al sincronizar'}) }
                 setSyncLoading(false)
               }} disabled={syncLoading} style={{
-                flex:'1 1 45%', minWidth:0, padding:'11px 12px', borderRadius:10, fontSize:12, fontWeight:700,
+                flex:1, padding:'11px 16px', borderRadius:10, fontSize:13, fontWeight:700,
                 background:'#007AFF', color:'#fff', border:'none', cursor:'pointer',
-                display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:6,
                 boxShadow:'0 4px 14px rgba(0,122,255,0.45)',
               }}>
                 {syncLoading ? <RotateCw size={13} className="noah-spin"/> : <Footprints size={13}/>} Actividad
@@ -4638,6 +4646,8 @@ export default function AtletaDashboard({ atletaId }) {
       {tab==='tecnica'&&<SeccionTecnica atletaId={id} />}
 
       {tab==='twin' && <TwinAtleta atletaId={id} />}
+
+      {tab==='fuel' && <NoahFuel atletaId={id} />}
 
         {tab==='tests' && (
         <SeccionTests atletaId={atletaId} modoAtleta={true} />
