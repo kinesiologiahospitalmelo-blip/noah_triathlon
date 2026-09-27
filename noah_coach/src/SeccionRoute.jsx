@@ -202,12 +202,19 @@ export default function SeccionRoute({ sesionId, atletaId, sport = 'running', he
       try {
         const geojson = { type: 'Feature', geometry: { type: 'LineString', coordinates: coords } }
         map.addSource('route', { type: 'geojson', lineMetrics: true, data: geojson })
+        // Fallback: línea sólida (siempre visible, incluso si gradient falla en mobile)
+        map.addLayer({ id: 'route-solid', type: 'line', source: 'route',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-width': 5, 'line-color': sportColor, 'line-opacity': 0.9 } })
+        // Glow + gradient (puede fallar en mobile — route-solid es el respaldo)
+        try {
         map.addLayer({ id: 'route-glow', type: 'line', source: 'route',
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-width': 16, 'line-blur': 8, 'line-opacity': 0.5, 'line-gradient': gradient } })
         map.addLayer({ id: 'route-line', type: 'line', source: 'route',
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-width': 6, 'line-gradient': gradient } })
+        } catch(e) { console.warn('[ROUTE] gradient fallback:', e) }
         map.addLayer({ id: 'route-hit', type: 'line', source: 'route',
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-width': 26, 'line-opacity': 0 } })
