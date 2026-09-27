@@ -31,3 +31,5 @@ scikit-learn>=1.5.2
 garminconnect>=0.3.6
 # ── Parseo de archivos FIT (backfill_wahoo_laps_streams.py) ─────────────────
 fitparse
+scipy>=1.11.0
+requests>=2.31.0
