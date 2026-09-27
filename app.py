@@ -87,6 +87,17 @@ def error(msg, code=400):
 def ok(data):
     return jsonify({'ok': True, 'data': data})
 
+def _query_rollback_safe(conn, sql, params):
+    """Ejecuta un SELECT; si falla (p.ej. columna inexistente en este
+    entorno), hace rollback para no dejar la conexión en estado 'aborted'
+    de Postgres y devuelve None en vez de propagar la excepción."""
+    try:
+        return conn.execute(sql, params).fetchone()
+    except Exception:
+        try: conn.rollback()
+        except Exception: pass
+        return None
+
 
 # ─── AUTENTICACIÓN — login simple por atleta (usuario/contraseña dados por el coach) ──
 #
@@ -1435,27 +1446,33 @@ def get_nutricion_post(atleta_id):
         ).fetchone()
         peso_kg = atleta_row[0] if atleta_row and atleta_row[0] else None
 
+        # BUG corregido (sesión 6): esta query pedía columnas 'calories',
+        # 'intensity_factor', 'if_sesion', 'temperatura_avg', que no existen
+        # en la tabla real (la real es 'calorias', y las otras tres no
+        # existen en absoluto) -- este endpoint tiraba excepción siempre
+        # que se lo llamaba. Se deja con rollback-safe por si en algún
+        # entorno faltase incluso 'calorias'.
         if sesion_id:
-            act = conn.execute("""
-                SELECT sport, duration_min, tss_total, calories, intensity_factor,
-                       if_sesion, temperatura_avg
+            act = _query_rollback_safe(conn, """
+                SELECT sport, duration_min, tss_total, calorias
                 FROM sesiones WHERE id=%s
-            """, (sesion_id,)).fetchone()
+            """, (sesion_id,))
         else:
-            act = conn.execute("""
-                SELECT sport, duration_min, tss_total, calories, intensity_factor,
-                       if_sesion, temperatura_avg
+            act = _query_rollback_safe(conn, """
+                SELECT sport, duration_min, tss_total, calorias
                 FROM sesiones WHERE atleta_id=%s AND fecha=%s
                 ORDER BY duration_min DESC LIMIT 1
-            """, (atleta_id, fecha)).fetchone()
+            """, (atleta_id, fecha))
 
         conn.close()
 
         if not act:
             return ok({'sin_actividad': True, 'mensaje': 'Sin actividad real registrada ese día.'})
 
-        sport, dur_min, tss_total, calorias, if_intensity, if_sesion, temp = act
-        intensidad_if = if_sesion or if_intensity or 0.75
+        sport, dur_min, tss_total, calorias = act
+        # if_sesion/temperatura_avg no existen en la tabla -- se usa un
+        # valor por defecto conservador en vez de asumir un dato que no hay.
+        intensidad_if = 0.75
 
         if not dur_min or dur_min <= 0:
             return ok({'sin_actividad': True, 'mensaje': 'Actividad sin duración válida.'})
@@ -1484,6 +1501,215 @@ def get_nutricion_post(atleta_id):
 
     except Exception as e:
         return error(str(e))
+
+
+# ─── NUTRICIÓN COMPLETA (v2) ──────────────────────────────────────────────────
+
+@app.route('/api/atletas/<int:atleta_id>/nutricion', methods=['GET'])
+@requiere_login
+def get_nutricion_completa(atleta_id):
+    """
+    Plan nutricional personalizado del día.
+    Motor propio basado en datos reales del atleta.
+    """
+    conn = get_conn()
+    try:
+        from noah_nutricion_v2 import nutricion_dia
+        fecha = request.args.get('fecha', str(date.today()))
+        resultado = nutricion_dia(conn, atleta_id, fecha)
+        conn.close()
+        return ok(_limpiar_nan(resultado))
+    except Exception as e:
+        conn.close()
+        import traceback
+        traceback.print_exc()
+        return error(str(e))
+
+
+# ── NOAH Eat: parsear comida + balance ──
+@app.route('/api/atletas/<int:atleta_id>/nutricion/eat', methods=['POST'])
+@requiere_login
+def noah_eat(atleta_id):
+    """Parsea texto libre de comida y calcula balance vs objetivo."""
+    conn = get_conn()
+    try:
+        from noah_nutricion_v2 import noah_eat_parsear, noah_eat_balance, nutricion_dia
+        data = request.get_json() or {}
+        texto = data.get('texto', '')
+        if not texto:
+            conn.close()
+            return error('Sin texto')
+
+        # Parsear comida
+        comido = noah_eat_parsear(texto)
+
+        # Calcular objetivo del día
+        fecha = data.get('fecha', str(date.today()))
+        plan = nutricion_dia(conn, atleta_id, fecha)
+        macros = plan.get('macros') if plan.get('disponible') else None
+
+        # Balance
+        balance = noah_eat_balance(macros, comido)
+
+        conn.close()
+        return ok(_limpiar_nan({
+            'comido': comido,
+            'balance': balance,
+        }))
+    except Exception as e:
+        conn.close()
+        import traceback; traceback.print_exc()
+        return error(str(e))
+
+
+# ─── NOAH FUEL (nutrición inteligente v4 — motor reescrito sesión 6) ──────────
+#
+# NOTA: acá había DOS bloques con las mismas 2 rutas repetidas (mismos
+# nombres de función get_fuel_dia / fuel_chat, mismo path). Flask levanta
+# la última definición y descarta la primera en silencio -- funcionaba de
+# pura casualidad porque el 2º bloque era casi idéntico, pero es un bug
+# real (cualquier diferencia entre los dos bloques se perdía sin avisar).
+# Se deja un solo bloque limpio.
+
+_init_nutricion_tables_hecho = False
+
+def _init_nutricion_tables():
+    """Crea las tablas/columnas que el motor de nutrición necesita y que
+    todavía no existen en la base (mismo patrón que _init_auth_tables()).
+    Se llama una vez al importar el módulo -- ver el final de este bloque."""
+    global _init_nutricion_tables_hecho
+    if _init_nutricion_tables_hecho:
+        return
+    conn = get_conn()
+    try:
+        from db_compat import asegurar_columnas
+        asegurar_columnas(conn, 'atletas', [
+            ('body_fat_pct', 'REAL'),
+            ('objetivo', "VARCHAR(50)"),          # 'rendimiento','composicion','salud'
+        ])
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS nutricion_log (
+                id SERIAL PRIMARY KEY,
+                atleta_id INTEGER NOT NULL,
+                fecha TEXT NOT NULL,
+                momento VARCHAR(50),
+                texto_libre TEXT,
+                alimentos JSONB,
+                cho_g REAL, prot_g REAL, grasa_g REAL, kcal REAL,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS atleta_preferencias (
+                atleta_id INTEGER NOT NULL,
+                key VARCHAR(100) NOT NULL,
+                value TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (atleta_id, key)
+            )
+        """)
+        conn.commit()
+    except Exception:
+        try: conn.rollback()
+        except: pass
+    finally:
+        conn.close()
+    _init_nutricion_tables_hecho = True
+
+
+@app.route('/api/atletas/<int:atleta_id>/nutricion/fuel', methods=['GET'])
+@requiere_login
+def get_fuel_dia(atleta_id):
+    """NOAH Fuel: plan nutricional 2 niveles (nivel1 = HOY, nivel2 = POR QUÉ)."""
+    conn = get_conn()
+    try: conn.rollback()
+    except: pass
+    try:
+        from noah_fuel_engine import noah_fuel_dia
+        fecha = request.args.get('fecha', str(date.today()))
+        resultado = noah_fuel_dia(conn, atleta_id, fecha)
+        conn.close()
+        return ok(_limpiar_nan(resultado))
+    except Exception as e:
+        conn.close()
+        import traceback; traceback.print_exc()
+        return error(str(e))
+
+
+@app.route('/api/atletas/<int:atleta_id>/nutricion/fuel/chat', methods=['POST'])
+@requiere_login
+def fuel_chat(atleta_id):
+    """NOAH Fuel chat: asistente nutricional IA (pregunta libre, no registra comida)."""
+    conn = get_conn()
+    try:
+        from noah_fuel_engine import noah_fuel_chat, noah_fuel_dia
+        data = request.get_json() or {}
+        texto = data.get('texto', '')
+        if not texto:
+            conn.close()
+            return error('Sin texto')
+        try:
+            contexto = noah_fuel_dia(conn, atleta_id)
+        except Exception:
+            contexto = {}
+        resultado = noah_fuel_chat(contexto, texto)
+        conn.close()
+        return ok(resultado)
+    except Exception as e:
+        conn.close()
+        import traceback; traceback.print_exc()
+        return error(str(e))
+
+
+@app.route('/api/atletas/<int:atleta_id>/nutricion/fuel/registrar', methods=['POST'])
+@requiere_login
+def fuel_registrar_comida(atleta_id):
+    """NOAH Eat: registra en texto libre lo que comió el atleta (guarda en
+    nutricion_log -- esto es lo que alimenta la 'memoria' del motor para el
+    día siguiente) y devuelve el balance contra el objetivo de hoy."""
+    conn = get_conn()
+    try:
+        from noah_fuel_engine import noah_eat_registrar, noah_eat_balance, noah_fuel_dia
+        data = request.get_json() or {}
+        texto = data.get('texto', '')
+        momento = data.get('momento')
+        fecha = data.get('fecha', str(date.today()))
+        if not texto:
+            conn.close()
+            return error('Sin texto')
+
+        resultado = noah_eat_registrar(conn, atleta_id, texto, fecha=fecha, momento=momento)
+        if not resultado.get('ok'):
+            conn.close()
+            return ok(resultado)  # error "de negocio" (no reconoció alimentos), no error HTTP
+
+        plan = noah_fuel_dia(conn, atleta_id, fecha)
+        macros = plan.get('nivel1', {}).get('macros') if plan.get('disponible') else None
+        balance = noah_eat_balance(macros, resultado['comido'])
+
+        conn.close()
+        return ok(_limpiar_nan({'comido': resultado['comido'], 'balance': balance}))
+    except Exception as e:
+        conn.close()
+        import traceback; traceback.print_exc()
+        return error(str(e))
+
+
+_init_nutricion_tables()
+
+
+@app.route('/api/nutricion/foto', methods=['GET'])
+@requiere_login
+def get_foto_comida():
+    """Resuelve foto para una comida (asset propio → Unsplash → nada)."""
+    try:
+        from noah_fuel_images import resolver_foto
+        key = request.args.get('key', '')
+        q = request.args.get('q', key)
+        resultado = resolver_foto(key, q)
+        return ok(resultado)
+    except Exception as e:
+        return ok({'disponible': False, 'url': None})
 
 
 # ─── APROBAR PRESCRIPCIÓN ─────────────────────────────────────────────────────
@@ -4771,7 +4997,7 @@ def get_activity_streams(atleta_id):
             if fila_sesion:
                 muestras_todas = conn.execute("""
                     SELECT ts_s, hr, speed_ms, cadence, power_w, altitude_m,
-                           distance_m, temperature, left_right_pct
+                           distance_m, temperature, left_right_pct, lat, lon
                     FROM activity_samples WHERE sesion_id=%s ORDER BY ts_s
                 """, (sesion_id,)).fetchall()
 
@@ -4803,6 +5029,7 @@ def get_activity_streams(atleta_id):
                         'power': m[4], 'power_w': m[4], 'cadence': m[3],
                         'speed_ms': m[2], 'altitude_m': m[5], 'distance_m': m[6],
                         'temperature': m[7], 'left_right_pct': m[8],
+                        'lat': m[9], 'lon': m[10],
                     } for m in muestras]
 
                     # Fallback: calcular pace desde distancia si speed_ms es null
