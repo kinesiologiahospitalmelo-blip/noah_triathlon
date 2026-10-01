@@ -438,7 +438,7 @@ export default function GraficoActividadStreams({
       const d = Math.abs(xNorm - xMx)
       if (d < bestDist) { bestDist = d; best = i }
     }
-    setHover(best)
+    setHover(prev => prev === best ? prev : best)
   }, [series, n, maxT, iW])
 
   const hrStep  = (hrMax - hrMin) > 60 ? 20 : 10

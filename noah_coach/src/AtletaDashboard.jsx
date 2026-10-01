@@ -1877,7 +1877,7 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
 
         return (
           <div>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, minHeight:160 }}>
               <button onClick={()=>goToBio(bioIdx-1)} aria-label="Biomarcador anterior" style={{
                 width:26, height:26, borderRadius:'50%', flexShrink:0,
                 background:'rgba(255,255,255,0.06)', border:`1px solid ${NOAH_C.border2}`,
@@ -3086,7 +3086,7 @@ function ModeloBanisterAtleta({ atletaId }) {
         return (
           <div style={{ padding:'8px 10px', display:'flex', flexDirection:'column', gap:6,
             borderBottom:'1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, minHeight:130 }}>
               <button onClick={()=>goTo(activeIdx-1)} aria-label="Deporte anterior" style={{
                 width:22, height:22, borderRadius:'50%', flexShrink:0,
                 background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)',
