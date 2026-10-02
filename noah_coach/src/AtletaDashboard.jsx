@@ -2606,7 +2606,7 @@ function PeriodizacionChart({ id }) {
 
 
 // ══════════════════════════════════════════════════════════════════════════════
-// CalendarioMensual — vista mensual estilo TrainingPeaks
+// CalendarioMensual — vista mensual estilo Garmin
 // ══════════════════════════════════════════════════════════════════════════════
 function CalendarioMensual({ atletaId, presc, dark = true }) {
   const hoy = hoyKey()
@@ -2629,153 +2629,97 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
     const hasta  = ultimoDia.toISOString().slice(0, 10)
     authFetch(`${API}/atletas/${atletaId}/actividades_rango?desde=${desde}&hasta=${hasta}`)
       .then(r => r.json())
-      .then(r => {
-        const map = r.data?.actividades || {}
-        setActsMes(map)
-        setCargando(false)
-      })
+      .then(r => { setActsMes(r.data?.actividades || {}); setCargando(false) })
       .catch(() => { setActsMes({}); setCargando(false) })
   }, [atletaId, mesOffset])
 
-  const sesiones  = presc?.prescripcion?.sesiones || []
-  const getEstado = (fecha) => {
-    const acts = actsMes[fecha]||[], pres = sesiones.filter(s=>getDiaKey(s.fecha)===fecha)
-    const pass  = fecha <= hoy
-    if (pres.length > 0) {
-      const sp = pres.map(s=>s.sport)
-      if (acts.some(a=>sp.includes(a.sport))) return 'done'
-      if (acts.length > 0) return 'partial'
-      if (pass) return 'miss'
-      return 'planned'
-    }
-    return acts.length > 0 ? 'done' : 'none'
-  }
+  const SC = { running: NOAH_C.run, cycling: NOAH_C.bike, swimming: NOAH_C.swim }
+  const DIAS = ['D','L','M','M','J','V','S']
 
-  const T = dark ? {
-    wrap:   'linear-gradient(160deg,rgba(10,10,28,0.98),rgba(16,16,40,0.96))',
-    header: 'linear-gradient(90deg,rgba(99,102,241,0.15),transparent)',
-    border: 'rgba(255,255,255,0.07)',
-    text:   'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.3)',
-    week:   'rgba(255,255,255,0.38)', hoy:'rgba(99,102,241,0.2)',
-    selBg:  'rgba(99,102,241,0.3)', selBorder:'rgba(99,102,241,0.7)',
-    dayBg:  'transparent', tss:'rgba(99,102,241,0.12)', tssBorder:'rgba(99,102,241,0.25)',
-    tssText:'#A5B4FC',
-  } : {
-    wrap:   '#FFFFFF',
-    header: 'linear-gradient(90deg,#EEF2FF,#F9FAFB)',
-    border: '#E5E7EB',
-    text:   '#111827', dim:'#9CA3AF',
-    week:   '#6B7280', hoy:'#EEF2FF',
-    selBg:  '#E0E7FF', selBorder:NOAH_C.ctl,
-    dayBg:  '#FFFFFF', tss:'#F5F3FF', tssBorder:'#DDD6FE',
-    tssText:NOAH_C.ctl,
-  }
-
-  const E = {
-    done:    {bg:dark?'rgba(34,197,94,0.15)':'#DCFCE7',   bd:dark?'rgba(34,197,94,0.35)':'#86EFAC',   dot:NOAH_C.success},
-    partial: {bg:dark?'rgba(245,158,11,0.15)':'#FEF9C3',  bd:dark?'rgba(245,158,11,0.35)':'#FDE047',  dot:NOAH_C.warning},
-    miss:    {bg:dark?'rgba(239,68,68,0.13)':'#FEE2E2',   bd:dark?'rgba(239,68,68,0.3)':'#FECACA',    dot:NOAH_C.danger},
-    planned: {bg:dark?'rgba(99,102,241,0.1)':'#EEF2FF',   bd:dark?'rgba(99,102,241,0.25)':'#C7D2FE',  dot:NOAH_C.ctl},
-    none:    {bg:'transparent', bd:'transparent', dot:null},
-  }
-  const SC = {running:NOAH_C.accent,cycling:NOAH_C.bike,swimming:NOAH_C.success}
-  const DIAS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom']
-
-  const dow = (f) => (new Date(f+'T12:00:00').getDay()+6)%7
+  const dow = (f) => new Date(f+'T12:00:00').getDay()
   const offset = dow(`${anio}-${String(mes+1).padStart(2,'0')}-01`)
   const celdas = Math.ceil((offset + ultimoDia.getDate())/7)*7
-  const grilla = Array.from({length:celdas}, (_,i)=>{
-    const d = i-offset+1
+  const grilla = Array.from({length:celdas}, (_,i) => {
+    const d = i - offset + 1
     return (d<1||d>ultimoDia.getDate()) ? null :
       `${anio}-${String(mes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
   })
-  const semanas = Array.from({length:grilla.length/7}, (_,i)=>grilla.slice(i*7,i*7+7))
-  const tssSem  = (sem) => sem.filter(Boolean).reduce((t,f)=>
-    t+(actsMes[f]||[]).reduce((tt,a)=>tt+(a.tss_total||0),0), 0)
+  const semanas = Array.from({length:grilla.length/7}, (_,i) => grilla.slice(i*7,i*7+7))
 
   return (
-    <div>
+    <div style={{ background:'#111118', borderRadius:14, overflow:'hidden' }}>
 
       {/* Header */}
-      <div style={{padding:'8px 4px 12px',borderBottom:`1px solid ${T.border}`,
-        display:'flex',alignItems:'center',gap:10}}>
-        {[['‹',()=>setMesOffset(m=>m-1)],['›',()=>setMesOffset(m=>m+1)]].map(([l,fn],i)=>(
-          <button key={i} onClick={fn} style={{width:30,height:30,borderRadius:7,
-            border:`1px solid ${T.border}`,background:'transparent',color:T.text,
-            cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center'}}>
-            {l}
-          </button>
-        )).reduce((acc,el,i)=>i===0?[el]:[ ...acc,
-          <div key="mid" style={{flex:1,textAlign:'center'}}>
-            <span style={{fontSize:15,fontWeight:700,color:T.text,textTransform:'capitalize'}}>
-              {nombreMes}
-            </span>
-          </div>, el
-        ],[])}
-        <button onClick={()=>setMesOffset(0)} style={{padding:'3px 10px',borderRadius:7,
-          fontSize:10,fontWeight:600,border:`1px solid ${T.border}`,background:'transparent',
-          color:T.dim,cursor:'pointer'}}>Hoy</button>
+      <div style={{ display:'flex', alignItems:'center', padding:'14px 16px', gap:12 }}>
+        <button onClick={() => setMesOffset(m => m-1)} style={{
+          background:'transparent', border:'none', color:'#60A5FA', fontSize:18, cursor:'pointer', padding:'4px 8px',
+        }}>‹</button>
+        <div style={{ flex:1, textAlign:'center', fontSize:15, fontWeight:700, color:'rgba(255,255,255,0.9)',
+          textTransform:'capitalize' }}>{nombreMes}</div>
+        <button onClick={() => setMesOffset(m => m+1)} style={{
+          background:'transparent', border:'none', color:'#60A5FA', fontSize:18, cursor:'pointer', padding:'4px 8px',
+        }}>›</button>
       </div>
 
-
-
-      {/* Cabecera días */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',
-        padding:'0 6px',borderBottom:`1px solid ${T.border}`}}>
-        {DIAS.map(d=>(
-          <div key={d} style={{padding:'6px 4px',textAlign:'center',fontSize:9,
-            fontWeight:600,color:T.week,textTransform:'uppercase',letterSpacing:0.5}}>{d}</div>
+      {/* Días de la semana */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', padding:'0 8px 6px' }}>
+        {DIAS.map((d,i) => (
+          <div key={i} style={{ textAlign:'center', fontSize:11, fontWeight:600,
+            color:'rgba(255,255,255,0.4)', padding:'2px 0' }}>{d}</div>
         ))}
       </div>
 
-      {/* Cargando */}
-      {cargando && <div style={{padding:20,textAlign:'center',color:T.dim,fontSize:12}}>Cargando...</div>}
+      {cargando && <div style={{ padding:30, textAlign:'center', color:'rgba(255,255,255,0.3)', fontSize:12 }}>Cargando...</div>}
 
       {/* Semanas */}
-      {!cargando && semanas.map((sem,si)=>(
-        <div key={si} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',
-          padding:'2px 6px',gap:2,borderBottom:`1px solid ${T.border}`}}>
-          {sem.map((fecha,di)=>{
-            if(!fecha) return <div key={di}/>
-            const est    = E[getEstado(fecha)]
-            const acts   = actsMes[fecha]||[]
-            const pres   = sesiones.filter(s=>getDiaKey(s.fecha)===fecha)
-            const esHoy  = fecha===hoy
-            const esFut  = fecha>hoy
-            const selec  = diaDetalle===fecha
+      {!cargando && semanas.map((sem, si) => (
+        <div key={si} style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', padding:'0 4px', gap:2 }}>
+          {sem.map((fecha, di) => {
+            if (!fecha) return <div key={di} />
+            const acts   = actsMes[fecha] || []
+            const esHoy  = fecha === hoy
+            const selec  = diaDetalle === fecha
             const num    = new Date(fecha+'T12:00:00').getDate()
-            const tss    = Math.round(acts.reduce((t,a)=>t+(a.tss_total||0),0))
+
+            // Agrupar actividades por deporte
+            const deportes = {}
+            acts.forEach(a => {
+              const sp = a.sport || 'other'
+              if (!deportes[sp]) deportes[sp] = { tss: 0, dur: 0, n: 0 }
+              deportes[sp].tss += (a.tss_total || 0)
+              deportes[sp].dur += (a.duration_min || 0)
+              deportes[sp].n++
+            })
+
             return (
-              <div key={di} onClick={()=>setDiaDetalle(selec?null:fecha)} style={{
-                minHeight:68,padding:'5px 6px',borderRadius:7,cursor:'pointer',
-                transition:'all 0.12s',
-                background:selec?T.selBg:esHoy?T.hoy:est.bg,
-                border:`1px solid ${selec?T.selBorder:esHoy?T.selBorder:est.bd||T.border}`,
-                opacity:esFut&&getEstado(fecha)==='none'?0.45:1,
+              <div key={di} onClick={() => setDiaDetalle(selec ? null : fecha)} style={{
+                minHeight: 72, padding:'4px 3px', borderRadius:6, cursor:'pointer',
+                background: selec ? 'rgba(96,165,250,0.12)' : esHoy ? 'rgba(96,165,250,0.06)' : '#1A1A24',
+                border: esHoy ? '1px solid rgba(96,165,250,0.4)' : selec ? '1px solid rgba(96,165,250,0.3)' : '1px solid rgba(255,255,255,0.04)',
+                transition: 'all 0.15s',
               }}>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
-                  <span style={{fontSize:12,fontWeight:esHoy?800:500,
-                    color:esHoy?(dark?'#A5B4FC':NOAH_C.ctl):T.text}}>{num}</span>
-                  {est.dot&&<div style={{width:6,height:6,borderRadius:'50%',
-                    background:est.dot,boxShadow:`0 0 3px ${est.dot}`}}/>}
+                {/* Número del día */}
+                <div style={{ fontSize:12, fontWeight: esHoy ? 800 : 500, marginBottom:4,
+                  color: esHoy ? '#60A5FA' : fecha > hoy ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.75)',
+                  textAlign:'center',
+                }}>{num}</div>
+
+                {/* Barras de actividades por deporte (estilo Garmin) */}
+                <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                  {Object.entries(deportes).map(([sp, data]) => {
+                    const color = SC[sp] || '#94A3B8'
+                    const intense = data.tss > 60
+                    return (
+                      <div key={sp} style={{
+                        height: intense ? 6 : 4,
+                        borderRadius: 2,
+                        background: color,
+                        opacity: intense ? 0.95 : 0.7,
+                        boxShadow: intense ? `0 0 4px ${color}66` : 'none',
+                      }} />
+                    )
+                  })}
                 </div>
-                {acts.slice(0,2).map((a,ai)=>{
-                  const c=SC[a.sport]||'#94A3B8'
-                  const dk=(a.distance_km>500?a.distance_km/1000:a.distance_km)?.toFixed(1)
-                  return <div key={ai} style={{fontSize:8,fontWeight:600,color:c,
-                    background:`${c}18`,borderRadius:3,padding:'1px 4px',marginBottom:1,
-                    overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis',
-                    display:'flex',alignItems:'center',gap:2}}>
-                    <SportIcon sport={a.sport} size={9} color={c}/> {dk}km
-                  </div>
-                })}
-                {acts.length===0&&pres.slice(0,1).map((s,pi)=>(
-                  <div key={pi} style={{fontSize:8,color:T.dim,borderRadius:3,padding:'1px 0',
-                    display:'flex',alignItems:'center',gap:2}}>
-                    <SportIcon sport={s.sport} size={9} color={T.dim}/> {s.nombre?.slice(0,10)}
-                  </div>
-                ))}
-                {tss>0&&<div style={{fontSize:8,color:T.dim}}>{tss}</div>}
               </div>
             )
           })}
@@ -2783,37 +2727,51 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
       ))}
 
       {/* Detalle día */}
-      {diaDetalle&&(()=>{
-        const acts=actsMes[diaDetalle]||[], pres=sesiones.filter(s=>getDiaKey(s.fecha)===diaDetalle)
-        const label=new Date(diaDetalle+'T12:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})
+      {diaDetalle && (() => {
+        const acts = actsMes[diaDetalle] || []
+        const sesiones = presc?.prescripcion?.sesiones || []
+        const pres = sesiones.filter(s => getDiaKey(s.fecha) === diaDetalle)
+        const label = new Date(diaDetalle+'T12:00:00').toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'})
+
         return (
-          <div style={{margin:'10px 4px 6px',padding:'12px 0',
-            borderTop:`2px solid ${dark?'#818CF8':'#4F46E5'}`}}>
-            <div style={{fontSize:12,fontWeight:700,color:dark?'#A5B4FC':'#4F46E5',
-              marginBottom:8,textTransform:'capitalize',display:'flex',alignItems:'center',gap:6}}>
-              <CalendarDays size={13}/> {label}
-            </div>
-            {acts.length===0&&pres.length===0&&<div style={{fontSize:12,color:T.dim}}>Sin actividad</div>}
-            {pres.map((s,i)=>(
-              <div key={i} style={{padding:'7px 10px',borderRadius:7,marginBottom:5,
-                background:dark?'rgba(255,255,255,0.04)':'#FFFFFF',
-                border:`1px solid ${T.border}`,display:'flex',gap:8,alignItems:'center'}}>
-                <SportIcon sport={s.sport} size={14}/>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:11,fontWeight:600,color:T.text}}>{s.nombre}</div>
-                  <div style={{fontSize:10,color:T.dim}}>{Math.round(s.duracion)}min · TSS {s.tss}</div>
+          <div style={{ margin:'4px 8px 8px', padding:'12px', borderRadius:10,
+            background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ fontSize:12, fontWeight:700, color:'#60A5FA',
+              marginBottom:10, textTransform:'capitalize' }}>{label}</div>
+
+            {acts.length === 0 && pres.length === 0 && (
+              <div style={{ fontSize:12, color:'rgba(255,255,255,0.3)' }}>Sin actividad</div>
+            )}
+
+            {acts.map((a, i) => {
+              const c = SC[a.sport] || '#94A3B8'
+              const dk = (a.distance_km > 500 ? a.distance_km/1000 : a.distance_km)?.toFixed(1)
+              return (
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0',
+                  borderBottom: i < acts.length-1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                  <div style={{ width:4, height:28, borderRadius:2, background:c }} />
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.85)', display:'flex', alignItems:'center', gap:6 }}>
+                      <SportIcon sport={a.sport} size={13} color={c} />
+                      {a.sport === 'running' ? 'Run' : a.sport === 'cycling' ? 'Bike' : 'Swim'}
+                    </div>
+                    <div style={{ fontSize:10, color:'rgba(255,255,255,0.45)', marginTop:2 }}>
+                      {Math.round(a.duration_min || 0)}min · {dk}km · TSS {Math.round(a.tss_total || 0)}
+                    </div>
+                  </div>
                 </div>
-                <div style={{padding:'2px 7px',borderRadius:99,fontSize:9,fontWeight:600,
-                  background:acts.some(a=>a.sport===s.sport)?(dark?'rgba(52,211,153,0.2)':NOAH_C.successL):(dark?'rgba(248,113,113,0.15)':NOAH_C.dangerL),
-                  color:acts.some(a=>a.sport===s.sport)?NOAH_C.success:NOAH_C.danger,
-                  display:'flex',alignItems:'center',gap:3}}>
-                  {acts.some(a=>a.sport===s.sport)?<><Check size={10}/>Hecha</>:<><XCircle size={10}/>Pendiente</>}
+              )
+            })}
+
+            {pres.filter(s => !acts.some(a => a.sport === s.sport)).map((s, i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', opacity:0.5 }}>
+                <div style={{ width:4, height:28, borderRadius:2, background:SC[s.sport]||'#94A3B8', opacity:0.4 }} />
+                <div>
+                  <div style={{ fontSize:11, fontWeight:600, color:'rgba(255,255,255,0.5)' }}>
+                    {s.nombre || s.sport}
+                  </div>
+                  <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>Planificado · {Math.round(s.duracion)}min</div>
                 </div>
-              </div>
-            ))}
-            {acts.map((a,i)=>(
-              <div key={i} style={{marginBottom:i<acts.length-1?10:0}}>
-                <ActividadCard act={a} sesionPresc={pres.find(s=>s.sport===a.sport)||null} atletaId={atletaId}/>
               </div>
             ))}
           </div>
@@ -4187,7 +4145,7 @@ export default function AtletaDashboard({ atletaId }) {
                 <AlertTriangle size={11}/> Sin sync hace {syncStatus.dias_sin_sync}d
               </div>
             )}
-            <div style={{ display:'flex', gap:10 }}>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap', paddingBottom:8 }}>
               <button className="noah-sync-btn" onClick={async () => {
                 setSyncBioLoad(true); setSyncResult(null)
                 try {
@@ -4200,7 +4158,7 @@ export default function AtletaDashboard({ atletaId }) {
                 } catch { setSyncResult({tipo:'bio', ok:false, msg:'Error al sincronizar'}) }
                 setSyncBioLoad(false)
               }} disabled={syncBioLoading} style={{
-                flex:1, padding:'11px 16px', borderRadius:10, fontSize:13, fontWeight:700,
+                flex:'1 1 45%', minWidth:0, padding:'10px 12px', borderRadius:10, fontSize:12, fontWeight:700,
                 background:'#007AFF', color:'#fff', border:'none', cursor:'pointer',
                 display:'flex', alignItems:'center', justifyContent:'center', gap:6,
                 boxShadow:'0 4px 14px rgba(0,122,255,0.45)',
@@ -4222,7 +4180,7 @@ export default function AtletaDashboard({ atletaId }) {
                 } catch { setSyncResult({tipo:'actividad', ok:false, msg:'Error al sincronizar'}) }
                 setSyncLoading(false)
               }} disabled={syncLoading} style={{
-                flex:1, padding:'11px 16px', borderRadius:10, fontSize:13, fontWeight:700,
+                flex:'1 1 45%', minWidth:0, padding:'10px 12px', borderRadius:10, fontSize:12, fontWeight:700,
                 background:'#007AFF', color:'#fff', border:'none', cursor:'pointer',
                 display:'flex', alignItems:'center', justifyContent:'center', gap:6,
                 boxShadow:'0 4px 14px rgba(0,122,255,0.45)',
@@ -4569,7 +4527,7 @@ export default function AtletaDashboard({ atletaId }) {
       })()}
 
       {/* CONTENT */}
-      <div style={{ padding:'20px 12px', maxWidth:'100%', overflowX:'hidden' }}>
+      <div style={{ padding:'20px 12px', maxWidth:'100%', overflowX:'hidden', minHeight:'60vh' }}>
         {tab==='hoy' && <SesionDelDia atletaId={id} presc={presc} />}
         {tab==='semana' && <SemanaCompleta presc={presc} atletaId={id} sesionExpandida={sesionExp} setSesionExpandida={setSesionExp} />}
 
