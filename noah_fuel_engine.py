@@ -250,18 +250,28 @@ def _kcal_estimado_sesion(dur_min, tss, peso_kg):
     return round(dur_min * peso_kg * kcal_min_por_kg)
 
 
-def calcular_entreno_dia(planificadas, reales, peso_kg):
+def _kcal_reposo(dur_min, tmb_kcal):
+    """kcal que el cuerpo quema en reposo durante la sesión. Garmin y la
+    fórmula MET dan gasto BRUTO (incluye el reposo); como el basal ya está
+    contado aparte, hay que restarlo o se cuenta dos veces."""
+    return (tmb_kcal or 0) / 1440.0 * (dur_min or 0)
+
+
+def calcular_entreno_dia(planificadas, reales, peso_kg, tmb_kcal=None):
     def _resumen(rows, es_real):
-        det, tot_kcal, tot_tss, tot_min = [], 0, 0, 0
+        det, tot_kcal, tot_neto, tot_tss, tot_min = [], 0, 0, 0, 0
         for r in rows:
             kcal = r.get('kcal_real') if es_real else None
-            if not kcal or kcal <= 0:
+            estimado = not (kcal and kcal > 0)
+            if estimado:
                 kcal = _kcal_estimado_sesion(r['dur_min'], r['tss'], peso_kg)
+            neto = max(kcal - _kcal_reposo(r['dur_min'], tmb_kcal), kcal * 0.70)
             det.append({'deporte': r['deporte'], 'dur_min': round(r['dur_min']),
-                        'tss': round(r['tss']), 'kcal': round(kcal),
-                        'kcal_estimado': not bool(r.get('kcal_real'))})
-            tot_kcal += kcal; tot_tss += r['tss']; tot_min += r['dur_min']
-        return {'detalle': det, 'dur_min': round(tot_min), 'tss': round(tot_tss), 'kcal': round(tot_kcal)}
+                        'tss': round(r['tss']), 'kcal': round(kcal), 'kcal_neto': round(neto),
+                        'kcal_estimado': estimado})
+            tot_kcal += kcal; tot_neto += neto; tot_tss += r['tss']; tot_min += r['dur_min']
+        return {'detalle': det, 'dur_min': round(tot_min), 'tss': round(tot_tss),
+                'kcal': round(tot_kcal), 'kcal_neto': round(tot_neto)}
 
     plan = _resumen(planificadas, False) if planificadas else None
     real = _resumen(reales, True) if reales else None
@@ -273,6 +283,31 @@ def calcular_entreno_dia(planificadas, reales, peso_kg):
         'doble_turno': n_sesiones >= 2, 'dia_descanso': n_sesiones == 0,
         'ya_entreno_hoy': bool(reales),
     }
+
+
+def calcular_cho_durante(entreno):
+    """CHO que el atleta toma DURANTE las sesiones (geles, bebida). Es parte
+    de lo que come en el día: se descuenta de las comidas para que
+    comidas + durante = objetivo (si no, los días largos se pasan)."""
+    usar = entreno.get('usar_para_calculo') or {}
+    det, total = [], 0
+    for s in usar.get('detalle', []):
+        dur = s.get('dur_min', 0) or 0
+        if dur < 60:
+            tasa = 0
+        elif dur < 90:
+            tasa = 30
+        elif dur < 150:
+            tasa = 45
+        else:
+            tasa = 60
+        if s.get('deporte') == 'swimming':
+            tasa = min(tasa, 30)   # en pileta se toma menos
+        g = int(round(tasa * dur / 60.0 / 5.0) * 5)
+        det.append({'deporte': s.get('deporte'), 'dur_min': dur, 'cho_g_hora': tasa, 'cho_g': g})
+        total += g
+    return {'total_g': total, 'kcal': total * 4, 'detalle': det,
+            'fuente': 'Jeukendrup 2011 / Burke 2019 (30-60 g/h según duración)'}
 
 
 # ═══════════════════════════ 4. BIOMARCADORES Y CARGA ═══════════════════════
@@ -417,7 +452,30 @@ def seleccionar_prot_gkg(dia_descanso, doble_turno, dur_h_total):
     return 1.6
 
 
-def calcular_macros_dia(peso_kg, entreno, bio_eval, carrera, objetivo):
+TEF_PCT = 0.08   # efecto térmico de los alimentos (~8-10%)
+
+
+def _tipo_objetivo(objetivo):
+    o = (objetivo or '').lower()
+    if 'compos' in o:
+        return 'composicion'
+    if any(k in o for k in ('bajar', 'perd', 'defic', 'adelg', 'grasa')):
+        return 'bajar'
+    if any(k in o for k in ('subir', 'ganar', 'masa', 'volumen')):
+        return 'subir'
+    return 'mantener'
+
+
+def calcular_macros_dia(peso_kg, entreno, bio_eval, carrera, objetivo,
+                        base_kcal=None, recuperacion_pendiente=False):
+    """v5: LA ENERGÍA MANDA. Entrada = salida (±objetivo).
+      1) gasto = (basal + NEAT + entreno NETO) + TEF
+      2) kcal objetivo = gasto x factor (déficit solo en días fáciles)
+      3) proteína (g/kg) y grasa (piso + 20-25% kcal) se fijan
+      4) el CHO es lo que falta para cerrar las kcal, validado contra el
+         rango de Burke (piso = no subalimentar el trabajo; techo = no pasarse)
+    Antes cada macro salía de su propia tabla y las kcal eran solo la suma,
+    sin relación con el gasto."""
     if not peso_kg:
         return {'disponible': False, 'mensaje': 'Falta el peso del atleta.'}
 
@@ -428,32 +486,70 @@ def calcular_macros_dia(peso_kg, entreno, bio_eval, carrera, objetivo):
 
     dias_carrera = carrera['dias_restantes'] if carrera else None
     prioridad_carrera = carrera['prioridad'] if carrera else None
-
     cho_clasif = clasificar_cho(dur_h, intensidad, entreno['dia_descanso'], dias_carrera, prioridad_carrera)
-    cho_gkg = seleccionar_cho_gkg(cho_clasif['rango'], entreno['doble_turno'],
-                                   recuperacion_pendiente=False,  # se ajusta afuera con el bonus de ayer
-                                   prioridad_recuperacion=bio_eval['prioridad_recuperacion'])
+    lo, hi = cho_clasif['rango']
+    es_carga = (dias_carrera is not None and 0 <= dias_carrera <= 3
+                and (prioridad_carrera or 'B') in ('A', 'B'))
+
+    # 1) ENERGÍA QUE SALE
+    if not base_kcal:
+        base_kcal = round(peso_kg * 25)
+    entreno_neto = usar.get('kcal_neto', usar.get('kcal', 0)) or 0
+    tef = round((base_kcal + entreno_neto) * TEF_PCT)
+    gasto_total = round(base_kcal + entreno_neto + tef)
+
+    # 2) ENERGÍA QUE DEBE ENTRAR (según objetivo)
+    tipo = _tipo_objetivo(objetivo)
+    dia_duro = (dur_h >= 2) or entreno['doble_turno'] or es_carga
+    protegido = dia_duro or recuperacion_pendiente or bio_eval.get('prioridad_recuperacion')
+    if tipo == 'bajar':
+        factor = 1.0 if protegido else 0.90
+    elif tipo == 'composicion':
+        factor = 1.0 if protegido else 0.95
+    elif tipo == 'subir':
+        factor = 1.07
+    else:
+        factor = 1.0
+    kcal_obj = round(gasto_total * factor)
+
+    # 3) PROTEÍNA y GRASA
     prot_gkg = seleccionar_prot_gkg(entreno['dia_descanso'], entreno['doble_turno'], dur_h)
-
-    cho_g = round(peso_kg * cho_gkg)
+    if factor < 1.0:
+        prot_gkg = min(prot_gkg + 0.2, 2.2)   # en déficit, más proteína (ISSN)
     prot_g = round(peso_kg * prot_gkg)
-    cho_kcal, prot_kcal = cho_g * 4, prot_g * 4
+    prot_kcal = prot_g * 4
 
-    piso_grasa_gkg = 0.7 if objetivo == 'composicion' else 0.9
-    piso_grasa_g = peso_kg * piso_grasa_gkg
-    gasto_estimado = (entreno.get('usar_para_calculo') or {}).get('kcal', 0)
-    grasa_g = max(piso_grasa_g, piso_grasa_g)  # el piso manda; no se resta de nada más (ver nota abajo)
-    grasa_g = round(max(piso_grasa_g, piso_grasa_g))
+    piso_grasa_g = peso_kg * (0.7 if tipo == 'composicion' else 0.9)
+    pct_grasa = 0.20 if hi >= 8 else 0.25
+    grasa_g = round(max(piso_grasa_g, pct_grasa * kcal_obj / 9))
 
-    total_kcal = cho_kcal + prot_kcal + round(grasa_g) * 9
+    # 4) CHO = lo que falta, validado contra Burke
+    cho_energia = (kcal_obj - prot_kcal - grasa_g * 9) / 4
+    if es_carga:
+        cho_g = max(cho_energia, lo * peso_kg)          # carga: puede superar el gasto a propósito
+    else:
+        cho_g = max(min(cho_energia, hi * peso_kg), lo * peso_kg)
+    cho_g = round(cho_g)
+    if not es_carga:
+        sobrante = kcal_obj - (prot_kcal + grasa_g * 9 + cho_g * 4)
+        if sobrante > 0:    # el techo de CHO cortó: el resto va a grasa (hasta 35% kcal)
+            tope = 0.35 * kcal_obj / 9
+            grasa_g = round(grasa_g + max(0, min(sobrante / 9, tope - grasa_g)))
+
+    total_kcal = cho_g * 4 + prot_kcal + grasa_g * 9
 
     return {
         'disponible': True,
-        'cho_g': cho_g, 'cho_gkg': cho_gkg, 'cho_fuente': 'Burke/Impey 2018', 'cho_clasificacion': cho_clasif['texto'], 'cho_rango': cho_clasif['rango'],
-        'prot_g': prot_g, 'prot_gkg': prot_gkg, 'prot_fuente': 'ISSN 2017 (Kerksick et al.)', 'prot_rango': (1.4, 2.0),
-        'grasa_g': round(grasa_g), 'grasa_gkg': round(grasa_g / peso_kg, 2), 'grasa_fuente': 'piso hormonal mínimo',
+        'cho_g': cho_g, 'cho_gkg': round(cho_g / peso_kg, 1), 'cho_fuente': 'Burke/Impey 2018 (rango) + balance energético',
+        'cho_clasificacion': cho_clasif['texto'], 'cho_rango': cho_clasif['rango'],
+        'prot_g': prot_g, 'prot_gkg': round(prot_gkg, 2), 'prot_fuente': 'ISSN 2017 (Kerksick et al.)', 'prot_rango': (1.4, 2.0),
+        'grasa_g': grasa_g, 'grasa_gkg': round(grasa_g / peso_kg, 2), 'grasa_fuente': 'piso hormonal + 20-25% de las kcal',
         'total_kcal': total_kcal,
         'intensidad_estimada': round(intensidad, 2),
+        'gasto_total_kcal': gasto_total, 'tef_kcal': tef, 'entreno_neto_kcal': round(entreno_neto),
+        'objetivo_tipo': tipo, 'factor_objetivo': factor,
+        'balance_kcal': total_kcal - gasto_total,
+        'balance_pct': round((total_kcal - gasto_total) / max(gasto_total, 1) * 100, 1),
     }
 
 
@@ -462,7 +558,8 @@ def calcular_macros_dia(peso_kg, entreno, bio_eval, carrera, objetivo):
 def calcular_ea(macros, entreno, ffm, sexo):
     if not macros.get('disponible') or not ffm.get('kg'):
         return {'disponible': False}
-    gasto_ejercicio = (entreno.get('usar_para_calculo') or {}).get('kcal', 0)
+    _u = entreno.get('usar_para_calculo') or {}
+    gasto_ejercicio = _u.get('kcal_neto', _u.get('kcal', 0))
     ea = (macros['total_kcal'] - gasto_ejercicio) / ffm['kg']
     if ea < 30:
         status = 'alarma'
@@ -557,6 +654,16 @@ ALIMENTOS = {
     'granola':          (65, 10, 15,  450),
     'frutos_secos':     (15, 20, 50,  580),
     'queso_rallado':    (3,  28, 25,  350),
+    'manzana':          (14, 0.3, 0.2, 52),
+    'pera':             (15, 0.4, 0.1, 57),
+    'naranja':          (12, 0.9, 0.1, 47),
+    'barrita_cereal':   (65, 8,  12,  380),
+    'almendras':        (22, 21, 49,  579),
+    'nueces':           (14, 15, 65,  654),
+    'pasas':            (79, 3,  0.5, 299),
+    'queso_fresco':     (3,  18, 20,  260),
+    'verduras_mix':     (7,  2,  0.3, 35),
+    'palta':            (9,  2,  15,  160),
 }
 
 # medidas caseras en gramos, para mostrar "1 taza y 1/2" en vez de solo gramos
@@ -569,6 +676,10 @@ MEDIDAS_CASERAS = {
     'aceite_oliva': {'cucharada': 14}, 'miel': {'cucharada': 21},
     'pan_integral': {'rebanada': 30}, 'pan_sin_tacc': {'rebanada': 35},
     'queso_rallado': {'puñado': 30}, 'frutos_secos': {'puñado': 30}, 'manteca_mani': {'cucharada': 16},
+    'manzana': {'unidad': 180}, 'pera': {'unidad': 170}, 'naranja': {'unidad': 180},
+    'barrita_cereal': {'unidad': 40}, 'almendras': {'puñado': 30}, 'nueces': {'puñado': 30},
+    'pasas': {'puñado': 40}, 'queso_fresco': {'porción': 60}, 'palta': {'media unidad': 70},
+    'verduras_mix': {'porción': 150},
 }
 
 RESTRICCION_EXCLUYE = {
@@ -596,6 +707,11 @@ def _aplicar_restriccion(alimento, restricciones):
     return alimento
 
 
+_PLURAL = {'unidad': 'unidades', 'porción': 'porciones', 'rebanada': 'rebanadas', 'taza': 'tazas',
+           'cucharada': 'cucharadas', 'puñado': 'puñados', 'vaso': 'vasos', 'pote': 'potes',
+           'plato': 'platos', 'scoop': 'scoops'}
+
+
 def _medida_casera(alimento, gramos):
     medidas = MEDIDAS_CASERAS.get(alimento)
     if not medidas:
@@ -604,66 +720,192 @@ def _medida_casera(alimento, gramos):
     cant = gramos / base_g
     if cant < 0.4:
         return f'{gramos}g'
-    return f'{round(cant * 2) / 2:g} {unidad}{"s" if cant >= 1.5 and not unidad.endswith("a") else ""} ({gramos}g)'
+    n = round(cant * 2) / 2
+    if n > 1 and unidad in _PLURAL:
+        unidad = _PLURAL[unidad]
+    return f'{n:g} {unidad} ({gramos}g)'
 
 
-def construir_plato(cho_g, prot_g, grasa_g, tipo, restricciones, seed, es_desayuno=False):
-    """Arma un plato real optimizando hacia los macros target -- no divide
-    el total entre 5 partes iguales. `seed` (día de la semana) rota la
-    fuente de proteína/carbohidrato para variedad. `es_desayuno` usa un
-    pool de alimentos de desayuno real (avena, tostadas, huevo) en vez de
-    pollo+arroz a las 6 de la mañana."""
-    variantes_prot_normal = ['pollo_pechuga', 'atun_lata', 'carne_magra']
-    variantes_carb_normal = ['arroz_cocido', 'pasta_cocida', 'batata']
-    variantes_prot_liviano = ['huevo', 'yogur_griego', 'atun_lata']
-    variantes_desayuno_carb = ['avena', 'pan_integral', 'granola']
-    variantes_desayuno_prot = ['yogur_griego', 'huevo', 'yogur_griego']
+# ═══════════ RECETAS COMPLETAS Y COHERENTES ═══════════
+# Cada item: (alimento, rol). rol: prot/carb/grasa/fruta/libre/verdura
+# verdura: el alimento ES el texto a mostrar (no escala)
 
+RECETAS_DESAYUNO = [
+    [('avena','carb'),('yogur_griego','prot'),('banana','fruta'),('miel','libre')],
+    [('huevo','prot'),('pan_integral','carb'),('palta','grasa')],
+    [('yogur_griego','prot'),('granola','carb'),('nueces','grasa')],
+    [('pan_integral','carb'),('manteca_mani','grasa'),('banana','fruta')],
+    [('pan_integral','carb'),('queso_fresco','prot'),('palta','grasa'),('naranja','fruta')],
+    [('avena','carb'),('leche','prot'),('almendras','grasa'),('manzana','fruta')],
+    [('huevo','prot'),('pan_integral','carb'),('queso_fresco','libre')],
+    [('yogur_griego','prot'),('avena','carb'),('pera','fruta'),('nueces','grasa')],
+]
+
+RECETAS_ALMUERZO = [
+    [('pollo_pechuga','prot'),('arroz_integral_cocido','carb'),('aceite_oliva','grasa'),('Ensalada cruda variada','verdura')],
+    [('salmon','prot'),('batata','carb'),('Verduras al vapor','verdura')],
+    [('carne_magra','prot'),('quinoa_cocida','carb'),('aceite_oliva','grasa'),('Verduras asadas al horno','verdura')],
+    [('atun_lata','prot'),('pasta_cocida','carb'),('aceite_oliva','grasa'),('Vegetales grillados','verdura')],
+    [('pollo_pechuga','prot'),('batata','carb'),('Verduras salteadas al wok','verdura')],
+    [('huevo','prot'),('arroz_cocido','carb'),('palta','grasa'),('Brócoli y zanahoria al vapor','verdura')],
+    [('salmon','prot'),('quinoa_cocida','carb'),('Ensalada cruda variada','verdura')],
+    [('carne_magra','prot'),('arroz_integral_cocido','carb'),('Verduras al vapor','verdura')],
+]
+
+RECETAS_SNACK = [
+    [('banana','fruta'),('almendras','grasa')],
+    [('manzana','fruta'),('yogur_griego','prot')],
+    [('barrita_cereal','libre'),('banana','fruta')],
+    [('pera','fruta'),('nueces','grasa')],
+    [('yogur_griego','prot'),('pasas','fruta')],
+    [('naranja','fruta'),('queso_fresco','prot')],
+]
+
+CANT_FRUTA = {'banana': 120, 'manzana': 180, 'pera': 170, 'naranja': 180, 'pasas': 40}
+CANT_LIBRE = {'miel': 15, 'barrita_cereal': 40, 'queso_fresco': 40, 'palta': 50}
+
+MEDIDAS_CASERAS.update({'whey_protein': {'scoop': 30}, 'batata': {'unidad': 150}, 'granola': {'puñado': 40}})
+
+RECETAS_SNACK.extend([
+    [('pan_integral', 'carb'), ('miel', 'libre'), ('banana', 'fruta')],
+    [('avena', 'carb'), ('leche', 'prot'), ('banana', 'fruta')],
+    [('yogur_griego', 'prot'), ('granola', 'carb'), ('banana', 'fruta')],
+    [('pan_integral', 'carb'), ('manteca_mani', 'grasa'), ('banana', 'fruta')],
+    [('arroz_cocido', 'carb'), ('huevo', 'prot')],
+])
+
+RECETAS_POST = [
+    [('whey_protein', 'prot'), ('banana', 'fruta'), ('avena', 'carb'), ('miel', 'libre')],
+    [('yogur_griego', 'prot'), ('banana', 'fruta'), ('granola', 'carb')],
+    [('leche', 'prot'), ('banana', 'fruta'), ('pan_integral', 'carb'), ('miel', 'libre')],
+    [('whey_protein', 'prot'), ('banana', 'fruta'), ('arroz_cocido', 'carb')],
+]
+
+RECETAS_VENTANA = [   # entre sesiones: CHO simple + proteína, casi sin grasa
+    [('arroz_cocido', 'carb'), ('pollo_pechuga', 'prot'), ('banana', 'fruta')],
+    [('pasta_cocida', 'carb'), ('atun_lata', 'prot'), ('miel', 'libre')],
+    [('arroz_cocido', 'carb'), ('huevo', 'prot'), ('banana', 'fruta')],
+]
+
+# Porción máxima razonable por alimento (g). Evita "9 rebanadas" o "3 bananas".
+PORCION_MAX_G = {
+    'pollo_pechuga': 250, 'carne_magra': 250, 'salmon': 220, 'atun_lata': 170, 'huevo': 180, 'tofu': 250,
+    'arroz_cocido': 450, 'arroz_integral_cocido': 450, 'pasta_cocida': 400, 'quinoa_cocida': 400, 'batata': 400,
+    'avena': 100, 'pan_integral': 120, 'pan_sin_tacc': 140, 'granola': 80,
+    'yogur_griego': 300, 'yogur_coco': 300, 'leche': 400, 'leche_almendras': 400, 'queso_fresco': 100,
+    'queso_rallado': 30, 'whey_protein': 40, 'proteina_arveja': 45, 'lentejas_cocidas': 300,
+    'garbanzos_cocidos': 250, 'aceite_oliva': 20, 'palta': 100, 'nueces': 40, 'almendras': 40,
+    'frutos_secos': 40, 'manteca_mani': 32,
+}
+MAX_DEFAULT = {'prot': 250, 'carb': 400, 'grasa': 40}
+_E = (4.0, 4.0, 9.0)      # kcal por gramo de cada macro
+_W = (1.0, 1.6, 0.7)      # peso del error: la proteína importa más, la grasa menos
+
+
+def _redondear_porcion(alim, g):
+    if alim == 'huevo':
+        return max(1, round(g / 60.0)) * 60 if g >= 30 else 0
+    if g >= 25:
+        return int(round(g / 5.0) * 5)
+    return int(round(g))
+
+
+def _resolver_receta(receta, cho_t, prot_t, grasa_t, restricciones, cap_scale=1.0):
+    """Arma UN plato desde una receta: fruta/libre/verdura van fijas y los
+    demás alimentos se ajustan (mínimos cuadrados con topes por porción)
+    para que el TOTAL del plato (incluyendo lo que aporta cada alimento,
+    no solo su macro 'principal') se acerque al objetivo."""
+    ent = []
+    c0 = p0 = g0 = 0.0
+    for alim, rol in receta:
+        if rol == 'verdura':
+            v = ALIMENTOS['verduras_mix']
+            c0 += v[0] * 1.5; p0 += v[1] * 1.5; g0 += v[2] * 1.5
+            ent.append({'a': alim, 'n': alim, 'rol': rol, 'info': None, 'g': 150, 'hi': 150, 'fijo': True, 'verdura': True})
+            continue
+        a = _aplicar_restriccion(alim, restricciones)
+        info = ALIMENTOS.get(a, (0, 0, 0, 0))
+        if rol in ('fruta', 'libre'):
+            g = CANT_FRUTA.get(a, 120) if rol == 'fruta' else CANT_LIBRE.get(a, 30)
+            c0 += info[0] * g / 100; p0 += info[1] * g / 100; g0 += info[2] * g / 100
+            ent.append({'a': a, 'n': a, 'rol': rol, 'info': info, 'g': g, 'hi': g, 'fijo': True})
+        else:
+            hi = PORCION_MAX_G.get(a, MAX_DEFAULT.get(rol, 200)) * cap_scale
+            ent.append({'a': a, 'n': a, 'rol': rol, 'info': info, 'g': 0.0, 'hi': hi, 'fijo': False})
+
+    flex = [e for e in ent if not e['fijo']]
+    t = (cho_t, prot_t, grasa_t)
+    for _ in range(300):
+        movido = 0.0
+        for e in flex:
+            tot = [c0, p0, g0]
+            for x in flex:
+                for m in range(3):
+                    tot[m] += x['info'][m] * x['g'] / 100.0
+            num = sum(_W[m] * _E[m] ** 2 * (tot[m] - t[m]) * (e['info'][m] / 100.0) for m in range(3))
+            den = sum(_W[m] * _E[m] ** 2 * (e['info'][m] / 100.0) ** 2 for m in range(3))
+            if den <= 0:
+                continue
+            nuevo = min(max(e['g'] - num / den, 0.0), e['hi'])
+            movido += abs(nuevo - e['g'])
+            e['g'] = nuevo
+        if movido < 0.01:
+            break
+
+    items = []
+    cho_t2 = c0; prot_t2 = p0; gra_t2 = g0
+    for e in ent:
+        if e.get('verdura'):
+            items.append({'alimento': e['a'], 'gramos': 150, 'medida': '1 porción grande'})
+            continue
+        g = e['g'] if e['fijo'] else _redondear_porcion(e['a'], e['g'])
+        if not e['fijo']:
+            if g < 10:
+                continue    # ingrediente innecesario para este plato
+            cho_t2 += e['info'][0] * g / 100; prot_t2 += e['info'][1] * g / 100; gra_t2 += e['info'][2] * g / 100
+        items.append({'alimento': e['a'].replace('_', ' '), 'gramos': g, 'medida': _medida_casera(e['a'], g)})
+    cho_r, prot_r, gra_r = round(cho_t2), round(prot_t2), round(gra_t2)
+    return {'items': items, 'macros': {'cho_g': cho_r, 'prot_g': prot_r, 'grasa_g': gra_r,
+                                       'kcal': cho_r * 4 + prot_r * 4 + gra_r * 9}}
+
+
+def _plato_desde_pool(pool, seed, cho_t, prot_t, grasa_t, restricciones, cap_scale):
+    """Prueba las recetas del pool (rotando por `seed` para dar variedad) y
+    se queda con la primera que cierra el objetivo (+-8% kcal, +-20% CHO/prot);
+    si ninguna cierra, la que menos error tenga."""
+    kcal_t = cho_t * 4 + prot_t * 4 + grasa_t * 9
+    mejor, mejor_score = None, None
+    n = len(pool)
+    for k in range(n):
+        plato = _resolver_receta(pool[(seed + k) % n], cho_t, prot_t, grasa_t, restricciones, cap_scale)
+        m = plato['macros']
+        e_k = abs(m['kcal'] - kcal_t) / max(kcal_t, 100)
+        e_c = abs(m['cho_g'] - cho_t) / max(cho_t, 20)
+        e_p = abs(m['prot_g'] - prot_t) / max(prot_t, 15)
+        if e_k <= 0.08 and max(e_c, e_p) <= 0.20:
+            return plato
+        score = e_k + 0.5 * max(e_c, e_p)
+        if mejor is None or score < mejor_score:
+            mejor, mejor_score = plato, score
+    return mejor
+
+
+def construir_plato(cho_g, prot_g, grasa_g, tipo, restricciones, seed, es_desayuno=False, cap_scale=1.0):
+    """Arma un plato real que cierra los macros objetivo con porciones
+    razonables. `seed` rota las recetas para variedad."""
     if tipo == 'post_entreno':
-        prot_base = _aplicar_restriccion('whey_protein', restricciones)
-        carb_base = _aplicar_restriccion(variantes_carb_normal[seed % len(variantes_carb_normal)], restricciones)
+        pool = RECETAS_POST
     elif es_desayuno:
-        prot_base = _aplicar_restriccion(variantes_desayuno_prot[seed % len(variantes_desayuno_prot)], restricciones)
-        carb_base = _aplicar_restriccion(variantes_desayuno_carb[seed % len(variantes_desayuno_carb)], restricciones)
+        pool = RECETAS_DESAYUNO
+    elif tipo == 'merienda':
+        pool, seed = RECETAS_DESAYUNO, seed + 3
     elif tipo == 'liviano':
-        prot_base = _aplicar_restriccion(variantes_prot_liviano[seed % len(variantes_prot_liviano)], restricciones)
-        carb_base = _aplicar_restriccion(variantes_carb_normal[seed % len(variantes_carb_normal)], restricciones)
+        pool = RECETAS_SNACK
+    elif tipo == 'ventana_doble_turno':
+        pool = RECETAS_VENTANA
     else:
-        prot_base = _aplicar_restriccion(variantes_prot_normal[seed % len(variantes_prot_normal)], restricciones)
-        carb_base = _aplicar_restriccion(variantes_carb_normal[seed % len(variantes_carb_normal)], restricciones)
-
-    if tipo == 'ventana_doble_turno':
-        # Beelen 2010: CERO grasa/fibra en la ventana entre sesiones -> CHO simple
-        carb_base = _aplicar_restriccion('arroz_cocido', restricciones)
-
-    prot_100 = ALIMENTOS[prot_base]
-    prot_gramos = round(prot_g / (prot_100[1] / 100)) if prot_100[1] > 0 else 0
-    cho_cubierto = prot_100[0] * prot_gramos / 100
-
-    carb_100 = ALIMENTOS[carb_base]
-    cho_faltante = max(cho_g - cho_cubierto, 0)
-    carb_gramos = round(cho_faltante / (carb_100[0] / 100)) if carb_100[0] > 0 else 0
-
-    grasa_cubierta = prot_100[2] * prot_gramos / 100 + carb_100[2] * carb_gramos / 100
-    grasa_faltante = max(grasa_g - grasa_cubierta, 0)
-
-    items = [
-        {'alimento': prot_base.replace('_', ' '), 'gramos': prot_gramos, 'medida': _medida_casera(prot_base, prot_gramos)},
-        {'alimento': carb_base.replace('_', ' '), 'gramos': carb_gramos, 'medida': _medida_casera(carb_base, carb_gramos)},
-    ]
-    if tipo not in ('ventana_doble_turno',) and grasa_faltante > 4:
-        aceite_g = round(grasa_faltante)
-        items.append({'alimento': 'aceite de oliva', 'gramos': aceite_g, 'medida': _medida_casera('aceite_oliva', aceite_g)})
-    if tipo == 'normal':
-        items.append({'alimento': 'ensalada variada', 'gramos': None, 'medida': 'a gusto'})
-
-    macros_reales = {
-        'cho_g': round(cho_cubierto + carb_100[0] * carb_gramos / 100),
-        'prot_g': round(prot_100[1] * prot_gramos / 100),
-        'grasa_g': round(grasa_cubierta + (grasa_faltante if tipo not in ('ventana_doble_turno',) else 0)),
-    }
-    macros_reales['kcal'] = macros_reales['cho_g'] * 4 + macros_reales['prot_g'] * 4 + macros_reales['grasa_g'] * 9
-    return {'items': items, 'macros': macros_reales}
+        pool = RECETAS_ALMUERZO
+    return _plato_desde_pool(pool, seed, cho_g, prot_g, grasa_g, restricciones, cap_scale)
 
 
 # ═══════════════════════════ 10. ARMADO DE COMIDAS DEL DÍA ══════════════════
@@ -699,49 +941,55 @@ def armar_comidas(macros, entreno, restricciones, fecha):
     doble_turno = entreno['doble_turno']
     dia_descanso = entreno['dia_descanso']
 
-    comidas = []
+    # (nombre, hora, % del día, tipo, snack_idx, factor de grasa)
+    # Los % SUMAN 100 (antes sumaban 108 en dos de los escenarios) y la grasa
+    # se concentra en las comidas lejos del entreno.
+    if doble_turno:
+        plan = [('DESAYUNO', '06:00', 0.15, 'liviano', 0, 1.0),
+                ('PRE-ENTRENO', '07:00', 0.10, 'liviano', 0, 0.3),
+                ('VENTANA', '10:30', 0.25, 'ventana_doble_turno', 0, 0.1),
+                ('POST-ENTRENO', '17:30', 0.20, 'post_entreno', 0, 0.3),
+                ('CENA', '21:00', 0.30, 'normal', 2, 1.0)]
+    elif ya_entreno:
+        plan = [('DESAYUNO', '07:00', 0.22, 'normal', 0, 1.0),
+                ('POST-ENTRENO', '09:00', 0.13, 'post_entreno', 0, 0.3),
+                ('ALMUERZO', '13:30', 0.27, 'normal', 0, 1.0),
+                ('MERIENDA', '17:00', 0.13, 'merienda', 3, 1.0),
+                ('CENA', '21:00', 0.25, 'normal', 2, 1.0)]
+    elif not dia_descanso:
+        plan = [('DESAYUNO', '07:30', 0.22, 'normal', 0, 1.0),
+                ('ALMUERZO', '13:00', 0.25, 'normal', 0, 1.0),
+                ('PRE-ENTRENO', '16:30', 0.13, 'liviano', 0, 0.3),
+                ('POST-ENTRENO', '19:30', 0.15, 'post_entreno', 0, 0.3),
+                ('CENA', '21:30', 0.25, 'normal', 2, 1.0)]
+    else:
+        plan = [('DESAYUNO', '08:00', 0.22, 'liviano', 0, 1.0),
+                ('SNACK', '11:00', 0.10, 'liviano', 0, 1.0),
+                ('ALMUERZO', '13:30', 0.28, 'normal', 0, 1.0),
+                ('MERIENDA', '17:30', 0.12, 'merienda', 3, 1.0),
+                ('CENA', '20:30', 0.28, 'normal', 2, 1.0)]
 
-    def agregar(nombre, hora, pct, tipo):
-        c_cho, c_prot, c_grasa = round(cho * pct), round(prot * pct), round(grasa * pct)
-        plato = construir_plato(c_cho, c_prot, c_grasa, tipo, restricciones, seed, es_desayuno=(nombre == 'DESAYUNO'))
+    suma_pct = sum(p[2] for p in plan)
+    suma_grasa_w = sum(p[2] * p[5] for p in plan)
+    kcal_total = cho * 4 + prot * 4 + grasa * 9
+
+    comidas = []
+    for nombre, hora, pct, tipo, snack_idx, ff in plan:
+        pct_n = pct / suma_pct
+        c_cho, c_prot = cho * pct_n, prot * pct_n
+        c_grasa = grasa * (pct * ff) / suma_grasa_w
+        kcal_t = c_cho * 4 + c_prot * 4 + c_grasa * 9
+        cap = min(1.7, max(1.0, kcal_t / 800.0))     # días enormes -> porciones algo mayores
+        plato = construir_plato(round(c_cho), round(c_prot), round(c_grasa), tipo, restricciones,
+                                seed + snack_idx, es_desayuno=(nombre == 'DESAYUNO'), cap_scale=cap)
         comidas.append({
             'nombre': nombre, 'hora': hora,
             'alimentos': plato['items'],
             'cho_g': plato['macros']['cho_g'], 'prot_g': plato['macros']['prot_g'],
             'grasa_g': plato['macros']['grasa_g'], 'kcal': plato['macros']['kcal'],
+            'kcal_objetivo': round(kcal_t),
             **_foto(nombre),
         })
-
-    if doble_turno:
-        # Ventana entre sesiones = lo más crítico (Beelen 2010): resíntesis
-        # rápida, cero grasa/fibra, CHO simple + proteína, sin dividir en
-        # "post normal" + "pre normal" por separado.
-        agregar('DESAYUNO', '06:00', 0.15, 'liviano')
-        agregar('PRE-ENTRENO', '07:00', 0.10, 'liviano')
-        agregar('VENTANA', '10:30', 0.25, 'ventana_doble_turno')
-        agregar('POST-ENTRENO', '17:30', 0.20, 'post_entreno')
-        agregar('CENA', '21:00', 0.30, 'normal')
-    elif ya_entreno:
-        agregar('DESAYUNO', '07:00', 0.20, 'normal')
-        agregar('POST-ENTRENO', '09:00', 0.15, 'post_entreno')
-        agregar('ALMUERZO', '13:30', 0.27, 'normal')
-        agregar('SNACK', '17:00', 0.10, 'liviano')
-        agregar('CENA', '21:00', 0.28, 'normal')
-    elif not dia_descanso:
-        # entreno pendiente hoy (según prescripción), aún no ejecutado
-        agregar('DESAYUNO', '07:30', 0.22, 'normal')
-        agregar('ALMUERZO', '13:00', 0.25, 'normal')
-        agregar('PRE-ENTRENO', '16:30', 0.13, 'liviano')
-        agregar('POST-ENTRENO', '19:30', 0.15, 'post_entreno')
-        agregar('CENA', '21:30', 0.25, 'normal')
-    else:
-        # día de descanso: comidas livianas, distribuidas uniformemente
-        agregar('DESAYUNO', '08:00', 0.20, 'liviano')
-        agregar('SNACK', '11:00', 0.10, 'liviano')
-        agregar('ALMUERZO', '13:30', 0.28, 'normal')
-        agregar('SNACK', '17:30', 0.10, 'liviano')
-        agregar('CENA', '20:30', 0.32, 'normal')
-
     return comidas
 
 
@@ -749,38 +997,43 @@ def armar_comidas(macros, entreno, restricciones, fecha):
 
 CAFEINA_MAX_DIA_MG = 400  # EFSA 2015
 
-def armar_suplementos(entreno, bio_eval, deporte_ppal):
+def armar_suplementos(entreno, bio_eval, deporte_ppal, peso_kg=None):
+    """Lista corta, sin duplicados y con cada item marcado como opcional: la
+    base es la comida. `categoria`: rendimiento / salud / situacional."""
     sup = []
-    cafeina_acumulada = 0
+
+    def add(item, dosis, timing, motivo, evidencia, categoria):
+        sup.append({'item': item, 'dosis': dosis, 'timing': timing, 'motivo': motivo,
+                    'evidencia': evidencia, 'categoria': categoria, 'opcional': True})
+
     usar = entreno.get('usar_para_calculo') or {}
     detalle = usar.get('detalle') or []
 
+    add('Creatina monohidrato', '3-5g/día', 'Diario, cualquier hora',
+        'Fuerza y esfuerzos repetidos. Beneficio menor en resistencia pura; puede sumar 1-2 kg de agua.',
+        'GOOD EVIDENCE', 'rendimiento')
+    add('Proteína whey', '20-40g', 'Post-entreno o para llegar a la proteína del día',
+        'Práctico si con comida no llegás al objetivo.', 'STRONG EVIDENCE', 'rendimiento')
+    add('Vitamina D3', '1000-2000 UI/día (confirmar con análisis)', 'Con comida con grasa',
+        'Solo si tu análisis de sangre muestra déficit.', 'GOOD EVIDENCE', 'salud')
+
+    dosis_cafe = int(round((3 * peso_kg) / 10.0) * 10) if peso_kg else 200
+    dosis_cafe = min(max(dosis_cafe, 100), 300)
     sesiones_intensas = [d for d in detalle if d.get('tss', 0) >= 50 or d.get('dur_min', 0) >= 60]
-    for s in sesiones_intensas:
-        dosis_mg = 200  # ~3mg/kg genérico si no hay peso a mano en esta capa
-        if cafeina_acumulada + dosis_mg <= CAFEINA_MAX_DIA_MG:
-            timing = '60min antes (nadadores: más anticipación por digestión + pileta)' if s.get('deporte') == 'swimming' else '30-60min antes'
-            sup.append({'item': 'Cafeína', 'dosis': f'{dosis_mg}mg (~3-6mg/kg)', 'timing': timing,
-                        'motivo': f'sesión de {s.get("deporte")} exigente', 'evidencia': 'STRONG EVIDENCE'})
-            cafeina_acumulada += dosis_mg
-        if s.get('dur_min', 0) >= 120:
-            sup.append({'item': 'Electrolitos', 'dosis': '500-1000mg Na/h', 'timing': 'durante',
-                        'motivo': 'sesión larga (>2h)', 'evidencia': 'STRONG EVIDENCE'})
+    if sesiones_intensas:
+        s = max(sesiones_intensas, key=lambda d: d.get('tss', 0))
+        timing = '60min antes (nadadores: más anticipación)' if s.get('deporte') == 'swimming' else '30-60min antes'
+        add('Cafeína', f'{dosis_cafe}mg (~3mg/kg)', timing + ' de la sesión clave',
+            f'sesión de {s.get("deporte")} exigente. Una sola toma al día; tope {CAFEINA_MAX_DIA_MG}mg/día (EFSA 2015).',
+            'STRONG EVIDENCE', 'situacional')
 
-    if detalle:
-        sup.append({'item': 'Creatina', 'dosis': '3-5g/día', 'timing': 'con cualquier comida',
-                    'motivo': 'día de entrenamiento', 'evidencia': 'STRONG EVIDENCE'})
-
+    if any(d.get('dur_min', 0) >= 120 for d in detalle):
+        add('Electrolitos', '500-1000mg Na/h', 'Durante la sesión', 'sesión larga (>2h)', 'STRONG EVIDENCE', 'situacional')
     if bio_eval['hrv_bajo']:
-        sup.append({'item': 'Omega-3', 'dosis': '2-3g EPA+DHA', 'timing': 'con la cena',
-                    'motivo': 'HRV por debajo de tu baseline reciente', 'evidencia': 'MODERATE EVIDENCE'})
+        add('Omega-3 (EPA/DHA)', '2-3g/día', 'Con la cena', 'HRV por debajo de tu baseline reciente',
+            'MODERATE EVIDENCE', 'situacional')
     if bio_eval['sleep_corto']:
-        sup.append({'item': 'Magnesio', 'dosis': '200-400mg', 'timing': 'con la cena',
-                    'motivo': 'sueño corto (<6.5h)', 'evidencia': 'MODERATE EVIDENCE'})
-
-    if cafeina_acumulada > 0:
-        sup.append({'item': '⚠ Cafeína acumulada hoy', 'dosis': f'{cafeina_acumulada}/{CAFEINA_MAX_DIA_MG}mg',
-                    'timing': None, 'motivo': 'EFSA 2015 — no superar 400mg/día', 'evidencia': 'INFO'})
+        add('Magnesio', '200-400mg', 'Con la cena', 'sueño corto (<6.5h)', 'MODERATE EVIDENCE', 'situacional')
 
     return sup
 
@@ -1012,17 +1265,16 @@ def calcular_dia(conn, atleta_id, fecha, permitir_memoria=True):
 
     planificadas = obtener_sesiones_planificadas_hoy(conn, atleta_id, fecha)
     reales = obtener_sesiones_reales(conn, atleta_id, fecha)
-    entreno = calcular_entreno_dia(planificadas, reales, perfil['peso_kg'])
+    tmb = calcular_tmb(perfil['peso_kg'], perfil['altura_cm'], perfil['edad'], perfil['sexo'])
+    neat = calcular_neat(tmb.get('kcal'))
+    entreno = calcular_entreno_dia(planificadas, reales, perfil['peso_kg'], tmb.get('kcal'))
 
     carrera = obtener_carrera_proxima(conn, atleta_id, fecha)
     recuperacion_ayer = calcular_recuperacion_pendiente(conn, atleta_id, fecha)
 
-    macros = calcular_macros_dia(perfil['peso_kg'], entreno, bio_eval, carrera, perfil['objetivo'])
-    if recuperacion_ayer and macros.get('disponible'):
-        extra_cho = round(macros['cho_g'] * recuperacion_ayer['ajuste_cho_pct'] / 100)
-        macros['cho_g'] += extra_cho
-        macros['total_kcal'] += extra_cho * 4
-        macros['cho_gkg'] = round(macros['cho_g'] / perfil['peso_kg'], 1)
+    base_kcal = (tmb.get('kcal') or 0) + (neat.get('kcal') or 0)
+    macros = calcular_macros_dia(perfil['peso_kg'], entreno, bio_eval, carrera, perfil['objetivo'],
+                                 base_kcal=base_kcal, recuperacion_pendiente=bool(recuperacion_ayer))
 
     compensacion = None
     if permitir_memoria and macros.get('disponible'):
@@ -1033,21 +1285,25 @@ def calcular_dia(conn, atleta_id, fecha, permitir_memoria=True):
             macros['total_kcal'] += compensacion['compensacion_kcal']
             macros['cho_gkg'] = round(macros['cho_g'] / perfil['peso_kg'], 1)
 
-    tmb = calcular_tmb(perfil['peso_kg'], perfil['altura_cm'], perfil['edad'], perfil['sexo'])
-    neat = calcular_neat(tmb.get('kcal'))
     ffm = calcular_ffm(perfil['peso_kg'], perfil['altura_cm'], perfil['sexo'], perfil['body_fat_pct']) if perfil['peso_kg'] else {'kg': None, 'estimado': True}
     ea = calcular_ea(macros, entreno, ffm, perfil['sexo'])
 
     restricciones, prefs = obtener_restricciones(conn, atleta_id)
-    comidas = armar_comidas(macros, entreno, restricciones, fecha)
-    suplementos = armar_suplementos(entreno, bio_eval, perfil['deporte_ppal'])
+    cho_durante = calcular_cho_durante(entreno)
+    macros_comidas = dict(macros)
+    if macros.get('disponible'):
+        macros_comidas['cho_g'] = max(0, macros['cho_g'] - cho_durante['total_g'])
+    comidas = armar_comidas(macros_comidas, entreno, restricciones, fecha)
+    kcal_comidas = sum(c['kcal'] for c in comidas)
+    suplementos = armar_suplementos(entreno, bio_eval, perfil['deporte_ppal'], perfil['peso_kg'])
     hidratacion = calcular_hidratacion(perfil['peso_kg'], entreno)
 
     onboarding = campos_faltantes(perfil)
     narrativa = generar_narrativa(entreno, bio_eval, carrera, recuperacion_ayer)
     alertas = calcular_alertas(ea, bio_eval, onboarding)
 
-    entreno_kcal = (entreno.get('usar_para_calculo') or {}).get('kcal', 0)
+    _u = entreno.get('usar_para_calculo') or {}
+    entreno_kcal = _u.get('kcal_neto', _u.get('kcal', 0))
 
     return {
         'disponible': True, 'atleta': perfil['nombre'], 'fecha': fecha,
@@ -1062,13 +1318,24 @@ def calcular_dia(conn, atleta_id, fecha, permitir_memoria=True):
             'entreno_hoy': entreno.get('usar_para_calculo'),
             'doble_turno': entreno['doble_turno'], 'dia_descanso': entreno['dia_descanso'],
             'comidas': comidas,
+            'cho_durante_g': cho_durante['total_g'],
+            'durante': cho_durante['detalle'],
             'suplementos': suplementos,
             'hidratacion_ml': hidratacion.get('total_ml'),
             'alertas': alertas,
         },
         'nivel2': {
             'gasto_desglose': {'tmb': tmb.get('kcal'), 'neat': neat.get('kcal'), 'entreno': entreno_kcal,
-                               'total_gasto_estimado': (tmb.get('kcal') or 0) + (neat.get('kcal') or 0) + entreno_kcal},
+                               'tef': macros.get('tef_kcal'),
+                               'total_gasto_estimado': macros.get('gasto_total_kcal'),
+                               'objetivo_kcal': macros.get('total_kcal'),
+                               'balance_kcal': macros.get('balance_kcal'),
+                               'balance_pct': macros.get('balance_pct'),
+                               'objetivo_tipo': macros.get('objetivo_tipo')},
+            'chequeo_energia': {'kcal_dia': macros.get('total_kcal'), 'kcal_comidas': kcal_comidas,
+                                'kcal_durante': cho_durante['kcal'],
+                                'diferencia_pct': round(((kcal_comidas + cho_durante['kcal']) - (macros.get('total_kcal') or 0))
+                                                        / max(macros.get('total_kcal') or 1, 1) * 100, 1)},
             'protocolo_cho': {'fuente': macros.get('cho_fuente'), 'clasificacion': macros.get('cho_clasificacion'),
                               'rango': macros.get('cho_rango'), 'seleccionado_gkg': macros.get('cho_gkg')},
             'protocolo_prot': {'fuente': macros.get('prot_fuente'), 'rango': macros.get('prot_rango'),
@@ -1087,6 +1354,7 @@ def calcular_dia(conn, atleta_id, fecha, permitir_memoria=True):
         'quick_actions': QUICK_ACTIONS,
         'limitaciones': [
             'NEAT estimado (sin dato real de actividad diaria de wearable).',
+            'Gasto = basal + NEAT + entreno neto (sin el reposo ya contado) + 8% efecto térmico. Entrada = salida salvo objetivo.',
             'Gasto calórico por sesión estimado cuando no hay calorías reales de Garmin.',
             'FFM ' + ('estimada (Boer 1984, sin % de grasa medido).' if ffm.get('estimado') else 'medida.'),
             'Sin dato de ciclo menstrual (si aplica, cargarlo mejora la precisión de EA).',

@@ -1416,6 +1416,24 @@ def crear_perfil(atleta_id):
 
 # ─── NUTRICIÓN POST-ENTRENAMIENTO ────────────────────────────────────────────
 
+@app.route('/api/atletas/<int:atleta_id>/nutricion_dia', methods=['GET'])
+@requiere_login
+def get_nutricion_dia(atleta_id):
+    """Plan nutricional completo del dia: gasto, macros, 5 comidas, suplementos,
+    nutricion durante/post, hidratacion, alertas bio. Personalizado por objetivo."""
+    fecha = request.args.get('fecha')
+    conn = get_conn()
+    try:
+        from noah_nutricion_v2 import nutricion_dia
+        resultado = nutricion_dia(conn, atleta_id, fecha)
+        conn.close()
+        return ok(resultado)
+    except Exception as e:
+        try: conn.close()
+        except: pass
+        return error(f'Error calculando nutricion: {e}')
+
+
 @app.route('/api/atletas/<int:atleta_id>/nutricion_post', methods=['GET'])
 @requiere_login
 def get_nutricion_post(atleta_id):

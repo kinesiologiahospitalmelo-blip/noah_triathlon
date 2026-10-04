@@ -15,7 +15,7 @@ def calcular_gasto_real(peso, altura, edad, sexo, bio, sesiones_hoy):
     fc_dia = _sf(bio.get('fc_media_dia'),0)
     stress = _sf(bio.get('stress_avg'),30)
     bb = _sf(bio.get('body_battery'),60)
-    neat = round(max(0,(fc_dia-60))*8) if fc_dia>0 else round(tmb*0.20)
+    neat = round(tmb*0.20) if fc_dia<=65 else round(max(tmb*0.15,(fc_dia-60)*8))
     gasto_stress = round(tmb*min(0.12,(stress-40)*0.002)) if stress>40 else 0
     gasto_bb = round((40-bb)*3) if bb>0 and bb<40 else 0
     cal_entreno = 0
@@ -33,40 +33,116 @@ def calcular_gasto_real(peso, altura, edad, sexo, bio, sesiones_hoy):
                 'bb':f'Desgaste: +{gasto_bb} kcal (BB {bb})',
                 'entreno':f'Entrenamiento: {round(cal_entreno)} kcal'}}
 
-def calcular_macros(peso, gasto, dur_h, intensidad, bio):
+def calcular_macros(peso, gasto, dur_h, intensidad, bio, objetivo='mantener'):
     if not peso or not gasto: return None
-    cho_gkg = 5.0+min(dur_h*2.0,5.0)
-    if intensidad>=0.85: cho_gkg+=1.0
-    hrv=_sf(bio.get('hrv_rmssd'))
-    if 0<hrv<35: cho_gkg+=0.5
-    if _sf(bio.get('body_battery'),60)<30: cho_gkg+=0.5
-    cho_gkg=min(cho_gkg,12.0)
-    prot_gkg=1.8 if dur_h<1.5 else 2.0
-    if intensidad>=0.90: prot_gkg=2.2
-    cho_g=round(peso*cho_gkg); prot_g=round(peso*prot_gkg)
-    grasa_g=max(round(peso*1.0),round((gasto-cho_g*4-prot_g*4)/9))
-    return {'cho_g':cho_g,'cho_gkg':round(cho_gkg,1),'prot_g':prot_g,'prot_gkg':round(prot_gkg,1),
-            'grasa_g':grasa_g,'grasa_gkg':round(grasa_g/peso,1),
-            'total_kcal':cho_g*4+prot_g*4+grasa_g*9,'gasto_kcal':gasto}
+    # OBJETIVO: ajustar calorias objetivo segun meta del atleta
+    gasto_original = gasto
+    if objetivo == 'bajar':
+        gasto = round(gasto * 0.85)   # deficit 15% — perder grasa
+    elif objetivo == 'subir':
+        gasto = round(gasto * 1.10)   # superavit 10% — ganar musculo
+    # 'mantener' deja gasto igual
+    # PROTEINA: fija por peso (prioridad fisiologica) — Phillips/ISSN
+    prot_gkg = 1.6 if dur_h < 1.0 else (1.8 if dur_h < 2.0 else 2.0)
+    if intensidad >= 0.90: prot_gkg += 0.2
+    if objetivo == 'bajar': prot_gkg += 0.4   # mas proteina en deficit (preservar musculo)
+    prot_g = round(peso * prot_gkg)
+    prot_kcal = prot_g * 4
 
-def _macros_a_alimentos(momento, cho, prot, grasa):
-    if momento=='Desayuno':
-        return [f'{round(cho*0.5/0.6)}g avena','1 banana','1 cda miel',
-                f'{min(round(prot*0.4/0.033),300)}ml leche',
-                f'{round(prot*0.3)}g whey' if prot>20 else None]
-    elif momento=='Almuerzo':
-        return [f'{round(prot*0.6/0.25)}g pollo/pescado',f'{round(cho*0.6/0.28)}g arroz/pasta cocida',
-                f'Ensalada + {round(grasa*0.4)}ml aceite oliva','1 fruta']
-    elif momento=='Cena':
-        return [f'{round(prot*0.6/0.22)}g pescado/pollo',f'{round(cho*0.5/0.20)}g batata/quinoa',
-                'Vegetales grillados',f'{round(grasa*0.3)}g frutos secos']
+    # CHO: segun carga de entrenamiento del dia (Burke/ISSN)
+    # Dia descanso: 3 g/kg. Sube con duracion e intensidad.
+    if dur_h < 0.3:
+        cho_gkg = 3.0        # descanso
+    elif dur_h < 1.0:
+        cho_gkg = 4.5        # sesion corta
+    elif dur_h < 2.0:
+        cho_gkg = 6.0        # moderada
     else:
+        cho_gkg = 7.0 + min((dur_h - 2.0) * 1.0, 3.0)  # larga, hasta 10
+    if intensidad >= 0.85: cho_gkg += 0.5
+    hrv = _sf(bio.get('hrv_rmssd'))
+    if 0 < hrv < 35: cho_gkg += 0.3
+    if _sf(bio.get('body_battery'), 60) < 30: cho_gkg += 0.3
+    cho_gkg = min(cho_gkg, 11.0)
+    cho_g = round(peso * cho_gkg)
+    cho_kcal = cho_g * 4
+
+    # GRASA: completa el resto del gasto (asegura minimo 0.8 g/kg para hormonas)
+    grasa_min = round(peso * 0.8)
+    grasa_resto = round((gasto - cho_kcal - prot_kcal) / 9)
+    grasa_g = max(grasa_min, grasa_resto)
+    grasa_kcal = grasa_g * 9
+
+    total = cho_kcal + prot_kcal + grasa_kcal
+    # Si el total se pasa mucho del gasto, recortar CHO (no proteina ni grasa minima)
+    if total > gasto * 1.1 and cho_g > peso * 3:
+        exceso_kcal = total - round(gasto * 1.05)
+        cho_g = max(round(peso * 3), cho_g - round(exceso_kcal / 4))
+        cho_kcal = cho_g * 4
+        total = cho_kcal + prot_kcal + grasa_kcal
+
+    return {'cho_g':cho_g,'cho_gkg':round(cho_g/peso,1),'prot_g':prot_g,'prot_gkg':round(prot_gkg,1),
+            'grasa_g':grasa_g,'grasa_gkg':round(grasa_g/peso,1),
+            'total_kcal':total,'gasto_kcal':gasto,'gasto_mantenimiento':gasto_original,
+            'objetivo':objetivo}
+
+_RECETAS = {
+    'Desayuno': [
+        lambda c,p,g: [f'{round(c*0.5/0.6)}g avena','1 banana','1 cda miel',f'{round(p*0.5/0.033)}ml leche',f'{round(p*0.3)}g whey' if p>20 else None],
+        lambda c,p,g: [f'{round(p*0.5/0.13)}g huevos',f'{round(c*0.6/0.5)}g pan integral','1/2 palta','1 naranja'],
+        lambda c,p,g: [f'{round(p*0.6/0.1)}g yogur griego',f'{round(c*0.4/0.6)}g granola','Frutos rojos','1 cda chía'],
+        lambda c,p,g: [f'{round(c*0.5/0.3)}g tostadas',f'{round(p*0.4/0.2)}g queso cottage','1 banana',f'{round(p*0.3)}g whey' if p>20 else None],
+    ],
+    'Snack AM': [
+        lambda c,p,g: [f'{round(p/0.1)}g yogur griego','1 puñado almendras'],
+        lambda c,p,g: ['1 banana',f'{round(g/0.5)}g mantequilla maní'],
+        lambda c,p,g: [f'{round(p*0.6)}g whey + agua','1 manzana'],
+        lambda c,p,g: ['Frutos secos mixtos',f'{round(c*0.4/0.15)}g uvas'],
+    ],
+    'Almuerzo': [
+        lambda c,p,g: [f'{round(p*0.6/0.25)}g pollo',f'{round(c*0.6/0.28)}g arroz integral',f'Ensalada + {round(g*0.4)}ml aceite','1 fruta'],
+        lambda c,p,g: [f'{round(p*0.6/0.22)}g carne magra',f'{round(c*0.6/0.20)}g batata','Verduras salteadas',f'{round(g*0.3)}g palta'],
+        lambda c,p,g: [f'{round(p*0.6/0.24)}g pescado',f'{round(c*0.6/0.28)}g quinoa','Vegetales vapor',f'{round(g*0.4)}ml aceite oliva'],
+        lambda c,p,g: [f'{round(p*0.5/0.25)}g pollo + legumbres',f'{round(c*0.6/0.28)}g pasta integral','Ensalada mixta'],
+    ],
+    'Snack PM': [
+        lambda c,p,g: [f'{round(p/0.06)}g queso',f'{round(c*0.5/0.5)}g pan integral'],
+        lambda c,p,g: ['Batido whey + leche','1 puñado nueces'],
+        lambda c,p,g: [f'{round(p*0.8/0.1)}g yogur','Granola + miel'],
+        lambda c,p,g: ['Tostada + palta',f'{round(p*0.5/0.13)}g huevo duro'],
+    ],
+    'Cena': [
+        lambda c,p,g: [f'{round(p*0.6/0.22)}g pescado',f'{round(c*0.5/0.20)}g batata','Vegetales grillados',f'{round(g*0.3)}g frutos secos'],
+        lambda c,p,g: [f'{round(p*0.6/0.25)}g pollo',f'{round(c*0.5/0.28)}g arroz','Ensalada grande',f'{round(g*0.4)}ml aceite oliva'],
+        lambda c,p,g: [f'{round(p*0.5/0.13)}g tortilla huevos',f'{round(c*0.5/0.20)}g calabaza','Verduras asadas',f'{round(g*0.3)}g queso'],
+        lambda c,p,g: [f'{round(p*0.6/0.24)}g salmón',f'{round(c*0.4/0.20)}g quinoa','Brócoli y zanahoria','1/2 palta'],
+    ],
+}
+
+def _macros_a_alimentos(momento, cho, prot, grasa, variante=0):
+    recetas = _RECETAS.get(momento)
+    if not recetas:
         r = ['1 banana' if cho>15 else '1 manzana']
         if prot>5: r.append(f'{round(prot/0.06)}g yogur griego')
-        if grasa>5: r.append(f'{round(grasa/0.5)}g mantequilla maní')
-        return r
+        return [x for x in r if x]
+    return [x for x in recetas[variante % len(recetas)](cho, prot, grasa) if x]
 
-def calcular_5_comidas(macros, bio, entreno_am, entreno_pm):
+
+def _suplementos_dia(peso, dur_h, intensidad, bio):
+    sup = [{'nombre':'Creatina monohidrato','dosis':'3-5g/día','momento':'Constante, cualquier hora'}]
+    if peso and peso*1.8 > 120:
+        sup.append({'nombre':'Proteína whey','dosis':f'{round(peso*0.3)}g','momento':'Post-entreno'})
+    if dur_h >= 1.5 or intensidad >= 0.85:
+        sup.append({'nombre':'Maltodextrina','dosis':f'{round(dur_h*40)}g','momento':'Durante sesiones largas'})
+    if _sf(bio.get('hrv_rmssd'))>0 and _sf(bio.get('hrv_rmssd'))<35:
+        sup.append({'nombre':'Omega-3','dosis':'2-3g EPA/DHA','momento':'Con comidas'})
+    if _sf(bio.get('sleep_h'))>0 and _sf(bio.get('sleep_h'))<6.5:
+        sup.append({'nombre':'Magnesio','dosis':'300-400mg','momento':'Antes de dormir'})
+    if intensidad >= 0.9:
+        sup.append({'nombre':'Cafeína','dosis':'3-6mg/kg','momento':'30-45min pre-sesión clave'})
+    return sup
+
+def calcular_5_comidas(macros, bio, entreno_am, entreno_pm, fecha=None):
     if not macros: return []
     cho,prot,grasa = macros['cho_g'],macros['prot_g'],macros['grasa_g']
     if entreno_am and entreno_pm: dist=[0.25,0.08,0.28,0.12,0.27]
@@ -74,6 +150,9 @@ def calcular_5_comidas(macros, bio, entreno_am, entreno_pm):
     elif entreno_pm: dist=[0.25,0.10,0.25,0.08,0.32]
     else: dist=[0.25,0.10,0.30,0.10,0.25]
     nombres=['Desayuno','Snack AM','Almuerzo','Snack PM','Cena']
+    import datetime as _dt
+    try: variante = _dt.date.fromisoformat(str(fecha)).timetuple().tm_yday if fecha else _dt.date.today().timetuple().tm_yday
+    except: variante = 0
     extras_cena=[]
     if bio:
         if _sf(bio.get('sleep_h'))<6: extras_cena.append('Triptófano: banana, leche, nueces')
@@ -83,7 +162,7 @@ def calcular_5_comidas(macros, bio, entreno_am, entreno_pm):
     for i,(nm,p) in enumerate(zip(nombres,dist)):
         c_cho,c_prot,c_grasa=round(cho*p),round(prot*p),round(grasa*p)
         c={'nombre':nm,'kcal':c_cho*4+c_prot*4+c_grasa*9,'cho_g':c_cho,'prot_g':c_prot,
-           'grasa_g':c_grasa,'alimentos':[a for a in _macros_a_alimentos(nm,c_cho,c_prot,c_grasa) if a]}
+           'grasa_g':c_grasa,'alimentos':[a for a in _macros_a_alimentos(nm,c_cho,c_prot,c_grasa,variante+i) if a]}
         if i==4 and extras_cena: c['extras_bio']=extras_cena
         comidas.append(c)
     return comidas
@@ -103,7 +182,7 @@ def calcular_durante(sesion, peso):
         prods.append(f'{max(1,round(cho_h/25))} gel/hora ({cho_h}g CHO/h)')
         if cho_h>=60: prods.append('Mix glucosa+fructosa 2:1')
         prods.append(f'{ml_h}ml/h líquido + {sodio}mg sodio/h')
-    else: prods.append(f'{ml_h}ml/h agua')
+    else: prods.append(f'{ml_h}ml/h agua — sesión <75min, no requiere CHO extra')
     return {'deporte':dep,'duracion':dur,'cho_g_hora':cho_h,'cho_g_total':round(cho_h*dur_h),
             'liquido_ml_hora':ml_h,'liquido_ml_total':round(ml_h*dur_h),'sodio_mg_hora':sodio,
             'productos':prods,'necesita_cho':cho_h>0}
@@ -182,28 +261,41 @@ def nutricion_dia(conn, atleta_id, fecha=None):
     row=cur.fetchone()
     if not row: return {'disponible':False,'error':'Atleta no encontrado'}
     nombre,peso,altura,edad,sexo=row
+    # Objetivo nutricional del atleta (columna opcional)
+    objetivo_nut = 'mantener'
+    try:
+        cur.execute('SELECT objetivo_nutricional FROM atletas WHERE id=%s',[atleta_id])
+        _o = cur.fetchone()
+        if _o and _o[0]: objetivo_nut = _o[0]
+    except Exception: pass
     if not peso: return {'disponible':False,'error':'Falta peso'}
     cur.execute('''SELECT hrv_rmssd,sleep_h,stress_avg,body_battery,recovery_score,stress_intra,fc_media_dia
         FROM sleep_hrv WHERE atleta_id=%s AND fecha<=%s ORDER BY fecha DESC LIMIT 1''',[atleta_id,fecha])
     br=cur.fetchone(); bio={}
     if br: bio={'hrv_rmssd':br[0],'sleep_h':br[1],'stress_avg':br[2],'body_battery':br[3],
                 'recovery_score':br[4],'stress_intra':br[5],'fc_media_dia':br[6]}
-    cur.execute('SELECT sport,duration_min,tss_total,calorias FROM sesiones WHERE atleta_id=%s AND fecha=%s AND tss_total>0 ORDER BY id',
+    cur.execute('SELECT sport,duration_min,tss_total,calorias,intensity_factor FROM sesiones WHERE atleta_id=%s AND fecha=%s AND tss_total>0 ORDER BY id',
                 [atleta_id,fecha])
-    sesiones=[{'deporte':s[0],'dur_min':_sf(s[1],60),'tss':_sf(s[2]),'calorias':_sf(s[3])} for s in cur.fetchall()]
+    sesiones=[{'deporte':s[0],'dur_min':_sf(s[1],60),'tss':_sf(s[2]),'calorias':_sf(s[3]),'if_real':_sf(s[4])} for s in cur.fetchall()]
     gasto=calcular_gasto_real(peso,altura,edad,sexo,bio,sesiones)
     if not gasto: return {'disponible':False,'error':'No se pudo calcular'}
-    dur_h=sum(s['dur_min'] for s in sesiones)/60; if_max=0.75
+    dur_h=sum(s['dur_min'] for s in sesiones)/60; if_max=0.70
     for s in sesiones:
-        dh=max(s['dur_min'],1)/60
-        si=min((s['tss']/(dh*100))**0.5,1.2) if s['tss']>0 else 0.75
+        if s.get('if_real') and s['if_real']>0:
+            si = s['if_real']   # IF real de la sesion (desde potencia/pace)
+        else:
+            # Proxy conservador: TSS/(dur*100) sin raiz (la raiz inflaba sesiones cortas)
+            dh=max(s['dur_min'],1)/60
+            si = min(s['tss']/(dh*100), 1.1) if s['tss']>0 else 0.70
         if_max=max(if_max,si)
-    macros=calcular_macros(peso,gasto['gasto_total'],dur_h,if_max,bio)
-    comidas=calcular_5_comidas(macros,bio,len(sesiones)>=1,len(sesiones)>=2)
+    macros=calcular_macros(peso,gasto['gasto_total'],dur_h,if_max,bio,objetivo_nut)
+    comidas=calcular_5_comidas(macros,bio,len(sesiones)>=1,len(sesiones)>=2,fecha)
     durante=[calcular_durante(s,peso) for s in sesiones]
     post=[calcular_post(s,peso,bio,i<len(sesiones)-1) for i,s in enumerate(sesiones)]
+    suplementos = _suplementos_dia(peso, dur_h, if_max, bio)
     return {'disponible':True,'atleta':nombre,'fecha':fecha,'gasto':gasto,'macros':macros,
             'comidas':comidas,'durante':durante,'post':post,'alertas':alertas_bio(bio),
+            'suplementos':suplementos,
             'hidratacion':{'ml_dia':round(peso*35)+sum(d['liquido_ml_total'] for d in durante),
                            'ml_base':round(peso*35),'ml_entreno':sum(d['liquido_ml_total'] for d in durante)}}
 
