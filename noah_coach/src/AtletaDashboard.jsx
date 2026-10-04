@@ -17,8 +17,7 @@ import {
   Target, Flag, FlaskConical, CheckCircle2, XCircle, AlertTriangle, Zap, Ruler,
   HeartPulse, Flame, Activity, RotateCw, Satellite, ClipboardList, User, BatteryFull,
   BatteryLow, Moon, GlassWater, Brain, ChevronLeft, ChevronRight, Banana, Minus, Check, Scale, LogOut,
-  UserCircle, MessageCircle, Send
-} from 'lucide-react'
+  UserCircle, MessageCircle, Send, ChevronDown } from 'lucide-react'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
 // como ya funcionaba. En Vercel (1 sola dirección para front y backend)
@@ -1877,7 +1876,7 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
 
         return (
           <div>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, minHeight:160 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, minHeight:220 }}>
               <button onClick={()=>goToBio(bioIdx-1)} aria-label="Biomarcador anterior" style={{
                 width:26, height:26, borderRadius:'50%', flexShrink:0,
                 background:'rgba(255,255,255,0.06)', border:`1px solid ${NOAH_C.border2}`,
@@ -2614,6 +2613,7 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
   const [actsMes, setActsMes]     = useState({})
   const [cargando, setCargando]   = useState(false)
   const [diaDetalle, setDiaDetalle] = useState(null)
+  const [actExpandida, setActExpandida] = useState(null)
 
   const fechaRef  = new Date(); fechaRef.setDate(1); fechaRef.setMonth(fechaRef.getMonth() + mesOffset)
   const anio      = fechaRef.getFullYear()
@@ -2744,21 +2744,34 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
             )}
 
             {acts.map((a, i) => {
-              const c = SC[a.sport] || '#94A3B8'
+              const col = SC[a.sport] || '#94A3B8'
               const dk = (a.distance_km > 500 ? a.distance_km/1000 : a.distance_km)?.toFixed(1)
+              const sid = a.sesion_id || a.id
+              const abierta = actExpandida === sid
               return (
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0',
-                  borderBottom: i < acts.length-1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                  <div style={{ width:4, height:28, borderRadius:2, background:c }} />
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.85)', display:'flex', alignItems:'center', gap:6 }}>
-                      <SportIcon sport={a.sport} size={13} color={c} />
-                      {a.sport === 'running' ? 'Run' : a.sport === 'cycling' ? 'Bike' : 'Swim'}
-                    </div>
-                    <div style={{ fontSize:10, color:'rgba(255,255,255,0.45)', marginTop:2 }}>
+                <div key={i}>
+                  <div onClick={() => setActExpandida(abierta ? null : sid)}
+                    style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', cursor:'pointer',
+                    borderBottom: i < acts.length-1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                    <div style={{ width:4, height:28, borderRadius:2, background:col }} />
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.85)', display:'flex', alignItems:'center', gap:6 }}>
+                        <SportIcon sport={a.sport} size={13} color={col} />
+                        {a.sport === 'running' ? 'Run' : a.sport === 'cycling' ? 'Bike' : 'Swim'}
+                      </div>
+                      <div style={{ fontSize:10, color:'rgba(255,255,255,0.45)', marginTop:2 }}>
                       {Math.round(a.duration_min || 0)}min · {dk}km · TSS {Math.round(a.tss_total || 0)}
+                      </div>
                     </div>
+                    <ChevronDown size={16} color="rgba(255,255,255,0.3)"
+                      style={{ transform: abierta ? 'rotate(180deg)' : 'none', transition:'transform 0.2s' }} />
                   </div>
+                  {abierta && (
+                    <div style={{ padding:'8px 0 12px' }}>
+                      <GraficoActividad act={a} laps={a.laps} sport={a.sport}
+                        sesionId={sid} atletaId={atletaId} lthr={162} />
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -3382,9 +3395,9 @@ function SyncBar({ syncStatus, onSyncBio, onSyncAct, bioLoading, actLoading }) {
       <div style={{display:'flex',alignItems:'center',gap:4}}>
         <div style={{width:6,height:6,borderRadius:'50%',background:color,boxShadow:`0 0 5px ${color}`}}/>
         <span style={{fontSize:9,color:'rgba(255,255,255,0.45)'}}>{label}:</span>
-        <span style={{fontSize:9,fontWeight:700,color}}>{txt}</span>
+        <span style={{fontSize:9,fontWeight:700,color,minWidth:44,whiteSpace:'nowrap'}}>{txt}</span>
         <button onClick={onClick} disabled={loading} style={{
-          padding:'1px 6px',borderRadius:3,fontSize:8,fontWeight:700,
+          padding:'1px 6px',borderRadius:3,fontSize:8,fontWeight:700,flexShrink:0,
           border:`1px solid ${color}40`,background:`${color}12`,
           color:loading?'rgba(255,255,255,0.2)':color,
           cursor:loading?'default':'pointer',
@@ -5144,6 +5157,42 @@ function SeccionPerfil({ atletaId }) {
 
   useEffect(() => { const t = setTimeout(() => setMontado(true), 30); return () => clearTimeout(t) }, [])
 
+  // ── Datos fisicos editables (conectado con coach via PUT /atletas/:id) ──
+  const [fisico, setFisico] = useState({ peso_kg:'', altura_cm:'', edad:'', sexo:'', objetivo_nutricional:'mantener' })
+  const [editando, setEditando] = useState(false)
+  const [guardandoF, setGuardandoF] = useState(false)
+  const [guardadoF, setGuardadoF] = useState(false)
+
+  useEffect(() => {
+    authFetch(`${API}/atletas/${atletaId}`)
+      .then(r => r.json())
+      .then(r => { const a = r.data || r; setFisico({
+        peso_kg: a.peso_kg || '', altura_cm: a.altura_cm || '',
+        edad: a.edad || '', sexo: a.sexo || '',
+        objetivo_nutricional: a.objetivo_nutricional || 'mantener' }) })
+      .catch(() => {})
+  }, [atletaId])
+
+  const guardarFisico = async () => {
+    setGuardandoF(true)
+    try {
+      await authFetch(`${API}/atletas/${atletaId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          peso_kg: fisico.peso_kg ? Number(fisico.peso_kg) : null,
+          altura_cm: fisico.altura_cm ? Number(fisico.altura_cm) : null,
+          edad: fisico.edad ? Number(fisico.edad) : null,
+          sexo: fisico.sexo || null,
+          objetivo_nutricional: fisico.objetivo_nutricional || 'mantener',
+        }),
+      })
+      setGuardadoF(true); setEditando(false)
+      setTimeout(() => setGuardadoF(false), 2000)
+    } catch (e) { alert('Error guardando: ' + e.message) }
+    setGuardandoF(false)
+  }
+
   // ── Primitivas visuales ──────────────────────────────────────────────
   const Panel = ({ children, span, style, i=0 }) => (
     <div style={{
@@ -5370,6 +5419,51 @@ function SeccionPerfil({ atletaId }) {
     return (
       <div style={{ padding:'6px 4px' }}>
         {styleTag}
+        <Panel span="1/-1" style={{ padding:'20px 22px' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: editando ? 16 : 10 }}>
+            <PanelTitle Icon={Activity}>Datos físicos</PanelTitle>
+            {!editando ? (
+              <button onClick={()=>setEditando(true)} style={{
+                padding:'5px 14px', borderRadius:20, border:`1px solid ${GE.border}`,
+                background:'rgba(142,247,215,0.08)', color:GE.glow, fontSize:11, fontWeight:600, cursor:'pointer' }}>
+                {guardadoF ? '✓ Guardado' : 'Editar'}
+              </button>
+            ) : (
+              <button onClick={guardarFisico} disabled={guardandoF} style={{
+                padding:'5px 14px', borderRadius:20, border:'none',
+                background:GE.glow, color:'#05070D', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                {guardandoF ? 'Guardando...' : 'Guardar'}
+              </button>
+            )}
+          </div>
+          {!editando ? (
+            <div style={{ display:'flex', gap:24, flexWrap:'wrap' }}>
+              {[['Peso', fisico.peso_kg, 'kg'],['Altura', fisico.altura_cm, 'cm'],
+                ['Edad', fisico.edad, 'años'],['Sexo', fisico.sexo==='M'?'M':fisico.sexo==='F'?'F':'—', ''],
+                ['Objetivo', {mantener:'Mantener',bajar:'Bajar grasa',subir:'Ganar músculo'}[fisico.objetivo_nutricional]||'Mantener', '']].map(([l,v,u])=>(
+                <div key={l}>
+                  <div style={{ fontSize:9.5, color:GE.text2, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:3 }}>{l}</div>
+                  <div style={{ fontSize:22, fontWeight:800, color:GE.text }}>{v||'—'}<span style={{fontSize:11, color:GE.text2, fontWeight:600}}> {u}</span></div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+              {[['peso_kg','Peso (kg)','72'],['altura_cm','Altura (cm)','175'],['edad','Edad','35']].map(([k,ph,ex])=>(
+                <input key={k} type="number" placeholder={ph+' ej:'+ex} value={fisico[k]}
+                  onChange={e=>setFisico(f=>({...f,[k]:e.target.value}))} style={{
+                  flex:'1 1 100px', padding:'10px 12px', borderRadius:12, border:`1px solid ${GE.border}`,
+                  background:'rgba(255,255,255,0.03)', color:GE.text, fontSize:14 }} />
+              ))}
+              <select value={fisico.sexo} onChange={e=>setFisico(f=>({...f,sexo:e.target.value}))} style={{
+                flex:'1 1 100px', padding:'10px 12px', borderRadius:12, border:`1px solid ${GE.border}`,
+                background:'rgba(255,255,255,0.03)', color:GE.text, fontSize:14 }}>
+                <option value="">Sexo</option><option value="M">Masculino</option><option value="F">Femenino</option>
+              </select>
+            </div>
+          )}
+        </Panel>
+
         <Panel style={{ textAlign:'center', padding:'36px 24px' }}>
           <div className="ge-breathe" style={{ display:'inline-flex', width:52, height:52, borderRadius:'50%',
             background:'rgba(142,247,215,0.12)', alignItems:'center', justifyContent:'center', marginBottom:14 }}>
@@ -5405,6 +5499,58 @@ function SeccionPerfil({ atletaId }) {
     <div style={{ padding:'4px 2px 20px' }}>
       {styleTag}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:16 }}>
+
+        {/* Datos físicos editables (conectado con coach) */}
+        <Panel span="1 / -1" style={{ padding:'20px 22px' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: editando ? 16 : 10 }}>
+            <PanelTitle Icon={Activity}>Datos físicos</PanelTitle>
+            {!editando ? (
+              <button onClick={()=>setEditando(true)} style={{
+                padding:'5px 14px', borderRadius:20, border:`1px solid ${GE.border}`,
+                background:'rgba(142,247,215,0.08)', color:GE.glow, fontSize:11, fontWeight:600, cursor:'pointer' }}>
+                {guardadoF ? '✓ Guardado' : 'Editar'}
+              </button>
+            ) : (
+              <button onClick={guardarFisico} disabled={guardandoF} style={{
+                padding:'5px 14px', borderRadius:20, border:'none',
+                background:GE.glow, color:'#05070D', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                {guardandoF ? 'Guardando...' : 'Guardar'}
+              </button>
+            )}
+          </div>
+          {!editando ? (
+            <div style={{ display:'flex', gap:24, flexWrap:'wrap' }}>
+              {[['Peso', fisico.peso_kg, 'kg'],['Altura', fisico.altura_cm, 'cm'],
+                ['Edad', fisico.edad, 'años'],['Sexo', fisico.sexo==='M'?'M':fisico.sexo==='F'?'F':'—', '']].map(([l,v,u])=>(
+                <div key={l}>
+                  <div style={{ fontSize:9.5, color:GE.text2, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:3 }}>{l}</div>
+                  <div style={{ fontSize:22, fontWeight:800, color:GE.text }}>{v||'—'}<span style={{fontSize:11, color:GE.text2, fontWeight:600}}> {u}</span></div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+              {[['peso_kg','Peso kg','72'],['altura_cm','Altura cm','175'],['edad','Edad','35']].map(([k,ph,ex])=>(
+                <input key={k} type="number" placeholder={ph+' ej:'+ex} value={fisico[k]}
+                  onChange={e=>setFisico(f=>({...f,[k]:e.target.value}))} style={{
+                  flex:'1 1 100px', padding:'10px 12px', borderRadius:12, border:`1px solid ${GE.border}`,
+                  background:'rgba(255,255,255,0.03)', color:GE.text, fontSize:14 }} />
+              ))}
+              <select value={fisico.sexo} onChange={e=>setFisico(f=>({...f,sexo:e.target.value}))} style={{
+                flex:'1 1 100px', padding:'10px 12px', borderRadius:12, border:`1px solid ${GE.border}`,
+                background:'rgba(255,255,255,0.03)', color:GE.text, fontSize:14 }}>
+                <option value="">Sexo</option><option value="M">Masculino</option><option value="F">Femenino</option>
+              </select>
+              <select value={fisico.objetivo_nutricional} onChange={e=>setFisico(f=>({...f,objetivo_nutricional:e.target.value}))} style={{
+                flex:'1 1 100px', padding:'10px 12px', borderRadius:12, border:`1px solid ${GE.border}`,
+                background:'rgba(255,255,255,0.03)', color:GE.text, fontSize:14 }}>
+                <option value="mantener">Mantener peso</option>
+                <option value="bajar">Bajar grasa</option>
+                <option value="subir">Ganar músculo</option>
+              </select>
+            </div>
+          )}
+        </Panel>
 
         {/* HERO — anillo + mini paneles Riesgo/TSB/ACWR */}
         <Panel span="1 / -1" i={0}>

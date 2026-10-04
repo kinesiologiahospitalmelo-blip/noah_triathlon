@@ -4302,6 +4302,9 @@ function PerfilFisiologico({ atletaId, atleta }) {
   const [css,      setCss]      = useState(atleta?.css_100m  || '')
   const [hrMax,    setHrMax]    = useState(atleta?.hr_max    || '')
   const [pesoKg,   setPesoKg]   = useState(atleta?.peso_kg   || '')
+  const [alturaCm, setAlturaCm] = useState(atleta?.altura_cm || '')
+  const [edad,     setEdad]     = useState(atleta?.edad      || '')
+  const [sexo,     setSexo]     = useState(atleta?.sexo      || '')
   const [saving,   setSaving]   = useState(false)
   const [saved,    setSaved]    = useState(false)
 
@@ -4314,6 +4317,9 @@ function PerfilFisiologico({ atletaId, atleta }) {
     setCss(atleta?.css_100m  || '')
     setHrMax(atleta?.hr_max    || '')
     setPesoKg(atleta?.peso_kg   || '')
+    setAlturaCm(atleta?.altura_cm || '')
+    setEdad(atleta?.edad      || '')
+    setSexo(atleta?.sexo      || '')
   }, [atletaId])
 
   const guardar = async () => {
@@ -4327,6 +4333,9 @@ function PerfilFisiologico({ atletaId, atleta }) {
         css_100m:  css      ? Number(css)      : null,
         hr_max:    hrMax    ? Number(hrMax)    : null,
         peso_kg:   pesoKg   ? Number(pesoKg)   : null,
+        altura_cm: alturaCm ? Number(alturaCm) : null,
+        edad:      edad     ? Number(edad)     : null,
+        sexo:      sexo     || null,
       }
       await axios.put(`${API}/atletas/${atletaId}`, body, { headers: { 'Content-Type': 'application/json' } })
       setSaved(true)
@@ -4378,6 +4387,18 @@ function PerfilFisiologico({ atletaId, atleta }) {
       </div>
       <Campo label="FC Maxima" value={hrMax} setValue={setHrMax} unit="bpm" placeholder="ej: 190" />
       <Campo label="Peso" value={pesoKg} setValue={setPesoKg} unit="kg" placeholder="ej: 72" />
+      <Campo label="Altura" value={alturaCm} setValue={setAlturaCm} unit="cm" placeholder="ej: 175" />
+      <Campo label="Edad" value={edad} setValue={setEdad} unit="años" placeholder="ej: 35" />
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display:'block', fontSize:12, color:C.text2, marginBottom:6, fontWeight:600 }}>Sexo</label>
+        <select value={sexo} onChange={e=>setSexo(e.target.value)} style={{
+          width:'100%', padding:'10px 12px', borderRadius:8, border:`1px solid ${C.border}`,
+          background:C.bg3, color:C.text, fontSize:14, cursor:'pointer' }}>
+          <option value="">Seleccionar</option>
+          <option value="M">Masculino</option>
+          <option value="F">Femenino</option>
+        </select>
+      </div>
       <button onClick={guardar} disabled={saving}
         style={{ padding: '10px 20px', borderRadius: 8, border: 'none',
           background: saved ? C.success : C.purple, color: '#fff', fontWeight: 700,
