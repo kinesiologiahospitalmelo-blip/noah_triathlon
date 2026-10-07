@@ -226,29 +226,34 @@ def obtener_sesiones_reales(conn, atleta_id, fecha):
     """Sesiones REALMENTE ejecutadas ese día (sincronizadas de Garmin/Wahoo,
     no prescripción/simulación/generada)."""
     rows = _query(conn, """
-        SELECT sport, duration_min, tss_total, calorias, distance_km
+        SELECT sport, duration_min, tss_total, calorias, distance_km, intensity_factor
         FROM sesiones
         WHERE atleta_id=%s AND fecha=%s AND tss_total>0
           AND (fuente IS NULL OR fuente NOT IN %s)
     """, [atleta_id, fecha, FUENTES_NO_REAL])
     return [{'deporte': r[0], 'dur_min': _sf(r[1], 0), 'tss': _sf(r[2], 0),
-             'kcal_real': _sf(r[3]), 'distancia_km': r[4]} for r in rows]
+             'kcal_real': _sf(r[3]), 'distancia_km': r[4], 'if_real': _sf(r[5])} for r in rows]
 
 
-def _kcal_estimado_sesion(dur_min, tss, peso_kg):
-    """Estimación de gasto por sesión cuando no hay calorías reales de
-    Garmin. Reemplaza el cálculo de v3 (tss*peso*0.01, que para un TSS 70 en
-    un atleta de 65kg daba ~45 kcal -- claramente roto). Se calibra por
-    kcal/min según la intensidad implícita en el TSS (aprox. MET 5 a 12
-    para deportes de resistencia, escalado por peso corporal), y se marca
-    siempre como estimación."""
-    if not dur_min or not peso_kg:
+# MET base por deporte a intensidad moderada (Compendium of Physical Activities 2011)
+_MET_BASE = {'running': 9.0, 'cycling': 7.0, 'swimming': 6.0, 'otro': 7.0}
+
+def _kcal_estimado_sesion(dur_min, tss, peso_kg, deporte='running', if_real=None):
+    """Gasto del ejercicio estimado (sesion planificada, sin kcal de Garmin).
+    Usa TSS como base: integra duracion x intensidad real (incluye picos de
+    intervalos, a diferencia de la HR media). Validado contra TrainingPeaks:
+    ~1 kcal por kg por punto de TSS/100 por hora equivalente.
+    kcal_ejercicio = TSS/100 * peso * 11 (aprox 1h a umbral = ~11 kcal/kg).
+    Si no hay TSS, cae a MET por duracion."""
+    if not peso_kg:
         return 0
-    dur_h = dur_min / 60
-    intensidad = min((tss / (dur_h * 100)) ** 0.5, 1.2) if tss and dur_h > 0 else 0.65
-    kcal_min_por_kg = 0.08 + 0.08 * intensidad  # ~0.08 (suave) a ~0.176 (muy duro)
-    return round(dur_min * peso_kg * kcal_min_por_kg)
-
+    if tss and tss > 0:
+        return round(tss / 100 * peso_kg * 11)
+    # Fallback sin TSS: MET moderado por deporte
+    if not dur_min:
+        return 0
+    met = {'running': 8.5, 'cycling': 7.0, 'swimming': 6.0}.get(deporte, 7.0)
+    return round(met * 3.5 * peso_kg / 200 * dur_min)
 
 def _kcal_reposo(dur_min, tmb_kcal):
     """kcal que el cuerpo quema en reposo durante la sesión. Garmin y la
@@ -264,7 +269,8 @@ def calcular_entreno_dia(planificadas, reales, peso_kg, tmb_kcal=None):
             kcal = r.get('kcal_real') if es_real else None
             estimado = not (kcal and kcal > 0)
             if estimado:
-                kcal = _kcal_estimado_sesion(r['dur_min'], r['tss'], peso_kg)
+                kcal = _kcal_estimado_sesion(r['dur_min'], r['tss'], peso_kg,
+                                             r.get('deporte','running'), r.get('if_real'))
             neto = max(kcal - _kcal_reposo(r['dur_min'], tmb_kcal), kcal * 0.70)
             det.append({'deporte': r['deporte'], 'dur_min': round(r['dur_min']),
                         'tss': round(r['tss']), 'kcal': round(kcal), 'kcal_neto': round(neto),
@@ -482,7 +488,13 @@ def calcular_macros_dia(peso_kg, entreno, bio_eval, carrera, objetivo,
     usar = entreno['usar_para_calculo'] or {}
     dur_h = usar.get('dur_min', 0) / 60
     tss = usar.get('tss', 0)
-    intensidad = min((tss / (dur_h * 100)) ** 0.5, 1.2) if tss and dur_h > 0 else (0.6 if dur_h > 0 else 0)
+    _if_real = usar.get('if_real') or usar.get('intensity_factor')
+    if _if_real and _if_real > 0:
+        intensidad = min(_if_real, 1.15)
+    elif tss and dur_h > 0:
+        intensidad = min(tss / (dur_h * 100), 1.1)  # sin raiz que infla cortas
+    else:
+        intensidad = 0.6 if dur_h > 0 else 0
 
     dias_carrera = carrera['dias_restantes'] if carrera else None
     prioridad_carrera = carrera['prioridad'] if carrera else None
@@ -625,61 +637,179 @@ def calcular_compensacion_memoria(conn, atleta_id, fecha, objetivo_kcal_hoy):
 
 # nombre: (CHO g/100g, Prot g/100g, Grasa g/100g, kcal/100g)
 ALIMENTOS = {
-    'avena':            (60, 13, 7,   379),
-    'banana':           (23, 1,  0.3, 89),
-    'arroz_cocido':     (28, 2.7,0.3, 130),
-    'arroz_integral_cocido': (23, 2.6, 0.9, 111),
-    'pasta_cocida':     (25, 5,  1,   131),
-    'quinoa_cocida':    (21, 4.4,1.9, 120),
-    'batata':           (20, 2,  0.1, 86),
-    'pan_integral':     (42, 9,  3,   247),
-    'pan_sin_tacc':     (52, 3,  4,   260),
-    'pollo_pechuga':    (0,  25, 3,   130),
-    'salmon':           (0,  22, 13,  208),
-    'atun_lata':        (0,  26, 1,   116),
-    'carne_magra':      (0,  27, 5,   158),
-    'huevo':            (1,  13, 11,  155),
-    'tofu':             (2,  8,  4.8, 76),
-    'lentejas_cocidas': (20, 9,  0.4, 116),
-    'garbanzos_cocidos':(27, 8,  2.6, 164),
-    'proteina_arveja':  (5,  78, 6,   380),
-    'yogur_griego':     (4,  10, 5,   100),
-    'yogur_coco':       (7,  1,  6,   90),
-    'leche':            (5,  3.3,3.5, 65),
-    'leche_almendras':  (1,  0.5,1.1, 15),
-    'whey_protein':     (3,  80, 5,   400),
-    'miel':             (82, 0.3,0,   304),
-    'manteca_mani':     (20, 25, 50,  588),
-    'aceite_oliva':     (0,  0,  100, 884),
-    'granola':          (65, 10, 15,  450),
-    'frutos_secos':     (15, 20, 50,  580),
-    'queso_rallado':    (3,  28, 25,  350),
-    'manzana':          (14, 0.3, 0.2, 52),
-    'pera':             (15, 0.4, 0.1, 57),
-    'naranja':          (12, 0.9, 0.1, 47),
-    'barrita_cereal':   (65, 8,  12,  380),
-    'almendras':        (22, 21, 49,  579),
-    'nueces':           (14, 15, 65,  654),
-    'pasas':            (79, 3,  0.5, 299),
-    'queso_fresco':     (3,  18, 20,  260),
-    'verduras_mix':     (7,  2,  0.3, 35),
-    'palta':            (9,  2,  15,  160),
+    # ═══ CEREALES Y GRANOS (crudo/seco por 100g) ═══
+    'avena':              (66, 13, 7,   389),
+    'arroz_blanco':       (78, 7,  0.9, 360),
+    'arroz_integral':     (76, 8,  2.5, 362),
+    'pasta':              (75, 13, 1.5, 371),
+    'pasta_integral':     (71, 14, 2.5, 348),
+    'quinoa':             (64, 14, 6,   368),
+    'polenta':            (79, 8,  1.5, 362),
+    'cuscus':             (77, 13, 0.6, 376),
+    'cebada':             (73, 12, 2,   354),
+    'pan_integral':       (42, 9,  3,   247),
+    'pan_blanco':         (50, 9,  3,   265),
+    'pan_sin_tacc':       (52, 3,  4,   260),
+    'tortilla_trigo':     (55, 8,  7,   310),
+    'galletas_arroz':     (82, 8,  3,   387),
+    'granola':            (64, 10, 15,  471),
+    'cereal_integral':    (72, 10, 5,   360),
+    # ═══ TUBERCULOS ═══
+    'papa':               (17, 2,  0.1, 77),
+    'batata':             (20, 1.6,0.1, 86),
+    'mandioca':           (38, 1.4,0.3, 160),
+    # ═══ LEGUMBRES (seco por 100g) ═══
+    'lentejas':           (60, 25, 1,   352),
+    'garbanzos':          (61, 19, 6,   364),
+    'porotos':            (60, 21, 1.2, 333),
+    'arvejas':            (60, 25, 2,   364),
+    'soja':               (30, 36, 20,  446),
+    # ═══ PROTEINAS ANIMALES (crudo por 100g) ═══
+    'pollo_pechuga':      (0,  23, 2,   110),
+    'pollo_muslo':        (0,  19, 8,   155),
+    'pavo':               (0,  22, 2,   105),
+    'carne_magra':        (0,  22, 6,   140),
+    'carne_picada_magra': (0,  21, 9,   170),
+    'cerdo_magro':        (0,  21, 6,   143),
+    'salmon':             (0,  20, 13,  208),
+    'atun_fresco':        (0,  23, 1,   108),
+    'atun_lata_agua':     (0,  26, 1,   116),
+    'merluza':            (0,  18, 1,   82),
+    'trucha':             (0,  20, 6,   140),
+    'camaron':            (0,  24, 0.3, 99),
+    'huevo':              (1,  13, 11,  155),
+    'clara_huevo':        (0.7,11, 0.2, 52),
+    # ═══ LACTEOS ═══
+    'leche_entera':       (5,  3.3,3.5, 65),
+    'leche_descremada':   (5,  3.4,0.1, 35),
+    'leche_almendras':    (1,  0.5,1.1, 15),
+    'yogur_natural':      (5,  4,  3,   61),
+    'yogur_griego':       (4,  10, 5,   100),
+    'yogur_descremado':   (6,  4,  0.1, 42),
+    'queso_fresco':       (3,  18, 20,  260),
+    'queso_port_salut':   (1,  24, 26,  340),
+    'queso_rallado':      (3,  28, 25,  350),
+    'ricota':             (3,  11, 13,  174),
+    'queso_untable_light':(4,  8,  10,  140),
+    # ═══ FRUTAS (por 100g) ═══
+    'banana':             (23, 1,  0.3, 89),
+    'manzana':            (14, 0.3,0.2, 52),
+    'pera':               (15, 0.4,0.1, 57),
+    'naranja':            (12, 0.9,0.1, 47),
+    'mandarina':          (13, 0.8,0.3, 53),
+    'frutilla':           (8,  0.7,0.3, 32),
+    'arandanos':          (14, 0.7,0.3, 57),
+    'uva':                (18, 0.6,0.2, 69),
+    'kiwi':               (15, 1.1,0.5, 61),
+    'durazno':            (10, 0.9,0.3, 39),
+    'ananá':              (13, 0.5,0.1, 50),
+    'melon':              (8,  0.8,0.2, 34),
+    'sandia':             (8,  0.6,0.2, 30),
+    'ciruela':            (11, 0.7,0.3, 46),
+    'higo':               (19, 0.8,0.3, 74),
+    'pasas':              (79, 3,  0.5, 299),
+    'datil':              (75, 2,  0.4, 282),
+    # ═══ VERDURAS (por 100g) ═══
+    'lechuga':            (3,  1.4,0.2, 15),
+    'tomate':             (4,  0.9,0.2, 18),
+    'zanahoria':          (10, 0.9,0.2, 41),
+    'brocoli':            (7,  2.8,0.4, 34),
+    'espinaca':           (4,  2.9,0.4, 23),
+    'zapallo':            (7,  1,  0.1, 26),
+    'zucchini':           (3,  1.2,0.3, 17),
+    'morron':             (6,  1,  0.3, 31),
+    'cebolla':            (9,  1.1,0.1, 40),
+    'pepino':             (4,  0.7,0.1, 16),
+    'berenjena':          (6,  1,  0.2, 25),
+    'coliflor':           (5,  1.9,0.3, 25),
+    'chaucha':            (7,  1.8,0.1, 31),
+    'remolacha':          (10, 1.6,0.2, 43),
+    'choclo':             (19, 3.3,1.5, 96),
+    'verduras_mix':       (7,  2,  0.3, 35),
+    'palta':              (9,  2,  15,  160),
+    # ═══ FRUTOS SECOS Y SEMILLAS ═══
+    'almendras':          (22, 21, 49,  579),
+    'nueces':             (14, 15, 65,  654),
+    'mani':               (16, 26, 49,  567),
+    'castañas_caju':      (30, 18, 44,  553),
+    'pistachos':          (28, 20, 45,  560),
+    'semillas_chia':      (42, 17, 31,  486),
+    'semillas_girasol':   (20, 21, 51,  584),
+    'semillas_zapallo':   (54, 19, 19,  446),
+    'manteca_mani':       (20, 25, 50,  588),
+    # ═══ GRASAS Y ACEITES ═══
+    'aceite_oliva':       (0,  0,  100, 884),
+    'aceite_girasol':     (0,  0,  100, 884),
+    'manteca':            (0,  0.9,81,  717),
+    'palta_aceite':       (0,  0,  100, 884),
+    # ═══ SUPLEMENTOS / OTROS ═══
+    'whey_protein':       (8,  78, 7,   400),
+    'proteina_vegetal':   (10, 75, 6,   380),
+    'miel':               (82, 0.3,0,   304),
+    'mermelada_sin_azucar':(30,0.5,0.1, 120),
+    'dulce_batata':       (74, 1,  0.2, 300),
+    'cacao_amargo':       (58, 20, 14,  400),
+    'barrita_cereal':     (65, 8,  12,  380),
+    'tofu':               (2,  8,  4.8, 76),
+    # compat con recetas viejas (mapear cocido -> crudo equivalente)
+    'arroz_cocido':       (78, 7,  0.9, 360),
+    'arroz_integral_cocido': (76, 8, 2.5, 362),
+    'pasta_cocida':       (75, 13, 1.5, 371),
+    'quinoa_cocida':      (64, 14, 6,   368),
+    'leche':              (5,  3.3,3.5, 65),
+    'yogur_coco':         (7,  1,  6,   90),
+    'frutos_secos':       (15, 20, 50,  580),
+    'lentejas_cocidas':   (60, 25, 1,   352),
+    'garbanzos_cocidos':  (61, 19, 6,   364),
+    'proteina_arveja':    (10, 75, 6,   380),
 }
 
 # medidas caseras en gramos, para mostrar "1 taza y 1/2" en vez de solo gramos
 MEDIDAS_CASERAS = {
-    'arroz_cocido': {'taza': 185}, 'arroz_integral_cocido': {'taza': 185},
-    'pasta_cocida': {'plato': 200}, 'quinoa_cocida': {'taza': 185},
-    'pollo_pechuga': {'unidad': 200, 'media unidad': 100}, 'banana': {'unidad': 120},
-    'huevo': {'unidad': 60}, 'yogur_griego': {'pote': 170}, 'yogur_coco': {'pote': 170},
-    'leche': {'vaso': 250}, 'leche_almendras': {'vaso': 250}, 'avena': {'taza': 80},
-    'aceite_oliva': {'cucharada': 14}, 'miel': {'cucharada': 21},
-    'pan_integral': {'rebanada': 30}, 'pan_sin_tacc': {'rebanada': 35},
-    'queso_rallado': {'puñado': 30}, 'frutos_secos': {'puñado': 30}, 'manteca_mani': {'cucharada': 16},
-    'manzana': {'unidad': 180}, 'pera': {'unidad': 170}, 'naranja': {'unidad': 180},
-    'barrita_cereal': {'unidad': 40}, 'almendras': {'puñado': 30}, 'nueces': {'puñado': 30},
-    'pasas': {'puñado': 40}, 'queso_fresco': {'porción': 60}, 'palta': {'media unidad': 70},
-    'verduras_mix': {'porción': 150},
+    # cereales/granos crudos
+    'arroz_blanco':{'taza':200,'cucharada':15},'arroz_integral':{'taza':190},
+    'arroz_cocido':{'taza':200},'arroz_integral_cocido':{'taza':190},
+    'pasta':{'plato':100},'pasta_integral':{'plato':100},'pasta_cocida':{'plato':100},
+    'quinoa':{'taza':170},'quinoa_cocida':{'taza':170},'avena':{'taza':80,'cucharada':15},
+    'polenta':{'taza':160},'cuscus':{'taza':175},'granola':{'puñado':40,'taza':60},
+    'pan_integral':{'rebanada':30},'pan_blanco':{'rebanada':30},'pan_sin_tacc':{'rebanada':35},
+    'galletas_arroz':{'unidad':8},'cereal_integral':{'taza':40},
+    # tuberculos
+    'papa':{'unidad':150},'batata':{'unidad':130},'mandioca':{'porción':150},
+    # legumbres secas
+    'lentejas':{'taza':180},'garbanzos':{'taza':180},'porotos':{'taza':180},'arvejas':{'taza':150},
+    # proteinas
+    'pollo_pechuga':{'unidad':150,'media unidad':75},'pollo_muslo':{'unidad':120},
+    'carne_magra':{'bife':150},'carne_picada_magra':{'porción':120},'pavo':{'porción':120},
+    'salmon':{'filet':140},'atun_fresco':{'filet':140},'atun_lata_agua':{'lata':120},
+    'merluza':{'filet':150},'trucha':{'filet':140},'huevo':{'unidad':55},'clara_huevo':{'unidad':33},
+    # lacteos
+    'leche_entera':{'vaso':200},'leche_descremada':{'vaso':200},'leche':{'vaso':200},
+    'leche_almendras':{'vaso':200},'yogur_natural':{'pote':190},'yogur_griego':{'pote':150},
+    'yogur_descremado':{'pote':190},'queso_fresco':{'porción':40},'ricota':{'porción':50},
+    'queso_port_salut':{'feta':30},'queso_rallado':{'cucharada':10},'queso_untable_light':{'cucharada':20},
+    # frutas
+    'banana':{'unidad':120},'manzana':{'unidad':150},'pera':{'unidad':160},'naranja':{'unidad':180},
+    'mandarina':{'unidad':90},'frutilla':{'taza':150},'arandanos':{'puñado':40},'uva':{'taza':100},
+    'kiwi':{'unidad':75},'durazno':{'unidad':150},'ananá':{'rodaja':80},'melon':{'porción':150},
+    'sandia':{'porción':200},'ciruela':{'unidad':65},'higo':{'unidad':50},'pasas':{'puñado':40},'datil':{'unidad':8},
+    # verduras
+    'lechuga':{'porción':50},'tomate':{'unidad':120},'zanahoria':{'unidad':70},'brocoli':{'porción':100},
+    'espinaca':{'porción':80},'zapallo':{'porción':120},'zucchini':{'unidad':150},'morron':{'unidad':120},
+    'cebolla':{'unidad':110},'pepino':{'unidad':150},'berenjena':{'unidad':200},'coliflor':{'porción':100},
+    'chaucha':{'porción':90},'remolacha':{'unidad':80},'choclo':{'unidad':100},'verduras_mix':{'porción':150},
+    'palta':{'media unidad':70,'unidad':140},
+    # frutos secos
+    'almendras':{'puñado':30},'nueces':{'puñado':30},'mani':{'puñado':30},'castañas_caju':{'puñado':30},
+    'pistachos':{'puñado':30},'semillas_chia':{'cucharada':12},'semillas_girasol':{'cucharada':12},
+    'semillas_zapallo':{'cucharada':12},'manteca_mani':{'cucharada':16},'frutos_secos':{'puñado':30},
+    # grasas
+    'aceite_oliva':{'cucharada':14},'aceite_girasol':{'cucharada':14},'manteca':{'cucharada':14},
+    # otros
+    'whey_protein':{'scoop':30},'proteina_vegetal':{'scoop':30},'proteina_arveja':{'scoop':30},
+    'miel':{'cucharada':21},'mermelada_sin_azucar':{'cucharada':20},'dulce_batata':{'porción':40},
+    'cacao_amargo':{'cucharada':10},'barrita_cereal':{'unidad':40},'tofu':{'porción':100},
+    'yogur_coco':{'pote':150},'lentejas_cocidas':{'taza':180},'garbanzos_cocidos':{'taza':180},
 }
 
 RESTRICCION_EXCLUYE = {
@@ -742,14 +872,18 @@ RECETAS_DESAYUNO = [
 ]
 
 RECETAS_ALMUERZO = [
-    [('pollo_pechuga','prot'),('arroz_integral_cocido','carb'),('aceite_oliva','grasa'),('Ensalada cruda variada','verdura')],
+    [('pollo_pechuga','prot'),('arroz_integral','carb'),('aceite_oliva','grasa'),('Ensalada cruda variada','verdura')],
     [('salmon','prot'),('batata','carb'),('Verduras al vapor','verdura')],
-    [('carne_magra','prot'),('quinoa_cocida','carb'),('aceite_oliva','grasa'),('Verduras asadas al horno','verdura')],
-    [('atun_lata','prot'),('pasta_cocida','carb'),('aceite_oliva','grasa'),('Vegetales grillados','verdura')],
+    [('carne_magra','prot'),('quinoa','carb'),('aceite_oliva','grasa'),('Verduras asadas al horno','verdura')],
+    [('merluza','prot'),('arroz_blanco','carb'),('aceite_oliva','grasa'),('Vegetales grillados','verdura')],
     [('pollo_pechuga','prot'),('batata','carb'),('Verduras salteadas al wok','verdura')],
-    [('huevo','prot'),('arroz_cocido','carb'),('palta','grasa'),('Brócoli y zanahoria al vapor','verdura')],
-    [('salmon','prot'),('quinoa_cocida','carb'),('Ensalada cruda variada','verdura')],
-    [('carne_magra','prot'),('arroz_integral_cocido','carb'),('Verduras al vapor','verdura')],
+    [('cerdo_magro','prot'),('papa','carb'),('palta','grasa'),('Brócoli y zanahoria al vapor','verdura')],
+    [('salmon','prot'),('quinoa','carb'),('Ensalada cruda variada','verdura')],
+    [('carne_magra','prot'),('arroz_integral','carb'),('Verduras al vapor','verdura')],
+    [('atun_fresco','prot'),('pasta_integral','carb'),('aceite_oliva','grasa'),('Ensalada cruda variada','verdura')],
+    [('pavo','prot'),('batata','carb'),('Verduras asadas al horno','verdura')],
+    [('trucha','prot'),('arroz_integral','carb'),('aceite_oliva','grasa'),('Vegetales grillados','verdura')],
+    [('pollo_muslo','prot'),('quinoa','carb'),('Verduras al vapor','verdura')],
 ]
 
 RECETAS_SNACK = [
@@ -932,9 +1066,13 @@ def _foto(nombre_comida):
     return {'foto_key': key, 'foto_url': r.get('url'), 'foto_disponible': r.get('disponible', False)}
 
 
-def armar_comidas(macros, entreno, restricciones, fecha):
+def armar_comidas(macros, entreno, restricciones, fecha, peso_kg=70):
     if not macros.get('disponible'):
         return []
+    # Porciones proporcionales al peso real (70kg = referencia).
+    # Mujer 50kg -> 0.71 (porciones menores), hombre 90kg -> 1.28 (mayores).
+    # Universal: se adapta a cualquier atleta sin valores fijos.
+    _cap_scale = max(0.6, min(1.5, (peso_kg or 70) / 70.0))
     cho, prot, grasa = macros['cho_g'], macros['prot_g'], macros['grasa_g']
     seed = date.fromisoformat(fecha).weekday()
     ya_entreno = entreno['ya_entreno_hoy']
@@ -981,7 +1119,7 @@ def armar_comidas(macros, entreno, restricciones, fecha):
         kcal_t = c_cho * 4 + c_prot * 4 + c_grasa * 9
         cap = min(1.7, max(1.0, kcal_t / 800.0))     # días enormes -> porciones algo mayores
         plato = construir_plato(round(c_cho), round(c_prot), round(c_grasa), tipo, restricciones,
-                                seed + snack_idx, es_desayuno=(nombre == 'DESAYUNO'), cap_scale=cap)
+                                seed + snack_idx, es_desayuno=(nombre == 'DESAYUNO'), cap_scale=_cap_scale)
         comidas.append({
             'nombre': nombre, 'hora': hora,
             'alimentos': plato['items'],
@@ -1293,7 +1431,7 @@ def calcular_dia(conn, atleta_id, fecha, permitir_memoria=True):
     macros_comidas = dict(macros)
     if macros.get('disponible'):
         macros_comidas['cho_g'] = max(0, macros['cho_g'] - cho_durante['total_g'])
-    comidas = armar_comidas(macros_comidas, entreno, restricciones, fecha)
+    comidas = armar_comidas(macros_comidas, entreno, restricciones, fecha, perfil.get('peso_kg', 70))
     kcal_comidas = sum(c['kcal'] for c in comidas)
     suplementos = armar_suplementos(entreno, bio_eval, perfil['deporte_ppal'], perfil['peso_kg'])
     hidratacion = calcular_hidratacion(perfil['peso_kg'], entreno)
