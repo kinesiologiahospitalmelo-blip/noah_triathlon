@@ -1288,15 +1288,7 @@ function CoachSemana({ presc, atletaId, onCambio, atleta }) {
     </div>
   )
 
-  const _hoy = new Date()
-  const _diaSemana = _hoy.getDay() === 0 ? 7 : _hoy.getDay()
-  const _lunes = new Date(_hoy); _lunes.setDate(_hoy.getDate() - _diaSemana + 1); _lunes.setHours(0,0,0,0)
-  const _domingo = new Date(_lunes); _domingo.setDate(_lunes.getDate() + 6); _domingo.setHours(23,59,59,999)
-  const sesiones = (presc.prescripcion.sesiones || []).filter(s => {
-    if (!s.fecha) return true
-    const f = new Date(s.fecha + 'T12:00:00')
-    return f >= _lunes && f <= _domingo
-  })
+  const sesiones = presc.prescripcion.sesiones || []
   const yaAprobada = presc.prescripcion.estado === 'aprobada'
 
   const aprobarSemana = async () => {
