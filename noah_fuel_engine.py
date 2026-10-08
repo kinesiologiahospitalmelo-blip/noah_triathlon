@@ -887,26 +887,30 @@ RECETAS_ALMUERZO = [
 ]
 
 RECETAS_SNACK = [
+    # Colaciones reales: fruta + proteína/grasa/carb liviano. NUNCA arroz/pasta.
+    # Variedad: frutos secos, yogur, barra, whey (recuperación), fruta de estación.
     [('banana','fruta'),('almendras','grasa')],
     [('manzana','fruta'),('yogur_griego','prot')],
     [('barrita_cereal','libre'),('banana','fruta')],
     [('pera','fruta'),('nueces','grasa')],
-    [('yogur_griego','prot'),('pasas','fruta')],
+    [('yogur_griego','prot'),('granola','carb'),('frutilla','fruta')],
     [('naranja','fruta'),('queso_fresco','prot')],
+    [('pan_integral','carb'),('manteca_mani','grasa'),('banana','fruta')],
+    [('whey_protein','prot'),('banana','fruta')],
+    [('mandarina','fruta'),('mani','grasa')],
+    [('yogur_griego','prot'),('arandanos','fruta'),('nueces','grasa')],
+    [('kiwi','fruta'),('almendras','grasa')],
+    [('pan_integral','carb'),('queso_untable_light','prot'),('durazno','fruta')],
 ]
 
-CANT_FRUTA = {'banana': 120, 'manzana': 180, 'pera': 170, 'naranja': 180, 'pasas': 40}
+CANT_FRUTA = {'banana': 120, 'manzana': 180, 'pera': 170, 'naranja': 180, 'pasas': 40,
+              'frutilla': 150, 'arandanos': 80, 'mandarina': 90, 'kiwi': 75, 'durazno': 150,
+              'uva': 100, 'ciruela': 65}
 CANT_LIBRE = {'miel': 15, 'barrita_cereal': 40, 'queso_fresco': 40, 'palta': 50}
 
 MEDIDAS_CASERAS.update({'whey_protein': {'scoop': 30}, 'batata': {'unidad': 150}, 'granola': {'puñado': 40}})
 
-RECETAS_SNACK.extend([
-    [('pan_integral', 'carb'), ('miel', 'libre'), ('banana', 'fruta')],
-    [('avena', 'carb'), ('leche', 'prot'), ('banana', 'fruta')],
-    [('yogur_griego', 'prot'), ('granola', 'carb'), ('banana', 'fruta')],
-    [('pan_integral', 'carb'), ('manteca_mani', 'grasa'), ('banana', 'fruta')],
-    [('arroz_cocido', 'carb'), ('huevo', 'prot')],
-])
+# (colaciones ya definidas arriba — sin arroz)
 
 RECETAS_POST = [
     [('whey_protein', 'prot'), ('banana', 'fruta'), ('avena', 'carb'), ('miel', 'libre')],
@@ -1052,6 +1056,8 @@ FOTO_BUSQUEDA = {
     'POST-ENTRENO': 'protein shake banana smoothie food photography',
     'VENTANA': 'rice banana protein shake food photography',
     'SNACK': 'greek yogurt nuts fruit snack food photography',
+    'COLACIÓN': 'fruit nuts yogurt healthy snack food photography',
+    'MERIENDA': 'toast avocado yogurt fruit afternoon snack food photography',
 }
 
 
@@ -1082,30 +1088,31 @@ def armar_comidas(macros, entreno, restricciones, fecha, peso_kg=70):
     # (nombre, hora, % del día, tipo, snack_idx, factor de grasa)
     # Los % SUMAN 100 (antes sumaban 108 en dos de los escenarios) y la grasa
     # se concentra en las comidas lejos del entreno.
-    if doble_turno:
-        plan = [('DESAYUNO', '06:00', 0.15, 'liviano', 0, 1.0),
-                ('PRE-ENTRENO', '07:00', 0.10, 'liviano', 0, 0.3),
-                ('VENTANA', '10:30', 0.25, 'ventana_doble_turno', 0, 0.1),
-                ('POST-ENTRENO', '17:30', 0.20, 'post_entreno', 0, 0.3),
-                ('CENA', '21:00', 0.30, 'normal', 2, 1.0)]
-    elif ya_entreno:
-        plan = [('DESAYUNO', '07:00', 0.22, 'normal', 0, 1.0),
-                ('POST-ENTRENO', '09:00', 0.13, 'post_entreno', 0, 0.3),
-                ('ALMUERZO', '13:30', 0.27, 'normal', 0, 1.0),
-                ('MERIENDA', '17:00', 0.13, 'merienda', 3, 1.0),
-                ('CENA', '21:00', 0.25, 'normal', 2, 1.0)]
-    elif not dia_descanso:
-        plan = [('DESAYUNO', '07:30', 0.22, 'normal', 0, 1.0),
-                ('ALMUERZO', '13:00', 0.25, 'normal', 0, 1.0),
-                ('PRE-ENTRENO', '16:30', 0.13, 'liviano', 0, 0.3),
-                ('POST-ENTRENO', '19:30', 0.15, 'post_entreno', 0, 0.3),
-                ('CENA', '21:30', 0.25, 'normal', 2, 1.0)]
-    else:
-        plan = [('DESAYUNO', '08:00', 0.22, 'liviano', 0, 1.0),
-                ('SNACK', '11:00', 0.10, 'liviano', 0, 1.0),
-                ('ALMUERZO', '13:30', 0.28, 'normal', 0, 1.0),
+    # SIEMPRE las 5 comidas humanas: Desayuno · Colación · Almuerzo · Merienda · Cena.
+    # El entrenamiento NO reemplaza comidas — solo cambia las CANTIDADES (más CHO
+    # el día que se entrena, concentrado cerca del esfuerzo). El fueling pre/
+    # durante/post (geles, bebida, hidratación) va como capa aparte (ver nivel2),
+    # no borra el almuerzo ni la merienda.
+    # La colación y la merienda se adaptan: en día de entreno suben su CHO/proteína
+    # (fruta + yogur/whey + barra) para acompañar o recuperar.
+    if dia_descanso:
+        plan = [('DESAYUNO', '08:00', 0.25, 'normal',   0, 1.0),
+                ('COLACIÓN', '11:00', 0.10, 'liviano',  0, 1.0),
+                ('ALMUERZO', '13:30', 0.28, 'normal',   0, 1.0),
                 ('MERIENDA', '17:30', 0.12, 'merienda', 3, 1.0),
-                ('CENA', '20:30', 0.28, 'normal', 2, 1.0)]
+                ('CENA',     '20:30', 0.25, 'normal',   2, 1.0)]
+    elif doble_turno:
+        plan = [('DESAYUNO', '07:00', 0.22, 'normal',   0, 1.0),
+                ('COLACIÓN', '11:00', 0.15, 'liviano',  0, 0.6),
+                ('ALMUERZO', '14:00', 0.26, 'normal',   0, 1.0),
+                ('MERIENDA', '17:30', 0.12, 'merienda', 3, 0.8),
+                ('CENA',     '21:00', 0.25, 'normal',   2, 1.0)]
+    else:
+        plan = [('DESAYUNO', '07:30', 0.23, 'normal',   0, 1.0),
+                ('COLACIÓN', '11:00', 0.12, 'liviano',  0, 0.8),
+                ('ALMUERZO', '13:30', 0.27, 'normal',   0, 1.0),
+                ('MERIENDA', '17:30', 0.13, 'merienda', 3, 1.0),
+                ('CENA',     '21:00', 0.25, 'normal',   2, 1.0)]
 
     suma_pct = sum(p[2] for p in plan)
     suma_grasa_w = sum(p[2] * p[5] for p in plan)
@@ -1161,12 +1168,19 @@ def armar_suplementos(entreno, bio_eval, deporte_ppal, peso_kg=None):
     if sesiones_intensas:
         s = max(sesiones_intensas, key=lambda d: d.get('tss', 0))
         timing = '60min antes (nadadores: más anticipación)' if s.get('deporte') == 'swimming' else '30-60min antes'
-        add('Cafeína', f'{dosis_cafe}mg (~3mg/kg)', timing + ' de la sesión clave',
-            f'sesión de {s.get("deporte")} exigente. Una sola toma al día; tope {CAFEINA_MAX_DIA_MG}mg/día (EFSA 2015).',
+        tazas = max(1, round(dosis_cafe / 80.0))   # ~80mg de cafeína por taza de café
+        add('Café / cafeína', f'{dosis_cafe}mg (~3mg/kg · {tazas} taza{"s" if tazas > 1 else ""} de café fuerte)',
+            timing + ' de la sesión clave',
+            f'sesión de {s.get("deporte")} exigente. El café es la fuente más simple. Una sola toma al día; tope {CAFEINA_MAX_DIA_MG}mg/día (EFSA 2015).',
             'STRONG EVIDENCE', 'situacional')
 
+    # Fueling intra-entreno para sesiones largas (geles/bebida deportiva)
+    if any(d.get('dur_min', 0) >= 90 for d in detalle):
+        add('Geles / bebida deportiva', '30-60g CHO/h', 'Durante la sesión',
+            'sesión larga (>90min): CHO de rápida absorción para sostener el glucógeno (Jeukendrup 2011)',
+            'STRONG EVIDENCE', 'situacional')
     if any(d.get('dur_min', 0) >= 120 for d in detalle):
-        add('Electrolitos', '500-1000mg Na/h', 'Durante la sesión', 'sesión larga (>2h)', 'STRONG EVIDENCE', 'situacional')
+        add('Electrolitos / sodio', '500-1000mg Na/h', 'Durante la sesión', 'sesión larga (>2h) — reposición de sodio', 'STRONG EVIDENCE', 'situacional')
     if bio_eval['hrv_bajo']:
         add('Omega-3 (EPA/DHA)', '2-3g/día', 'Con la cena', 'HRV por debajo de tu baseline reciente',
             'MODERATE EVIDENCE', 'situacional')
