@@ -1538,6 +1538,7 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
   const [bioIdx, setBioIdx] = useState(0) // carrusel de biomarcadores: 0=HANNA LIFE, 1=Carga, 2=Riesgo viral, 3=ACWR, 4=Monotonía
   const bioTouchRef = useRef(null)
   const [riesgoLesion, setRiesgoLesion] = useState(null)
+  const [verMetodo, setVerMetodo] = useState(false)
 
   useEffect(() => {
     if (!atletaId) return
@@ -1656,7 +1657,7 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
     ...p, hanna_life: p.hl, hanna_nivel: p.hl>=75?'Óptimo':p.hl>=55?'Bueno':p.hl>=40?'Moderado':p.hl>=25?'Bajo':'Crítico'
   }))]
 
-  const W=780, H=200, PT=24, PR=24, PB=28, PL=44
+  const W=780, H=232, PT=24, PR=24, PB=32, PL=44
   const iW=W-PL-PR, iH=H-PT-PB
   const n = allPts.length
 
@@ -1678,6 +1679,20 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
   }
 
   const umbral = baseline * 0.88
+
+  // ── Alineación ACWR por FECHA — arregla la curva incompleta/corrida en los
+  // atletas cuyo histórico de ACWR tiene distinta longitud que HANNA LIFE.
+  // Si el histórico trae fecha, se matchea por fecha con la curva de HL; si no,
+  // se alinea a la derecha (último ACWR = hoy). Así la curva llega siempre a HOY.
+  const _acwrHist = riesgoLesion?.historico_acwr || []
+  const _fechaToIdx = {}
+  pts.forEach((p,i)=>{ if(p.fecha) _fechaToIdx[p.fecha]=i })
+  const acwrIdx = (h,j)=>{
+    if (h && h.fecha && _fechaToIdx[h.fecha]!=null) return _fechaToIdx[h.fecha]
+    return pts.length - _acwrHist.length + j
+  }
+  const _acwrByIdx = {}
+  _acwrHist.forEach((h,j)=>{ _acwrByIdx[acwrIdx(h,j)] = h })
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:14}}>
@@ -1951,13 +1966,24 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
         <span style={{fontSize:9,color:txt3,marginLeft:6}}>{pts.length} días con datos</span>
       </div>
 
+      {/* ACWR — etiqueta destacada arriba (ya no perdido dentro del gráfico) */}
+      {riesgoLesion?.acwr?.disponible && (() => {
+        const a = riesgoLesion.acwr
+        const zc = {bajo:NOAH_C.success,optima:NOAH_C.success,moderado:NOAH_C.warning,atencion:NOAH_C.warning,alto:NOAH_C.danger}[a.nivel_riesgo] || NOAH_C.bike
+        return (
+          <div style={{display:'flex',alignItems:'center',gap:8,marginTop:2}}>
+            <span style={{width:14,height:0,borderTop:`2px dashed ${NOAH_C.bike}`,display:'inline-block'}}/>
+            <span style={{fontSize:12,fontWeight:800,color:NOAH_C.bike}}>ACWR {a.acwr?.toFixed(2)}</span>
+            <span style={{fontSize:9,fontWeight:700,color:zc,textTransform:'uppercase',letterSpacing:0.5,
+              padding:'2px 8px',borderRadius:20,background:`${zc}1e`}}>{(a.zona||a.nivel_riesgo||'').replace('_',' ')}</span>
+          </div>
+        )
+      })()}
+
       {/* Gráfico */}
-      <div style={{
-        background:'transparent',padding:'10px 0',
-        overflowX:'auto',
-      }}>
-        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}
-          style={{display:'block',maxWidth:'100%',cursor:'crosshair'}}
+      <div style={{background:'transparent',padding:'6px 0'}}>
+        <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`}
+          style={{display:'block',width:'100%',height:'auto',cursor:'crosshair'}}
           onMouseMove={handleMouse} onMouseLeave={()=>setHover(null)}>
 
           <defs>
@@ -2029,7 +2055,7 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
               ? <line key={i}
                   x1={xs(i).toFixed(1)} y1={ys(pts[i].hanna_life).toFixed(1)}
                   x2={xs(i+1).toFixed(1)} y2={ys(p.hanna_life).toFixed(1)}
-                  stroke={c} strokeWidth="2.5" strokeLinecap="round" opacity="0.9"/>
+                  stroke={c} strokeWidth="3" strokeLinecap="round" opacity="0.92"/>
               : null
           })}
 
@@ -2082,18 +2108,14 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
               Trazo punteado + más fino + suavizado, para que nunca compita
               visualmente con la línea sólida de HANNA LIFE. */}
           {(() => {
-            const hist = riesgoLesion?.historico_acwr || []
+            const hist = _acwrHist
             if (hist.length < 2) return null
-            // ACWR normal oscila ~0.5-1.8. Se mapea linealmente a minY-maxY
-            // (el mismo rango del eje de HANNA LIFE) solo para POSICIONAR la
-            // línea en el gráfico — el número real de ACWR se muestra en el
-            // tooltip al pasar el mouse, nunca se mezcla con el valor de HL.
             const acwrMin = 0.5, acwrMax = 1.8
             const normY = v => minY + ((v-acwrMin)/(acwrMax-acwrMin)) * (maxY-minY)
-
-            // Suavizado bezier simple — evita que la línea se vea "quebrada"
-            // entre cada punto diario, dándole un trazo curvo más liviano.
-            const validos = hist.map((h,i) => h.acwr!=null ? {i, v:h.acwr} : null).filter(Boolean)
+            // Alineado por FECHA (acwrIdx): la curva llega hasta HOY y no queda
+            // cortada aunque el histórico tenga otra longitud que HANNA LIFE.
+            const validos = hist.map((h,j) => h.acwr!=null ? {i:acwrIdx(h,j), v:h.acwr} : null)
+              .filter(Boolean).filter(p => p.i>=0 && p.i<n).sort((a,b)=>a.i-b.i)
             if (validos.length < 2) return null
             let d = `M${xs(validos[0].i).toFixed(1)},${normY(validos[0].v).toFixed(1)}`
             for (let k=1; k<validos.length; k++) {
@@ -2102,20 +2124,13 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
               const cp1x = x0+(x1-x0)*0.4, cp2x = x1-(x1-x0)*0.4
               d += ` C${cp1x.toFixed(1)},${y0.toFixed(1)} ${cp2x.toFixed(1)},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`
             }
-
-            const ultimo = [...hist].reverse().find(h => h.acwr != null)
+            const fin = validos[validos.length-1]
             return (
               <g>
-                <path d={d} fill="none" stroke={NOAH_C.bike} strokeWidth="1.4"
-                  strokeDasharray="5,4" strokeLinecap="round" opacity="0.75"/>
-                {ultimo && (
-                  <>
-                    <circle cx={xs(hist.length-1)} cy={normY(ultimo.acwr)} r={3}
-                      fill={NOAH_C.bike} stroke={isDark?'rgba(255,255,255,0.4)':'white'} strokeWidth="1.2"/>
-                    <text x={xs(hist.length-1)-6} y={normY(ultimo.acwr)-7} textAnchor="end"
-                      fontSize="9" fill={NOAH_C.bike} fontWeight="700">ACWR {ultimo.acwr}</text>
-                  </>
-                )}
+                <path d={d} fill="none" stroke={NOAH_C.bike} strokeWidth="1.6"
+                  strokeDasharray="5,4" strokeLinecap="round" opacity="0.7"/>
+                <circle cx={xs(fin.i)} cy={normY(fin.v)} r={3}
+                  fill={NOAH_C.bike} stroke={isDark?'rgba(255,255,255,0.4)':'white'} strokeWidth="1.2"/>
               </g>
             )
           })()}
@@ -2136,8 +2151,7 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
             const isProy = !!p.proy
             // Valor de ACWR del mismo día — se busca por índice en el histórico,
             // que está alineado 1:1 con allPts (mismo período/cantidad de días).
-            const acwrHist = riesgoLesion?.historico_acwr || []
-            const acwrPunto = acwrHist[hover]
+            const acwrPunto = _acwrByIdx[hover]
             const boxH = isProy ? 70 : (acwrPunto?.acwr!=null ? 108 : 95)
             return <>
               <line x1={xs(hover)} y1={PT} x2={xs(hover)} y2={PT+iH}
@@ -2172,34 +2186,41 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
 
           {/* Eje X */}
           {xLabels.map(({i,label,proy})=>(
-            <text key={i} x={xs(i)} y={H-PB+14} textAnchor="middle" fontSize="8"
+            <text key={i} x={xs(i)} y={H-PB+16} textAnchor="middle" fontSize="10"
               fill={proy?(isDark?'rgba(167,139,250,0.6)':'#818CF8'):txt3}
               fontStyle={proy?'italic':'normal'}>{label}</text>
           ))}
         </svg>
       </div>
 
-      {/* Leyenda */}
-      <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
+      {/* Leyenda simplificada */}
+      <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center'}}>
         {Object.entries(NIVEL_COLOR).map(([nivel,color])=>(
-          <div key={nivel} style={{display:'flex',alignItems:'center',gap:3}}>
-            <div style={{width:10,height:3,background:color,borderRadius:1,boxShadow:`0 0 4px ${color}80`}}/>
-            <span style={{fontSize:9,color:txt2}}>{nivel}</span>
+          <div key={nivel} style={{display:'flex',alignItems:'center',gap:4}}>
+            <div style={{width:11,height:3,background:color,borderRadius:1}}/>
+            <span style={{fontSize:10,color:txt2}}>{nivel}</span>
           </div>
         ))}
-        <span style={{fontSize:9,color:txt3,marginLeft:4,display:'inline-flex',alignItems:'center',gap:3}}>
-          ● HRV real · ○ estimado · <User size={9}/> baseline · - - proyección 7d
+        <span style={{fontSize:10,color:txt3,display:'inline-flex',alignItems:'center',gap:4}}>
+          <span style={{width:14,height:0,borderTop:`2px dashed ${NOAH_C.bike}`,display:'inline-block'}}/> ACWR
         </span>
-        <span style={{fontSize:9,color:NOAH_C.bike,marginLeft:4,display:'inline-flex',alignItems:'center',gap:4}}>
-          <span style={{width:12,height:2,background:NOAH_C.bike,borderRadius:1,display:'inline-block'}}/>
-          ACWR
-        </span>
+        <span style={{fontSize:10,color:txt3}}>— real · ◦ proyección</span>
       </div>
 
-      {/* Nota */}
-      <div style={{fontSize:9,color:txt3,fontStyle:'italic'}}>
-        HANNA LIFE = HRV×25% + FC×15% + Stress×10% + Sueño dur×15% + Sueño cal×15% + TSB×15% + Monotonía×5%
-        · Riesgo viral basado en RMSSD (Buchheit 2014, Tedesco 2023)
+      {/* Metodología colapsable (libera ruido visual) */}
+      <div>
+        <button onClick={()=>setVerMetodo(v=>!v)} style={{
+          display:'inline-flex',alignItems:'center',gap:5,cursor:'pointer',
+          background:'transparent',border:'none',padding:0,fontSize:10,color:txt3}}>
+          <span style={{fontSize:11}}>ⓘ</span> Cómo se calcula {verMetodo?'▲':'▼'}
+        </button>
+        {verMetodo && (
+          <div style={{fontSize:9.5,color:txt3,marginTop:6,lineHeight:1.5,fontStyle:'italic'}}>
+            HANNA LIFE = HRV×25% + FC×15% + Stress×10% + Sueño dur×15% + Sueño cal×15% + TSB×15% + Monotonía×5%
+            · Riesgo viral basado en RMSSD (Buchheit 2014, Tedesco 2023)
+            · ACWR (Gabbett 2016): carga aguda 7d / crónica 28d.
+          </div>
+        )}
       </div>
     </div>
   )
