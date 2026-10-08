@@ -12,7 +12,7 @@ import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, ReferenceLine, Cell
 } from 'recharts'
-import {
+import { Heart,
   Footprints, Bike as BikeIcon, Waves, Calendar, CalendarDays, BarChart3, TrendingUp, TrendingDown,
   Target, Flag, FlaskConical, CheckCircle2, XCircle, AlertTriangle, Zap, Ruler,
   HeartPulse, Flame, Activity, RotateCw, Satellite, ClipboardList, User, BatteryFull,
@@ -1565,8 +1565,8 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
   const hoy = data.hanna_hoy || (pts.length ? pts[pts.length-1] : {})
 
   const NIVEL_COLOR = {
-    'Óptimo':NOAH_C.success,'Bueno':NOAH_C.info,'Moderado':NOAH_C.warning,
-    'Bajo':'#F97316','Crítico':NOAH_C.danger
+    'Óptimo':'#00E676','Bueno':'#2E90FF','Moderado':'#FFD23F',
+    'Bajo':'#FF6D00','Crítico':'#FF1744'
   }
   const nColor  = NIVEL_COLOR[hoy.hanna_nivel] || NOAH_C.ink3
   const rColor  = (hoy.riesgo_viral||0)>=60 ? NOAH_C.danger : (hoy.riesgo_viral||0)>=30 ? NOAH_C.warning : NOAH_C.success
@@ -1724,16 +1724,47 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
 
         // Contenido interno de cada tarjeta (compacto para lateral, completo para centro)
         const BioContent = ({ k, color, compact }) => {
-          if (k === 'hanna') return (
-            <>
-              <div style={{fontSize:compact?8:9,fontWeight:700,color,textTransform:'uppercase',letterSpacing:1,marginBottom:compact?2:4}}>
-                HANNA LIFE
-              </div>
-              <div style={{fontSize:compact?22:40,fontWeight:900,color,lineHeight:1,letterSpacing:-1}}>
-                {hoy.hanna_life?.toFixed(0)||'--'}
-              </div>
-              {!compact && <div style={{fontSize:12,color:txt2,marginTop:4}}>{hoy.hanna_nivel||'--'}</div>}
-              {!compact && (
+          if (k === 'hanna') {
+            if (compact) return (
+              <>
+                <div style={{fontSize:8,fontWeight:700,color,textTransform:'uppercase',letterSpacing:1,marginBottom:2}}>HANNA LIFE</div>
+                <div style={{fontSize:22,fontWeight:900,color,lineHeight:1,letterSpacing:-1}}>{hoy.hanna_life?.toFixed(0)||'--'}</div>
+              </>
+            )
+            const hlv = hoy.hanna_life || 0
+            const _l28 = (hannaVals || []).slice(-28).filter(v => v != null)
+            const bmin = _l28.length ? Math.min(..._l28) : null
+            const bmax = _l28.length ? Math.max(..._l28) : null
+            const RR=52, SWW=9, CCc=2*Math.PI*RR, off=CCc*(1-Math.max(0,Math.min(100,hlv))/100)
+            return (
+              <>
+                <div style={{position:'relative',width:126,height:126,margin:'0 auto'}}>
+                  <svg width="126" height="126" viewBox="0 0 126 126">
+                    <defs>
+                      <linearGradient id={`hlr_${atletaId}`} x1="0" y1="1" x2="1" y2="0">
+                        <stop offset="0%" stopColor={color} stopOpacity="0.4"/>
+                        <stop offset="100%" stopColor={color} stopOpacity="1"/>
+                      </linearGradient>
+                    </defs>
+                    <circle cx="63" cy="63" r={RR} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth={SWW}/>
+                    {bmin != null && bmax != null && (
+                      <circle cx="63" cy="63" r={RR} fill="none" stroke={color} strokeOpacity="0.30" strokeWidth={SWW}
+                        strokeDasharray={`${(bmax-bmin)/100*CCc} ${CCc}`} strokeDashoffset={-(bmin/100)*CCc}
+                        transform="rotate(-90 63 63)"/>
+                    )}
+                    <circle cx="63" cy="63" r={RR} fill="none" stroke={`url(#hlr_${atletaId})`} strokeWidth={SWW} strokeLinecap="round"
+                      strokeDasharray={CCc} strokeDashoffset={off} transform="rotate(-90 63 63)"
+                      style={{filter:`drop-shadow(0 0 10px ${color})`,transition:'stroke-dashoffset .8s ease'}}/>
+                  </svg>
+                  <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
+                    <div style={{fontSize:8,fontWeight:800,color,textTransform:'uppercase',letterSpacing:1.4}}>HANNA LIFE</div>
+                    <div style={{fontSize:40,fontWeight:900,color:'#fff',lineHeight:1,letterSpacing:-1}}>{hlv.toFixed(0)}</div>
+                    <div style={{fontSize:11,color:txt2,marginTop:1}}>{hoy.hanna_nivel||'--'}</div>
+                  </div>
+                </div>
+                {bmin != null && bmax != null && (
+                  <div style={{fontSize:9.5,color:txt3,marginTop:6}}>Base 28d · <b style={{color:txt2}}>{Math.round(bmin)}</b>–<b style={{color:txt2}}>{Math.round(bmax)}</b></div>
+                )}
                 <div style={{display:'flex',gap:7,marginTop:12,flexWrap:'wrap',justifyContent:'center'}}>
                   {[
                     ['HRV', hoy.hrv_ms ? Math.round(hoy.hrv_ms)+'ms' : null, NOAH_C.run],
@@ -1750,9 +1781,9 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
                     </div>
                   ) : null)}
                 </div>
-              )}
-            </>
-          )
+              </>
+            )
+          }
           if (k === 'carga') return (
             <>
               <semaforo.icon size={compact?20:38} color={color} strokeWidth={1.8}/>
@@ -1862,17 +1893,15 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
               onTouchEnd={isCenter ? onTouchEnd : undefined}
               style={{
                 flexShrink: 0,
-                width: isCenter ? 168 : 86,
-                minHeight: isCenter ? 190 : 110,
+                width: isCenter ? 320 : 72,
+                minHeight: isCenter ? 300 : 120,
                 padding: isCenter ? '16px 14px' : '10px 8px',
                 borderRadius: 16,
-                border: `1px solid ${isCenter ? b.color+'45' : 'rgba(255,255,255,0.08)'}`,
+                border: '1px solid rgba(255,255,255,0.08)',
                 background: isCenter
-                  ? `linear-gradient(135deg, ${b.color}22, ${b.color}08)`
+                  ? 'linear-gradient(160deg, rgba(20,28,50,0.92), rgba(11,17,32,0.96))'
                   : 'transparent',
-                boxShadow: isCenter
-                  ? `0 14px 32px -10px rgba(0,0,0,0.55), 0 0 24px -6px ${b.color}38`
-                  : 'none',
+                boxShadow: isCenter ? '0 16px 38px -16px rgba(0,0,0,0.6)' : 'none',
                 opacity: isCenter ? 1 : 0.45,
                 filter: isCenter ? 'none' : 'blur(0.5px)',
                 transform: isCenter ? 'scale(1) translateY(0)' : 'scale(0.8) translateY(8px)',
@@ -1891,7 +1920,7 @@ function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
 
         return (
           <div>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, minHeight:220 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6, minHeight:336 }}>
               <button onClick={()=>goToBio(bioIdx-1)} aria-label="Biomarcador anterior" style={{
                 width:26, height:26, borderRadius:'50%', flexShrink:0,
                 background:'rgba(255,255,255,0.06)', border:`1px solid ${NOAH_C.border2}`,
@@ -4589,49 +4618,61 @@ export default function AtletaDashboard({ atletaId }) {
         )}
 
         {tab==='metricas' && (
-          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-            <div style={{background:NOAH_C.cardBg,borderRadius:12,padding:'14px 18px',border:`1px solid ${NOAH_C.border}`}}>
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+            {/* HANNA LIFE — hero, siempre visible */}
+            <div style={{background:NOAH_C.cardBg,borderRadius:16,padding:'14px 18px',border:`1px solid ${NOAH_C.border}`}}>
               <HannaLifeGrafico atletaId={id} modo="dark" />
-
             </div>
 
-            <ResumenCumplimiento atletaId={id} />
+            {/* Módulos "puerta" — información progresiva, cerrados por defecto */}
+            <ModuloMetrica title="Cumplimiento" subtitle="Tu constancia en el plan" meta="30 días" Icon={CheckCircle2} accent="#22D3EE">
+              <ResumenCumplimiento atletaId={id} />
+            </ModuloMetrica>
 
-            <CtlPorDeporteAtleta atletaId={id} />
+            <ModuloMetrica title="Carga de entrenamiento" subtitle="CTL / ATL / TSB" meta="Ver detalle" Icon={BarChart3} accent="#A855F7">
+              <CtlPorDeporteAtleta atletaId={id} />
+            </ModuloMetrica>
 
-            <div style={{ background:NOAH_C.cardBg, borderRadius:12, padding:20, border:`1px solid ${NOAH_C.border}`, boxShadow:'0 1px 3px rgba(0,0,0,0.04)' }}>
-              <div style={{ fontSize:11, fontWeight:600, color:NOAH_C.ink3, letterSpacing:0.8, textTransform:'uppercase', marginBottom:14 }}>Forma atlética — 42 días</div>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={ctlData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                  <XAxis dataKey="f" tick={{ fill:NOAH_C.ink4, fontSize:10 }} />
-                  <YAxis tick={{ fill:NOAH_C.ink4, fontSize:10 }} />
-                  <Tooltip contentStyle={{ background:'#0F1428', border:`1px solid ${NOAH_C.border2}`, borderRadius:8, fontSize:12, color:NOAH_C.ink }}
-                    labelStyle={{ color:NOAH_C.ink2 }} itemStyle={{ color:NOAH_C.ink }}/>
-                  <Line type="monotone" dataKey="CTL" stroke={NOAH_C.ctl} dot={false} strokeWidth={2.5} />
-                  <Line type="monotone" dataKey="ATL" stroke={NOAH_C.atl} dot={false} strokeWidth={2} />
-                  <Line type="monotone" dataKey="TSB" stroke={NOAH_C.tsbPos} dot={false} strokeWidth={1.5} strokeDasharray="4 3" />
-                  <ReferenceLine y={0} stroke={NOAH_C.border2} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-              {[{title:'Recuperación',rows:[{label:'CTL — Fitness',value:ctl,max:120,color:NOAH_C.ctl},{label:'Recovery Score',value:recovery,max:100,color:NOAH_C.done,unit:'/100'},{label:'Horas de sueño',value:sleep,max:9,color:NOAH_C.hrv,unit:'h'}]},{title:'Sistema nervioso',rows:[
-              {label:'HRV (ms)',value:hrv_ms?Math.round(hrv_ms):null,max:100,color:NOAH_C.hrv,unit:' ms'},
-              {label:'Body Battery',value:body_battery?Math.round(body_battery):null,max:100,color:body_battery>70?NOAH_C.done:body_battery>40?NOAH_C.amber:NOAH_C.miss,unit:'/100'},
-              {label:'Stress',value:stress_avg?Math.round(stress_avg):null,max:100,color:stress_avg<25?NOAH_C.done:stress_avg<50?NOAH_C.amber:NOAH_C.miss,unit:'/100'},
-              {label:'TSB — Frescura',value:Math.max(0,(tsb||0)+30),max:60,color:tsbColor}]}].map(({title,rows})=>(
-                <div key={title} style={{ background:NOAH_C.cardBg, borderRadius:12, padding:18, border:`1px solid ${NOAH_C.border}`, boxShadow:'0 1px 3px rgba(0,0,0,0.04)' }}>
-                  <div style={{ fontSize:11, fontWeight:600, color:NOAH_C.ink3, letterSpacing:0.8, textTransform:'uppercase', marginBottom:14 }}>{title}</div>
-                  {rows.map(r=><ProgressBar key={r.label} {...r} />)}
-                  {title==='Sistema nervioso'&&<div style={{ marginTop:8, padding:'10px 12px', background:NOAH_C.cardBg2, borderRadius:8, border:`1px solid ${NOAH_C.border}` }}><div style={{ fontSize:10, color:NOAH_C.ink4, fontWeight:600, textTransform:'uppercase', letterSpacing:1 }}>HANNA LIFE</div><div style={{ fontSize:16, fontWeight:700, color:NOAH_C.run, marginTop:3 }}>{estado?.estado?.hanna_life?.toFixed(0)||'--'} — {estado?.estado?.hanna_nivel||'sin datos'}</div></div>}
+            <ModuloMetrica title="Forma atlética" subtitle="Tendencia y proyección" meta="42 días" Icon={Zap} accent="#34D399">
+              <div style={{ paddingTop:6 }}>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={ctlData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <XAxis dataKey="f" tick={{ fill:NOAH_C.ink4, fontSize:10 }} />
+                    <YAxis tick={{ fill:NOAH_C.ink4, fontSize:10 }} />
+                    <Tooltip contentStyle={{ background:'#0F1428', border:`1px solid ${NOAH_C.border2}`, borderRadius:8, fontSize:12, color:NOAH_C.ink }}
+                      labelStyle={{ color:NOAH_C.ink2 }} itemStyle={{ color:NOAH_C.ink }}/>
+                    <Line type="monotone" dataKey="CTL" stroke={NOAH_C.ctl} dot={false} strokeWidth={2.5} />
+                    <Line type="monotone" dataKey="ATL" stroke={NOAH_C.atl} dot={false} strokeWidth={2} />
+                    <Line type="monotone" dataKey="TSB" stroke={NOAH_C.tsbPos} dot={false} strokeWidth={1.5} strokeDasharray="4 3" />
+                    <ReferenceLine y={0} stroke={NOAH_C.border2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </ModuloMetrica>
+
+            <ModuloMetrica title="Recuperación" subtitle="Sueño, HRV y estrés" meta="Ver detalle" Icon={Moon} accent="#F59E0B">
+              <div style={{ paddingTop:6 }}>
+                {[{label:'CTL — Fitness',value:ctl,max:120,color:NOAH_C.ctl},{label:'Recovery Score',value:recovery,max:100,color:NOAH_C.done,unit:'/100'},{label:'Horas de sueño',value:sleep,max:9,color:NOAH_C.hrv,unit:'h'}].map(r=><ProgressBar key={r.label} {...r} />)}
+              </div>
+            </ModuloMetrica>
+
+            <ModuloMetrica title="Sistema nervioso" subtitle="Equilibrio y respuesta" meta="Ver detalle" Icon={Brain} accent="#F472B6">
+              <div style={{ paddingTop:6 }}>
+                {[{label:'HRV (ms)',value:hrv_ms?Math.round(hrv_ms):null,max:100,color:NOAH_C.hrv,unit:' ms'},
+                  {label:'Body Battery',value:body_battery?Math.round(body_battery):null,max:100,color:body_battery>70?NOAH_C.done:body_battery>40?NOAH_C.amber:NOAH_C.miss,unit:'/100'},
+                  {label:'Stress',value:stress_avg?Math.round(stress_avg):null,max:100,color:stress_avg<25?NOAH_C.done:stress_avg<50?NOAH_C.amber:NOAH_C.miss,unit:'/100'},
+                  {label:'TSB — Frescura',value:Math.max(0,(tsb||0)+30),max:60,color:tsbColor}].map(r=><ProgressBar key={r.label} {...r} />)}
+                <div style={{ marginTop:8, padding:'10px 12px', background:NOAH_C.cardBg2, borderRadius:8, border:`1px solid ${NOAH_C.border}` }}>
+                  <div style={{ fontSize:10, color:NOAH_C.ink4, fontWeight:600, textTransform:'uppercase', letterSpacing:1 }}>HANNA LIFE</div>
+                  <div style={{ fontSize:16, fontWeight:700, color:NOAH_C.run, marginTop:3 }}>{estado?.estado?.hanna_life?.toFixed(0)||'--'} — {estado?.estado?.hanna_nivel||'sin datos'}</div>
                 </div>
-              ))}
-            </div>
+              </div>
+            </ModuloMetrica>
           </div>
         )}
 
-        {tab==='race' && (
+                {tab==='race' && (
         <SeccionRace atletaId={atletaId} modoAtleta={true} />
       )}
 
@@ -4706,6 +4747,59 @@ export default function AtletaDashboard({ atletaId }) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+
+function ModuloMetrica({ title, subtitle, meta, Icon, accent = NOAH_C.run, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const gid = 'wv_' + String(title).replace(/[^a-zA-Z]/g, '')
+  return (
+    <div style={{
+      position: 'relative', borderRadius: 18, overflow: 'hidden',
+      border: `1px solid ${accent}55`,
+      background: `linear-gradient(135deg, ${accent}16 0%, rgba(10,14,26,0.86) 46%, rgba(10,14,26,0.96) 100%)`,
+      boxShadow: open
+        ? `0 16px 40px -16px rgba(0,0,0,0.6), 0 0 34px -10px ${accent}55, inset 0 1px 0 rgba(255,255,255,0.05)`
+        : `0 10px 26px -14px rgba(0,0,0,0.5), 0 0 18px -11px ${accent}44, inset 0 1px 0 rgba(255,255,255,0.04)`,
+      transition: 'all .25s ease',
+    }}>
+      {/* ondas de fondo tenues (decorativo, tintadas al acento) */}
+      <svg viewBox="0 0 400 120" preserveAspectRatio="none"
+        style={{ position: 'absolute', right: 0, bottom: 0, width: '64%', height: '100%', opacity: 0.55, pointerEvents: 'none' }}>
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={accent} stopOpacity="0" />
+            <stop offset="100%" stopColor={accent} stopOpacity="0.6" />
+          </linearGradient>
+        </defs>
+        <path d="M0,78 C80,58 120,100 200,76 C280,54 330,96 400,70" fill="none" stroke={`url(#${gid})`} strokeWidth="1.5" />
+        <path d="M0,96 C70,80 130,112 210,92 C290,74 340,110 400,86" fill="none" stroke={`url(#${gid})`} strokeWidth="1" opacity="0.6" />
+      </svg>
+
+      <div onClick={() => setOpen(o => !o)} style={{
+        position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 14,
+        padding: '16px 18px', cursor: 'pointer', userSelect: 'none',
+      }}>
+        <div style={{
+          width: 46, height: 46, borderRadius: '50%', flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: `radial-gradient(circle at 30% 30%, ${accent}3d, ${accent}12)`,
+          border: `1px solid ${accent}66`,
+          boxShadow: `0 0 18px -4px ${accent}88, inset 0 0 10px -4px ${accent}66`,
+        }}>
+          <Icon size={20} color={accent} strokeWidth={2} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', letterSpacing: 0.4, textTransform: 'uppercase' }}>{title}</div>
+          {subtitle && <div style={{ fontSize: 11.5, color: NOAH_C.ink3, marginTop: 2 }}>{subtitle}</div>}
+        </div>
+        {meta && !open && <span style={{ fontSize: 11.5, color: NOAH_C.ink2, fontWeight: 600, marginRight: 4, whiteSpace: 'nowrap' }}>{meta}</span>}
+        <ChevronRight size={20} color={accent}
+          style={{ flexShrink: 0, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .25s ease' }} />
+      </div>
+      {open && <div style={{ position: 'relative', zIndex: 1, padding: '2px 16px 16px' }}>{children}</div>}
     </div>
   )
 }

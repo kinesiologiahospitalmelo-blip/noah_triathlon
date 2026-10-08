@@ -229,7 +229,7 @@ export default function NoahFuel({ atletaId }) {
 
       {sheet === 'energia' && (
         <Sheet titulo="Energía de hoy" onClose={() => setSheet(null)}>
-          <EnergiaDetalle macros={nivel1.macros} kcalDia={nivel1.kcal_dia} />
+          <EnergiaDetalle nivel1={nivel1} nivel2={nivel2} />
         </Sheet>
       )}
       {sheet === 'comidas' && (
@@ -265,11 +265,14 @@ function Chip({ children, color }) {
 function MiniAnillos({ macros }) {
   if (!macros) return null
   return (
-    <div style={{ display: 'flex', gap: 6 }}>
-      {[['C', macros.cho_g, C.cho], ['P', macros.prot_g, C.prot], ['G', macros.grasa_g, C.grasa]].map(([l, v, col]) => (
-        <div key={l} style={{ width: 30, height: 30, borderRadius: '50%', border: `2.5px solid ${col}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: col }}>
-          {v}
+    <div style={{ display: 'flex', gap: 14 }}>
+      {[['Carbos', macros.cho_g, C.cho], ['Proteína', macros.prot_g, C.prot], ['Grasa', macros.grasa_g, C.grasa]].map(([l, v, col]) => (
+        <div key={l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+          <div style={{ width: 34, height: 34, borderRadius: '50%', border: `2.5px solid ${col}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: col }}>
+            {v}
+          </div>
+          <div style={{ fontSize: 8, color: C.ink3, fontWeight: 600 }}>{l}</div>
         </div>
       ))}
     </div>
@@ -278,9 +281,11 @@ function MiniAnillos({ macros }) {
 
 // ══════════════════════════ DETALLE: ENERGÍA ════════════════════════════════
 
+const FMT = n => (n == null || isNaN(n) ? '—' : Math.round(n).toLocaleString('es-AR'))
+
 function AnilloGrande({ label, gramos, gkg, color }) {
   return (
-    <div style={{ textAlign: 'center', flex: 1 }}>
+    <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
       <div style={{ width: 64, height: 64, borderRadius: '50%', margin: '0 auto 8px', display: 'flex',
         alignItems: 'center', justifyContent: 'center', border: `3px solid ${color}`, background: `${color}14` }}>
         <span style={{ fontSize: 15, fontWeight: 800, color }}>{gramos}g</span>
@@ -291,19 +296,164 @@ function AnilloGrande({ label, gramos, gkg, color }) {
   )
 }
 
-function EnergiaDetalle({ macros, kcalDia }) {
-  if (!macros) return <div style={{ fontSize: 12, color: C.ink3 }}>Falta información del atleta para calcular esto.</div>
+// Barra horizontal apilada: de dónde sale el gasto (Basal/Actividad/Entreno/Digestión)
+function BarraGasto({ g }) {
+  const segs = [
+    { k: 'Basal', v: g?.tmb || 0, col: C.info },
+    { k: 'Actividad', v: g?.neat || 0, col: C.grasa },
+    { k: 'Entreno', v: g?.entreno || 0, col: C.success },
+    { k: 'Digestión', v: g?.tef || 0, col: C.accent },
+  ]
+  const total = segs.reduce((a, s) => a + s.v, 0) || 1
   return (
     <div>
-      <div style={{ textAlign: 'center', marginBottom: 20 }}>
-        <span style={{ fontSize: 40, fontWeight: 800 }}>{kcalDia}</span>
-        <span style={{ fontSize: 14, color: C.ink3, marginLeft: 6 }}>kcal</span>
+      <div style={{ display: 'flex', height: 16, borderRadius: 8, overflow: 'hidden', background: 'rgba(255,255,255,0.05)' }}>
+        {segs.filter(s => s.v > 0).map(s => (
+          <div key={s.k} title={`${s.k} ${FMT(s.v)}`} style={{ width: `${s.v / total * 100}%`, background: s.col }} />
+        ))}
       </div>
-      <div style={{ display: 'flex', gap: 10 }}>
-        <AnilloGrande label="CHO" gramos={macros.cho_g} gkg={macros.cho_gkg} color={C.cho} />
-        <AnilloGrande label="Prot" gramos={macros.prot_g} gkg={macros.prot_gkg} color={C.prot} />
-        <AnilloGrande label="Grasa" gramos={macros.grasa_g} gkg={macros.grasa_gkg} color={C.grasa} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', marginTop: 12 }}>
+        {segs.map(s => (
+          <div key={s.k} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, color: C.ink3 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: s.col, flexShrink: 0 }} />
+            <span>{s.k}</span>
+            <b style={{ color: C.ink2, fontWeight: 700 }}>{FMT(s.v)}</b>
+          </div>
+        ))}
       </div>
+    </div>
+  )
+}
+
+const INTERP_OBJ = {
+  mantener: ['Balance energético', 'mantenimiento'],
+  bajar: ['Déficit moderado', 'pérdida de grasa'],
+  subir: ['Superávit controlado', 'ganancia muscular'],
+}
+const ICON_DEP = { running: '🏃', cycling: '🚴', swimming: '🏊' }
+
+function EntrenoFila({ ent, kcal, dobleTurno }) {
+  const sesiones = Array.isArray(ent) ? ent : ent ? [ent] : []
+  if (!sesiones.length) return <Fila label="Entrenamiento del día" val={`≈ ${FMT(kcal)} kcal`} />
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {dobleTurno && sesiones.length > 1 && (
+        <div style={{ fontSize: 11, color: C.ink3 }}>{sesiones.length} sesiones · <b style={{ color: C.ink2 }}>{FMT(kcal)} kcal</b></div>
+      )}
+      {sesiones.map((s, i) => {
+        const dep = s.deporte || s.sport || 'running'
+        const dur = s.dur_min || s.duracion || s.duration_min
+        const tss = s.tss || s.tss_total
+        return (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12,
+            background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.16)' }}>
+            <span style={{ fontSize: 18 }}>{ICON_DEP[dep] || '🏋️'}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'capitalize' }}>{dep}{dur ? ` · ${Math.round(dur)} min` : ''}</div>
+              {tss ? <div style={{ fontSize: 10, color: C.ink3 }}>TSS {Math.round(tss)}</div> : null}
+            </div>
+            {!dobleTurno && <div style={{ fontSize: 13, fontWeight: 800, color: C.success }}>≈ {FMT(kcal)} kcal</div>}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function EnergiaDetalle({ nivel1, nivel2 }) {
+  const g = nivel2?.gasto_desglose
+  const macros = nivel1?.macros
+  if (!g || !macros) return <div style={{ fontSize: 12, color: C.ink3 }}>Falta información del atleta para calcular esto.</div>
+
+  const gasto = g.total_gasto_estimado ?? ((g.tmb || 0) + (g.neat || 0) + (g.entreno || 0) + (g.tef || 0))
+  const objetivo = g.objetivo_kcal ?? nivel1.kcal_dia
+  const balance = Math.round((objetivo || 0) - (gasto || 0))
+  const [titulo, sub] = INTERP_OBJ[g.objetivo_tipo] || INTERP_OBJ.mantener
+  const ajustes = nivel2?.ajustes_bio || []
+  const carrera = nivel2?.carrera_proxima
+
+  const T = ({ children }) => <div style={{ fontSize: 11.5, fontWeight: 700, color: C.ink2, marginBottom: 11 }}>{children}</div>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      {/* HEADER */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: 42, fontWeight: 800, letterSpacing: -1, lineHeight: 1 }}>{FMT(gasto)}</div>
+        <div style={{ fontSize: 9.5, color: C.ink3, letterSpacing: 0.7, textTransform: 'uppercase', marginTop: 5 }}>Gasto total estimado · kcal</div>
+      </div>
+
+      {/* 1 — de dónde sale */}
+      <div>
+        <T>¿De dónde sale tu gasto?</T>
+        <BarraGasto g={g} />
+      </div>
+
+      {/* 2 — cuánto comer */}
+      <div>
+        <T>¿Cuánto deberías comer?</T>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          {[['Gasto', FMT(gasto), C.ink], ['→', '', null], ['Objetivo', FMT(objetivo), C.accent],
+            ['Balance', `${balance > 0 ? '+' : ''}${FMT(balance)}`, balance < 0 ? C.warning : balance > 0 ? C.info : C.success]]
+            .map(([lab, val, col], i) => col === null
+              ? <div key={i} style={{ color: C.ink4, fontSize: 16 }}>→</div>
+              : (
+                <div key={i} style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 9, color: C.ink4, textTransform: 'uppercase', letterSpacing: 0.5 }}>{lab}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: col }}>{val}</div>
+                </div>
+              ))}
+        </div>
+        <div style={{ textAlign: 'center', fontSize: 11, color: C.ink3, marginTop: 11 }}>
+          <b style={{ color: C.ink2 }}>{titulo}</b> · {sub}
+        </div>
+      </div>
+
+      {/* 3 — macros */}
+      <div>
+        <T>Macros del día</T>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <AnilloGrande label="Carbos" gramos={macros.cho_g} gkg={macros.cho_gkg} color={C.cho} />
+          <AnilloGrande label="Proteína" gramos={macros.prot_g} gkg={macros.prot_gkg} color={C.prot} />
+          <AnilloGrande label="Grasa" gramos={macros.grasa_g} gkg={macros.grasa_gkg} color={C.grasa} />
+        </div>
+      </div>
+
+      {/* 4 — entrenamiento */}
+      {g.entreno > 0 && (
+        <div>
+          <T>Entrenamiento</T>
+          <EntrenoFila ent={nivel1.entreno_hoy} kcal={g.entreno} dobleTurno={nivel1.doble_turno} />
+        </div>
+      )}
+
+      {/* 5 — ajuste NOAH */}
+      {ajustes.length > 0 && (
+        <div>
+          <T>Ajuste NOAH</T>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+            {ajustes.map((a, i) => (
+              <span key={i} style={{ fontSize: 10.5, fontWeight: 600, padding: '4px 10px', borderRadius: 16,
+                background: 'rgba(139,92,246,0.14)', color: C.ink2 }}>
+                {a.factor}{a.interpretacion ? `: ${a.interpretacion}` : ''}
+              </span>
+            ))}
+          </div>
+          {ajustes.filter(a => a.accion).map((a, i) => (
+            <div key={i} style={{ fontSize: 11, color: C.ink3, marginTop: 2 }}>→ {a.accion}</div>
+          ))}
+        </div>
+      )}
+
+      {/* Competencia próxima */}
+      {carrera && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 12px', borderRadius: 12,
+          background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.18)' }}>
+          <span style={{ fontSize: 15 }}>🏁</span>
+          <div style={{ fontSize: 11, color: C.ink2 }}>
+            <b>{carrera.nombre}</b> en {carrera.dias_restantes} día(s) · ↑ disponibilidad de carbohidratos
+          </div>
+        </div>
+      )}
     </div>
   )
 }
