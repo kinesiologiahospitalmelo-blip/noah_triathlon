@@ -3572,9 +3572,43 @@ def get_dbal_running(atleta_id, sesion_id):
         # Streams
         rows = conn.execute(
             "SELECT ts_s, speed_ms, hr, distance_m FROM activity_samples "
-            "WHERE sesion_id=%s AND atleta_id=%s ORDER BY ts_s",
-            (sesion_id, atleta_id)
+            "WHERE sesion_id=%s ORDER BY ts_s",
+            (sesion_id,)
         ).fetchall()
+
+        # Si no hay stream por-muestra real (algunas sesiones llegan con pocos
+        # puntos de pocos segundos), reconstruir la señal desde los LAPS para
+        # poder integrar el gasto real sobre toda la sesión (igual que swimming).
+        _tsv = [float(r[0] or 0) for r in rows] if rows else []
+        _span = (max(_tsv) - min(_tsv)) if _tsv else 0
+        if (not rows) or len(rows) < 20 or _span < 300:
+            laps_e = conn.execute(
+                "SELECT duration_min, distance_km, pace, hr_avg FROM laps "
+                "WHERE sesion_id=%s ORDER BY lap_num", (sesion_id,)
+            ).fetchall()
+            synth = []
+            _t = 0.0
+            for lp in laps_e:
+                dmin = float(lp[0] or 0)
+                if dmin <= 0:
+                    continue
+                dur_s = dmin * 60.0
+                pc = float(lp[2]) if lp[2] else None
+                dk = float(lp[1]) if lp[1] else None
+                if pc and pc > 0:
+                    spd = 1000.0 / (pc * 60.0)
+                elif dk and dur_s > 0:
+                    spd = (dk * 1000.0) / dur_s
+                else:
+                    spd = 0.0
+                hrv = float(lp[3]) if lp[3] else None
+                nseg = max(1, int(dur_s / 5))
+                seg = dur_s / nseg
+                for _k in range(nseg):
+                    synth.append((_t, spd, hrv, None))
+                    _t += seg
+            if synth:
+                rows = synth
         if not rows:
             return ok({'disponible': False, 'msg': 'Sin streams'})
 
@@ -3646,7 +3680,7 @@ def get_dbal_running(atleta_id, sesion_id):
             samples.append({
                 'ts_s': round(ts_s, 1),
                 'dbal_pct': round(dbal_pct, 1),
-                'energia_pct': round((dbal / d_prime) * 100, 1),
+                'energia_pct': round(0.25 * dbal_pct + 0.75 * glyc_pct, 1),
                 'glyc_pct': round(glyc_pct, 1),
                 'pace': pace,
                 'hr': int(hr) if hr else None,
@@ -3830,7 +3864,7 @@ def get_dbal_swimming(atleta_id, sesion_id):
             tiempo_acum += dur_s
             dbal_pct = (dbal / dbal_inicio) * 100 if dbal_inicio > 0 else 100
             glyc_pct = (glyc / glyc_inicio) * 100 if glyc_inicio > 0 else 100
-            energia_pct = (dbal / d_prime) * 100 if d_prime > 0 else 100
+            energia_pct = 0.25 * dbal_pct + 0.75 * glyc_pct
             min_dbal_pct = min(min_dbal_pct, dbal_pct)
             min_glyc_pct = min(min_glyc_pct, glyc_pct)
 
@@ -4368,28 +4402,80 @@ def get_actividad_detalle(atleta_id):
         except Exception as _e_laps:
             print(f'[AVISO] Error completando laps: {_e_laps}')
 
-    # Distribución de zonas (si hay laps con HR)
+    # Distribución de zonas — por UMBRAL (pace/potencia/CSS). La FC es SOLO
+    # fallback. Nuestro sistema son zonas de umbral: run→pace vs pace_umbral_run,
+    # bike→potencia vs FTP, swim→pace vs CSS. (Friel / Coggan / Seiler)
     zonas_dist = None
-    atleta_row = conn.execute('SELECT lthr_run, lthr_bike FROM atletas WHERE id=%s', (atleta_id,)).fetchone()
-    if atleta_row and laps:
-        lthr = atleta_row[0] if sport == 'running' else atleta_row[1]
-        if lthr:
-            zonas = {'Z1':0,'Z2':0,'Z3':0,'Z4':0,'Z5':0,'Z6':0}
-            total_min = sum(l['duration_min'] or 0 for l in laps)
-            for lap in laps:
-                hr = lap.get('hr_avg') or 0
-                dur = lap.get('duration_min') or 0
-                if hr and dur:
-                    ratio = hr / lthr
-                    if ratio < 0.82:   zonas['Z1'] += dur
-                    elif ratio < 0.88: zonas['Z2'] += dur
-                    elif ratio < 0.94: zonas['Z3'] += dur
-                    elif ratio < 1.00: zonas['Z4'] += dur
-                    elif ratio < 1.06: zonas['Z5'] += dur
-                    else:               zonas['Z6'] += dur
-            if total_min > 0:
-                zonas_dist = {z: {'min': round(t,1), 'pct': round(t/total_min*100,1)}
-                              for z, t in zonas.items()}
+    thr_row = conn.execute(
+        'SELECT lthr_run, lthr_bike, pace_umbral_run, css_100m, ftp_watts, '
+        'hr_max, lthr_swim FROM atletas WHERE id=%s', (atleta_id,)
+    ).fetchone()
+    if thr_row and laps:
+        def _zf(v):
+            try: return float(v)
+            except Exception: return None
+        lthr_run_v, lthr_bike_v, pace_umbral_v, css_v, ftp_v, hrmax_v, lthr_swim_v = \
+            (_zf(thr_row[0]), _zf(thr_row[1]), _zf(thr_row[2]), _zf(thr_row[3]),
+             _zf(thr_row[4]), _zf(thr_row[5]), _zf(thr_row[6]))
+
+        # Bins como fracción del umbral (6 zonas, mismo modelo que la prescripción)
+        BINS_SPEED = [(0.84, 'Z1'), (0.92, 'Z2'), (0.98, 'Z3'), (1.02, 'Z4'), (1.07, 'Z5')]  # run/swim: vel/umbral
+        BINS_POWER = [(0.55, 'Z1'), (0.75, 'Z2'), (0.90, 'Z3'), (1.05, 'Z4'), (1.20, 'Z5')]  # bike: pot/FTP
+        BINS_HR    = [(0.82, 'Z1'), (0.88, 'Z2'), (0.94, 'Z3'), (1.00, 'Z4'), (1.06, 'Z5')]  # fallback FC/LTHR
+
+        def _zona(ratio, bins):
+            for lim, z in bins:
+                if ratio < lim:
+                    return z
+            return 'Z6'
+
+        # FC de umbral efectiva por deporte, con guarda si quedó mal cargada
+        if sport == 'cycling':
+            lthr_hr = lthr_bike_v
+        elif sport == 'swimming':
+            lthr_hr = lthr_swim_v or (lthr_run_v * 0.92 if lthr_run_v else None)
+        else:
+            lthr_hr = lthr_run_v
+        if lthr_hr and hrmax_v and lthr_hr < 0.80 * hrmax_v:
+            lthr_hr = round(0.88 * hrmax_v)  # LTHR mal cargado → estimar desde HRmax
+
+        zonas = {'Z1': 0.0, 'Z2': 0.0, 'Z3': 0.0, 'Z4': 0.0, 'Z5': 0.0, 'Z6': 0.0}
+        total_min = 0.0
+        usado_umbral = False
+        for lap in laps:
+            dur = _zf(lap.get('duration_min')) or 0.0
+            if dur <= 0:
+                continue
+            z = None
+            if sport == 'cycling':
+                pw = (_zf(lap.get('np')) or _zf(lap.get('norm_power')) or
+                      _zf(lap.get('watts')) or _zf(lap.get('avg_power')))
+                if pw and ftp_v and ftp_v > 0:
+                    z = _zona(pw / ftp_v, BINS_POWER); usado_umbral = True
+            elif sport == 'swimming':
+                pc = _zf(lap.get('pace'))  # min/100m
+                if pc and pc > 0 and css_v and css_v > 0:
+                    z = _zona(css_v / pc, BINS_SPEED); usado_umbral = True
+            else:  # running
+                pc = _zf(lap.get('pace'))  # min/km
+                if not pc or pc <= 0:
+                    vk = _zf(lap.get('vel_kmh')) or _zf(lap.get('avg_speed'))
+                    pc = (60.0 / vk) if (vk and vk > 0) else None
+                if pc and pc > 0 and pace_umbral_v and pace_umbral_v > 0:
+                    z = _zona(pace_umbral_v / pc, BINS_SPEED); usado_umbral = True
+            if z is None:  # fallback: FC vs LTHR
+                hr = _zf(lap.get('hr_avg'))
+                if hr and lthr_hr and lthr_hr > 0:
+                    z = _zona(hr / lthr_hr, BINS_HR)
+            if z is None:
+                continue
+            zonas[z] += dur
+            total_min += dur
+
+        if total_min > 0:
+            zonas_dist = {z: {'min': round(t, 1), 'pct': round(t / total_min * 100, 1)}
+                          for z, t in zonas.items()}
+            zonas_dist['_base'] = 'umbral' if usado_umbral else 'fc'
 
     conn.close()
     return ok(_limpiar_nan({
@@ -4631,7 +4717,9 @@ def get_riesgo_lesion(atleta_id):
             WHERE atleta_id=%s AND fecha > %s AND fecha <= %s
             GROUP BY fecha
         """, (atleta_id, fecha_inicio_query, fecha_fin_query)).fetchall()
-        tss_por_fecha = {r[0]: (r[1] or 0) for r in rows}
+        def _to_d(f):
+            return f if isinstance(f, date) else date.fromisoformat(str(f)[:10])
+        tss_por_fecha = {_to_d(r[0]): (r[1] or 0) for r in rows}
 
         historico = []
         for offset in range(dias, -1, -1):
@@ -4641,16 +4729,16 @@ def get_riesgo_lesion(atleta_id):
             fecha_28d_inicio = d - timedelta(days=28)
 
             suma_aguda  = sum(v for f, v in tss_por_fecha.items()
-                               if fecha_7d_inicio < date.fromisoformat(f) <= d)
+                               if fecha_7d_inicio < f <= d)
             suma_cronica = sum(v for f, v in tss_por_fecha.items()
-                                if fecha_28d_inicio < date.fromisoformat(f) <= d)
+                                if fecha_28d_inicio < f <= d)
             dias_con_datos = sum(1 for f in tss_por_fecha
-                                  if fecha_28d_inicio < date.fromisoformat(f) <= d)
+                                  if fecha_28d_inicio < f <= d)
 
             carga_aguda_diaria  = suma_aguda / 7
             carga_cronica_diaria = suma_cronica / 28
 
-            if dias_con_datos < 10 or carga_cronica_diaria == 0:
+            if dias_con_datos < 7 or carga_cronica_diaria == 0:
                 historico.append({'fecha': d_str, 'acwr': None, 'disponible': False})
                 continue
 
@@ -4833,23 +4921,52 @@ def get_actividades_dia(atleta_id):
                 except Exception as _e:
                     pass
 
-        # Zonas HR
-        atleta_row = conn.execute('SELECT lthr_run, lthr_bike FROM atletas WHERE id=%s', (atleta_id,)).fetchone()
+        # Distribución de zonas — por UMBRAL (pace/potencia/CSS); FC solo fallback
         zonas_dist = None
-        if atleta_row and laps:
-            lthr = atleta_row[0] if act['sport'] == 'running' else atleta_row[1]
-            if lthr:
-                zonas = {'Z1':0,'Z2':0,'Z3':0,'Z4':0,'Z5':0,'Z6':0}
-                total_min = sum(l['duration_min'] or 0 for l in laps)
-                for lap in laps:
-                    hr = lap.get('hr_avg') or 0
-                    dur = lap.get('duration_min') or 0
-                    if hr and dur:
-                        r = hr / lthr
-                        z = 'Z1' if r<0.82 else 'Z2' if r<0.88 else 'Z3' if r<0.94 else 'Z4' if r<1.00 else 'Z5' if r<1.06 else 'Z6'
-                        zonas[z] += dur
-                if total_min > 0:
-                    zonas_dist = {z:{'min':round(t,1),'pct':round(t/total_min*100,1)} for z,t in zonas.items()}
+        thr_row = conn.execute(
+            'SELECT lthr_run, lthr_bike, pace_umbral_run, css_100m, ftp_watts, '
+            'hr_max, lthr_swim FROM atletas WHERE id=%s', (atleta_id,)).fetchone()
+        if thr_row and laps:
+            _spz = act.get('sport')
+            def _zf(v):
+                try: return float(v)
+                except Exception: return None
+            lr, lb, pur, cssv, ftpv, hrmx, lsw = (_zf(thr_row[0]), _zf(thr_row[1]),
+                _zf(thr_row[2]), _zf(thr_row[3]), _zf(thr_row[4]), _zf(thr_row[5]), _zf(thr_row[6]))
+            BS=[(0.84,'Z1'),(0.92,'Z2'),(0.98,'Z3'),(1.02,'Z4'),(1.07,'Z5')]
+            BP=[(0.55,'Z1'),(0.75,'Z2'),(0.90,'Z3'),(1.05,'Z4'),(1.20,'Z5')]
+            BH=[(0.82,'Z1'),(0.88,'Z2'),(0.94,'Z3'),(1.00,'Z4'),(1.06,'Z5')]
+            def _zb(x,b):
+                for lim,z in b:
+                    if x<lim: return z
+                return 'Z6'
+            lthr_hr = lb if _spz=='cycling' else ((lsw or (lr*0.92 if lr else None)) if _spz=='swimming' else lr)
+            if lthr_hr and hrmx and lthr_hr < 0.80*hrmx: lthr_hr = round(0.88*hrmx)
+            zonas = {'Z1':0.0,'Z2':0.0,'Z3':0.0,'Z4':0.0,'Z5':0.0,'Z6':0.0}
+            total_min = 0.0
+            for lap in laps:
+                dur = _zf(lap.get('duration_min')) or 0.0
+                if dur<=0: continue
+                z=None
+                if _spz=='cycling':
+                    pw=_zf(lap.get('np')) or _zf(lap.get('norm_power')) or _zf(lap.get('watts')) or _zf(lap.get('avg_power'))
+                    if pw and ftpv and ftpv>0: z=_zb(pw/ftpv,BP)
+                elif _spz=='swimming':
+                    pc=_zf(lap.get('pace'))
+                    if pc and pc>0 and cssv and cssv>0: z=_zb(cssv/pc,BS)
+                else:
+                    pc=_zf(lap.get('pace'))
+                    if not pc or pc<=0:
+                        vk=_zf(lap.get('vel_kmh')) or _zf(lap.get('avg_speed'))
+                        pc=(60.0/vk) if vk and vk>0 else None
+                    if pc and pc>0 and pur and pur>0: z=_zb(pur/pc,BS)
+                if z is None:
+                    hr=_zf(lap.get('hr_avg'))
+                    if hr and lthr_hr and lthr_hr>0: z=_zb(hr/lthr_hr,BH)
+                if z is None: continue
+                zonas[z]+=dur; total_min+=dur
+            if total_min>0:
+                zonas_dist = {z:{'min':round(t,1),'pct':round(t/total_min*100,1)} for z,t in zonas.items()}
         act['laps']  = laps
         act['zonas'] = zonas_dist
         actividades.append(act)
@@ -5075,20 +5192,39 @@ def get_activity_streams(atleta_id):
                         'power_np': None,
                     }
 
+                    # Zonas por UMBRAL (pace/potencia/CSS); FC solo fallback
                     zonas = {}
-                    if hrs and lthr_local:
-                        limites = [0.82, 0.88, 0.94, 1.00, 1.06]
-                        nombres = ['Z1','Z2','Z3','Z4','Z5','Z6']
-                        cuentas = {n: 0 for n in nombres}
-                        for h in hrs:
-                            r = h / lthr_local
-                            idx = 0
-                            for i, lim in enumerate(limites):
-                                if r < lim: break
-                                idx = i + 1
-                            cuentas[nombres[idx]] += 1
-                        total = len(hrs)
-                        zonas = {n: {'pct': round(c/total*100, 1)} for n, c in cuentas.items()}
+                    _thr = conn.execute('SELECT pace_umbral_run, css_100m, ftp_watts, hr_max FROM atletas WHERE id=%s', (atleta_id,)).fetchone()
+                    def _zf2(v):
+                        try: return float(v)
+                        except Exception: return None
+                    _pur=_zf2(_thr[0]) if _thr else None; _css=_zf2(_thr[1]) if _thr else None
+                    _ftp=_zf2(_thr[2]) if _thr else None; _hrmx=_zf2(_thr[3]) if _thr else None
+                    _lthr_eff=_zf2(lthr_local)
+                    if _lthr_eff and _hrmx and _lthr_eff < 0.80*_hrmx: _lthr_eff=round(0.88*_hrmx)
+                    _usp_run=(1000.0/(_pur*60)) if _pur and _pur>0 else None
+                    _usp_swim=(100.0/(_css*60)) if _css and _css>0 else None
+                    BS=[(0.84,'Z1'),(0.92,'Z2'),(0.98,'Z3'),(1.02,'Z4'),(1.07,'Z5')]
+                    BP=[(0.55,'Z1'),(0.75,'Z2'),(0.90,'Z3'),(1.05,'Z4'),(1.20,'Z5')]
+                    BH=[(0.82,'Z1'),(0.88,'Z2'),(0.94,'Z3'),(1.00,'Z4'),(1.06,'Z5')]
+                    def _zb2(x,bb):
+                        for lim,z in bb:
+                            if x<lim: return z
+                        return 'Z6'
+                    cuentas={n:0 for n in ['Z1','Z2','Z3','Z4','Z5','Z6']}; _tot=0
+                    for _m in muestras:
+                        _hr=_m[1]; _spd=_zf2(_m[2]); _pw=_zf2(_m[4]); _z=None
+                        if sport_local=='cycling':
+                            if _pw and _ftp and _ftp>0: _z=_zb2(_pw/_ftp,BP)
+                        elif is_swim:
+                            if _spd and _spd>0.3 and _usp_swim: _z=_zb2(_spd/_usp_swim,BS)
+                        else:
+                            if _spd and _spd>0.3 and _usp_run: _z=_zb2(_spd/_usp_run,BS)
+                        if _z is None and _hr and _lthr_eff and _lthr_eff>0: _z=_zb2(float(_hr)/_lthr_eff,BH)
+                        if _z is None: continue
+                        cuentas[_z]+=1; _tot+=1
+                    if _tot>0:
+                        zonas = {n:{'pct':round(c/_tot*100,1)} for n,c in cuentas.items()}
 
                     conn.close()
                     return ok(_limpiar_nan({
