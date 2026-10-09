@@ -5200,12 +5200,14 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
             </div>
             <div style={{flex:3,display:'flex',flexDirection:'column',gap:14,paddingTop:8}}>
               <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>ANAEROBICA (D-bal)</div>
-                <div style={{fontSize:24,fontWeight:800,color:'#4ADE80',lineHeight:1}}>{samples.length?`${Math.round(samples[samples.length-1].dbal_pct)}%`:'--'}</div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>GLUCÓGENO</div>
+                <div style={{fontSize:24,fontWeight:800,color:(samples.length&&samples[samples.length-1].glyc_pct!=null?(samples[samples.length-1].glyc_pct>60?'#4ADE80':samples[samples.length-1].glyc_pct>35?'#EAB308':'#EF4444'):'#4ADE80'),lineHeight:1}}>{samples.length&&samples[samples.length-1].glyc_pct!=null?`${Math.round(samples[samples.length-1].glyc_pct)}%`:'--'}</div>
+                <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:2}}>restante</div>
               </div>
               <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>MIN. ANAEROBICA</div>
-                <div style={{fontSize:24,fontWeight:800,color:(metricas.dbal_min_pct||0)>25?'#EAB308':'#EF4444',lineHeight:1}}>{metricas.dbal_min_pct!=null?`${metricas.dbal_min_pct}%`:'--'}</div>
+                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>GASTADO</div>
+                <div style={{fontSize:24,fontWeight:800,color:'#F472B6',lineHeight:1}}>{metricas.glyc_consumido_g!=null?`${Math.round(metricas.glyc_consumido_g)} g`:'--'}</div>
+                {metricas.glyc_consumido_g!=null?<div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:2}}>≈ {Math.round(metricas.glyc_consumido_g*4)} kcal</div>:null}
               </div>
               <div>
                 <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>ZONA ROJA</div>

@@ -131,6 +131,37 @@ function getLapZone(lap, actLthr, sport, paceUmbral) {
   if (lap.pace && paceUmbral) return getZoneByPace(lap.pace, paceUmbral, sport)
   return 'Z2'
 }
+
+// ── Zonas REALES (= "Mis Zonas"): clasifica un pace contra los rangos que
+//    devuelve /zonas/:sport (pace_min/pace_max "mm:ss"). Mismos límites, por atleta.
+function _paceToMin(p) {
+  if (p == null || p === '') return null
+  if (typeof p === 'number') return p
+  const s = String(p).trim()
+  if (s.includes(':')) { const a = s.split(':'); const m = parseInt(a[0],10), ss = parseInt(a[1],10); return (isNaN(m)||isNaN(ss)) ? null : m + ss/60 }
+  const f = parseFloat(s); return isNaN(f) ? null : f
+}
+function zonaPorMisZonas(pace, zonasArr) {
+  const P = _paceToMin(pace)
+  if (P == null || !Array.isArray(zonasArr) || !zonasArr.length) return null
+  for (const z of zonasArr) {
+    const a = _paceToMin(z.pace_max), b = _paceToMin(z.pace_min)
+    if (a == null || b == null) continue
+    const lo = Math.min(a,b), hi = Math.max(a,b)
+    if (P >= lo - 1e-6 && P <= hi + 1e-6) return z.zona || null
+  }
+  const nums = zonasArr.map(z => ({ z: z.zona, fast: _paceToMin(z.pace_max), slow: _paceToMin(z.pace_min) })).filter(x => x.fast != null && x.slow != null)
+  if (!nums.length) return null
+  const rapida = nums.reduce((m,x) => x.fast < m.fast ? x : m)
+  const lenta  = nums.reduce((m,x) => x.slow > m.slow ? x : m)
+  if (P < rapida.fast) return rapida.z
+  if (P > lenta.slow)  return lenta.z
+  return null
+}
+function colorZonaArr(zona, zonasArr) {
+  if (Array.isArray(zonasArr)) { const z = zonasArr.find(zz => zz.zona === zona); if (z && z.color) return z.color }
+  return (D.zone && D.zone[zona]) || null
+}
 function bezierPath(points) {
   if (!points || points.length < 2) return ''
   return points.map(([x, y], i) => {
@@ -438,7 +469,7 @@ export default function GraficoActividadStreams({
       const d = Math.abs(xNorm - xMx)
       if (d < bestDist) { bestDist = d; best = i }
     }
-    setHover(prev => prev === best ? prev : best)
+    setHover(best)
   }, [series, n, maxT, iW])
 
   const hrStep  = (hrMax - hrMin) > 60 ? 20 : 10
@@ -667,7 +698,10 @@ export default function GraficoActividadStreams({
               })() : null)
               const _css = paceUmbral || _pu
               let z = 'Z2'
-              if (sport === 'swimming' && lap.pace && _css) {
+              const _zReal = (sport==='running'||sport==='swimming') && lap.pace ? zonaPorMisZonas(lap.pace, _zonasData?.zonas) : null
+              if (_zReal) {
+                z = _zReal
+              } else if (sport === 'swimming' && lap.pace && _css) {
                 const p100 = lap.pace > 5 ? lap.pace / 10 : lap.pace
                 const r = _css / p100
                 z = r < 0.78 ? 'Z1' : r < 0.86 ? 'Z2' : r < 0.94 ? 'Z3' : r < 1.00 ? 'Z4' : r < 1.06 ? 'Z5' : 'Z6'
@@ -791,7 +825,7 @@ export default function GraficoActividadStreams({
           {/* Umbral anaeróbico — línea en PACE (running) o POTENCIA (cycling) */}
           {sport !== 'cycling' && paceVals.length > 0 && (() => {
             // Umbral anaeróbico en pace: usar dato del atleta o estimar
-            const umbralPace = act?.pace_umbral || act?.pace_z4_lower || null
+            const umbralPace = paceUmbral || act?.pace_umbral || act?.pace_z4_lower || null
             // Fallback: mediana de paces en Z4 si hay suficientes datos
             const z4Paces = series.filter(s => s.hr && s.pace && getZone(s.hr, actLthr) === 'Z4').map(s => s.pace)
             const est = z4Paces.length > 3
@@ -857,7 +891,7 @@ export default function GraficoActividadStreams({
               const x1 = PL + (t1 / Math.max(maxT,1)) * iW
               const x2 = PL + (t2 / Math.max(maxT,1)) * iW
               const w  = Math.max(1, x2 - x1 - 0.5)
-              const z  = getLapZone(lap, actLthr, sport, paceUmbral)
+              const z  = ((sport==='running'||sport==='swimming') && lap.pace && zonaPorMisZonas(lap.pace, _zonasData?.zonas)) || getLapZone(lap, actLthr, sport, paceUmbral)
               return <rect key={i} x={x1} y={barY} width={w} height={barH}
                 fill={D.zone[z] || D.zone.Z1} opacity="0.85" rx="1"/>
             })
@@ -954,19 +988,36 @@ export default function GraficoActividadStreams({
           seleccionado arriba). Etiquetas completas Z1-Z5 + %, con la franja
           de color de cada zona debajo -- igual criterio que Endurance/FTP/VO2
           en Distribución: mismo lenguaje de zonas en toda la app. */}
-      {series.length >= 1 && streamZonas && (() => {
-        const zonasConDatos = Object.entries(streamZonas).filter(([,v]) => v.pct > 0)
-        if (!zonasConDatos.length) return null
+      {(() => {
+        // Distribución por MIS ZONAS (clasifica laps con los rangos reales del atleta);
+        // si no hay zonas reales (ej. cycling), usa streamZonas.
+        let lista = null
+        if (tieneLaps && (sport==='running'||sport==='swimming') && _zonasData?.zonas) {
+          const acc = {}; let tot = 0
+          for (const l of laps) {
+            const dur = l.duration_min || 0
+            if (dur<=0 || !l.pace) continue
+            const z = zonaPorMisZonas(l.pace, _zonasData.zonas)
+            if (!z) continue
+            acc[z] = (acc[z]||0) + dur; tot += dur
+          }
+          if (tot>0) lista = ['Z1','Z2','Z3','Z4','Z5','Z6'].filter(z=>acc[z]>0)
+            .map(z => [z, { pct: acc[z]/tot*100, _c: colorZonaArr(z, _zonasData.zonas) }])
+        }
+        if (!lista && series.length >= 1 && streamZonas) {
+          lista = Object.entries(streamZonas).filter(([,v]) => v.pct > 0).map(([z,v]) => [z, { pct: v.pct }])
+        }
+        if (!lista || !lista.length) return null
         return (
           <div style={{ padding:'10px 16px 12px', borderTop:`1px solid ${D.border}` }}>
             <div style={{ fontSize:10, fontWeight:600, color:D.text2, textTransform:'uppercase',
               letterSpacing:'0.06em', marginBottom:8 }}>Zonas</div>
             <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
-              {zonasConDatos.map(([z, v]) => (
+              {lista.map(([z, v]) => (
                 <div key={z} style={{ minWidth:44 }}>
                   <div style={{ fontSize:11, fontWeight:500, color:D.text2 }}>{z}</div>
-                  <div style={{ fontSize:14, fontWeight:600, letterSpacing:'-0.01em', color:D.zone[z] }}>{Math.round(v.pct)}%</div>
-                  <div style={{ height:3, borderRadius:2, background:D.zone[z], opacity:0.85, marginTop:4 }}/>
+                  <div style={{ fontSize:14, fontWeight:600, letterSpacing:'-0.01em', color:(v._c || D.zone[z]) }}>{Math.round(v.pct)}%</div>
+                  <div style={{ height:3, borderRadius:2, background:(v._c || D.zone[z]), opacity:0.85, marginTop:4 }}/>
                 </div>
               ))}
             </div>
@@ -979,7 +1030,7 @@ export default function GraficoActividadStreams({
         <LapsColapsable laps={laps} sport={sport} lthr={actLthr}
           hover={hover} setHover={setHover}
           ftp={act?.ftp_watts || act?.ftp}
-          defaultOpen={esLaps} paceUmbral={paceUmbral}/>
+          defaultOpen={esLaps} paceUmbral={paceUmbral} zonasReales={_zonasData?.zonas}/>
       )}
     </div>
   )
@@ -1065,7 +1116,7 @@ function SinGrafico({ act, distKm, sport, loading, streamZonas, lthr, sesionId }
   )
 }
 
-function LapsColapsable({ laps, sport, lthr, hover, setHover, ftp, defaultOpen, paceUmbral }) {
+function LapsColapsable({ laps, sport, lthr, hover, setHover, ftp, defaultOpen, paceUmbral, zonasReales }) {
   const [open, setOpen] = useState(defaultOpen !== false)
   return (
     <div style={{ borderTop:`1px solid ${D.border}` }}>
@@ -1080,12 +1131,12 @@ function LapsColapsable({ laps, sport, lthr, hover, setHover, ftp, defaultOpen, 
           transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
       </button>
       {open && <TablaLaps laps={laps} sport={sport} lthr={lthr}
-        hover={hover} setHover={setHover} ftp={ftp} paceUmbral={paceUmbral}/>}
+        hover={hover} setHover={setHover} ftp={ftp} paceUmbral={paceUmbral} zonasReales={zonasReales}/>}
     </div>
   )
 }
 
-function TablaLaps({ laps, sport, lthr, hover, setHover, ftp, paceUmbral }) {
+function TablaLaps({ laps, sport, lthr, hover, setHover, ftp, paceUmbral, zonasReales }) {
   const fmtP    = p => { if(!p) return '--'; const m=Math.floor(p),s=Math.round((p-m)*60); return `${m}:${String(s).padStart(2,'0')} /km` }
   const fmtDur  = min => { if(!min) return '--'; return `${Math.floor(min)}'${String(Math.round((min%1)*60)).padStart(2,'0')}"` }
   const hrColor = hr => { if(!hr||!lthr) return '#6366F1'; const r=hr/lthr; return r<0.82?'#6366F1':r<0.88?'#3B82F6':r<0.94?'#22C55E':r<1.00?'#EAB308':r<1.06?'#F97316':'#EF4444' }
@@ -1166,8 +1217,10 @@ function TablaLaps({ laps, sport, lthr, hover, setHover, ftp, paceUmbral }) {
         </thead>
         <tbody>
           {laps.map((l,i) => {
+            const _zR  = (sport==='running'||sport==='swimming') ? zonaPorMisZonas(l.pace, zonasReales) : null
             const zc  = sport === 'swimming' ? swimColor(l.pace) : hrColor(l.hr_avg)
-            const zn  = sport === 'swimming' ? swimZone(l.pace) : hrZone(l.hr_avg)
+            const zn  = _zR || (sport === 'swimming' ? swimZone(l.pace) : hrZone(l.hr_avg))
+            const znC = colorZonaArr(zn, zonasReales) || (sport === 'swimming' ? swimColor(l.pace) : hrColor(l.hr_avg))
             const isH = hover===i
             const metrica = sport==='swimming'&&l.swolf?l.swolf.toFixed(1)
               :(l.avg_power||l.watts)?`${Math.round(l.avg_power||l.watts)}W`
@@ -1186,7 +1239,7 @@ function TablaLaps({ laps, sport, lthr, hover, setHover, ftp, paceUmbral }) {
                 <td style={{ padding:'3px 7px', color:D.text3 }}>{(l.cadence||l.cadencia)?Math.round(l.cadence||l.cadencia):'--'}</td>
                 <td style={{ padding:'3px 7px' }}>
                   <span style={{ padding:'1px 6px', borderRadius:3, fontSize:9, fontWeight:700,
-                    background:`${zc}22`, color:zc, border:`1px solid ${zc}40` }}>{zn}</span>
+                    background:`${znC}22`, color:znC, border:`1px solid ${znC}40` }}>{zn}</span>
                 </td>
               </tr>
             )
