@@ -4676,6 +4676,34 @@ def get_hanna_life(atleta_id):
         return error(str(e))
 
 
+@app.route('/api/atletas/<int:atleta_id>/alertas', methods=['GET'])
+@requiere_login
+def get_alertas_atleta(atleta_id):
+    """Alertas de carga / intensidad / zonas (ver noah_alertas.py)."""
+    from noah_alertas import calcular_alertas
+    conn = get_conn()
+    try:
+        dias = int(request.args.get('dias', 7))
+        res = calcular_alertas(conn, atleta_id, dias=dias)
+        conn.close()
+        return ok(res)
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return error(str(e))
+
+
+import time as _noah_time
+_NOAH_BOOT_VERSION = os.environ.get('VERCEL_GIT_COMMIT_SHA') or ('local-' + str(int(_noah_time.time())))
+
+@app.route('/api/version', methods=['GET'])
+def noah_get_version():
+    """Version del deploy actual — el frontend la usa para auto-actualizarse."""
+    return ok({'version': _NOAH_BOOT_VERSION})
+
+
 @app.route('/api/atletas/<int:atleta_id>/riesgo_lesion', methods=['GET'])
 @requiere_login
 def get_riesgo_lesion(atleta_id):
