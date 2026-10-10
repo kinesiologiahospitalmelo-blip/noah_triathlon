@@ -5350,3 +5350,44 @@ function ExplicacionCSCoach({ data }) {
     </div>
   )
 }
+
+
+// ── NOAH auto-actualización: recarga solo cuando hay una versión nueva ──
+(function noahAutoUpdate() {
+  if (typeof window === 'undefined') return;
+  try {
+    var host = window.location.hostname;
+    var esLocal = host === 'localhost' || host.indexOf('192.168.') === 0;
+    var API = esLocal ? ('http://' + host + ':5000/api') : '/api';
+    var actual = null;
+    function aplicar() {
+      try {
+        var div = document.createElement('div');
+        div.textContent = 'Actualizando NOAH…';
+        div.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:2147483647;background:#38BDF8;color:#06121f;font:600 13px Arial,sans-serif;text-align:center;padding:10px;';
+        document.body.appendChild(div);
+      } catch (e) {}
+      try { if (window.caches && caches.keys) { caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); }); } } catch (e) {}
+      try {
+        if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+          navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.unregister(); }); });
+        }
+      } catch (e) {}
+      setTimeout(function () { try { window.location.reload(true); } catch (e) { window.location.reload(); } }, 900);
+    }
+    function chequear(primera) {
+      fetch(API + '/version', { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d) return;
+          var v = (d && d.data && d.data.version) || (d && d.version);
+          if (!v) return;
+          if (primera) { actual = v; return; }
+          if (actual && v !== actual) { aplicar(); }
+        })
+        .catch(function () {});
+    }
+    chequear(true);
+    setInterval(function () { chequear(false); }, 90000);
+  } catch (e) {}
+})();
