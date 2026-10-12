@@ -728,27 +728,6 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
     except Exception:
         pass
 
-    # ── Retry: sesiones CON streams pero laps SIN potencia ────
-    try:
-        retry_laps_rows = conn.execute(
-            "SELECT DISTINCT s.id, s.sport FROM sesiones s "
-            "JOIN laps l ON l.sesion_id = s.id AND l.atleta_id = s.atleta_id "
-            "WHERE s.atleta_id=%s AND s.has_streams=1 "
-            "AND s.sport = 'cycling' "
-            "AND l.avg_power IS NULL "
-            "AND s.fecha::date >= CURRENT_DATE - INTERVAL '14 days' "
-            "ORDER BY s.id DESC LIMIT 5",
-            (atleta_id,)).fetchall()
-        for rs in retry_laps_rows:
-            sid, sp = rs[0], rs[1]
-            try:
-                _completar_laps_desde_samples(conn, atleta_id, sid)
-                print(f'  [RETRY-LAPS] Sesion {sid} laps recalculados')
-            except Exception as _er:
-                print(f'  [RETRY-LAPS] Sesion {sid} fallo: {_er}')
-    except Exception:
-        pass
-
     return sesiones_nuevas
 
 
@@ -860,7 +839,10 @@ def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
     Mapea proporcionalmente: Garmin distribuye N puntos en toda la actividad
     pero ts_s puede ser secuencial (0..N) en vez de tiempo real.
     """
-    # Sin dependencia de numpy — funciona en cualquier entorno
+    try:
+        import numpy as np
+    except ImportError:
+        return
 
     laps = conn.execute(
         "SELECT id, lap_num, duration_min FROM laps "
@@ -909,39 +891,33 @@ def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
             vals = []
 
             if powers:
-                sets.append("avg_power = %s")
+                sets.append("avg_power = COALESCE(avg_power, %s)")
                 vals.append(round(sum(powers)/len(powers), 1))
-                sets.append("max_power = %s")
+                sets.append("max_power = COALESCE(max_power, %s)")
                 vals.append(round(max(powers), 1))
                 # kJ: potencia * tiempo real del lap (no cantidad de samples)
-                sets.append("work_kj = %s")
+                sets.append("work_kj = COALESCE(work_kj, %s)")
                 vals.append(round(sum(powers)/len(powers) * dur_s / 1000, 2))
                 if len(powers) >= 6:
-                    # NP Coggan: rolling average^4 — Python puro, sin numpy
+                    p_arr = np.array(powers)
+                    # Rolling window adaptado a resolucion (min 6 puntos)
                     win = min(30, max(6, len(powers) // 4))
-                    rolling = []
-                    for ri in range(len(powers) - win + 1):
-                        avg_w = sum(powers[ri:ri+win]) / win
-                        rolling.append(avg_w)
-                    if rolling:
-                        mean_4th = sum(r**4 for r in rolling) / len(rolling)
-                        np_val = round(mean_4th ** 0.25, 1)
-                    else:
-                        np_val = round(sum(powers)/len(powers), 1)
-                    sets.append("norm_power = %s")
+                    rolling = np.convolve(p_arr, np.ones(win)/win, mode='valid')
+                    np_val = round(float((rolling**4).mean()**0.25), 1)
+                    sets.append("norm_power = COALESCE(norm_power, %s)")
                     vals.append(np_val)
                     if ftp and ftp > 0:
-                        sets.append("lap_if = %s")
+                        sets.append("lap_if = COALESCE(lap_if, %s)")
                         vals.append(round(np_val / ftp, 3))
 
             if cads:
-                sets.append("cadence = %s")
+                sets.append("cadence = COALESCE(cadence, %s)")
                 vals.append(round(sum(cads)/len(cads), 1))
 
             if speeds:
-                sets.append("avg_speed = %s")
+                sets.append("avg_speed = COALESCE(avg_speed, %s)")
                 vals.append(round(sum(speeds)/len(speeds) * 3.6, 1))
-                sets.append("max_speed = %s")
+                sets.append("max_speed = COALESCE(max_speed, %s)")
                 vals.append(round(max(speeds) * 3.6, 1))
 
             if sets:
@@ -1469,38 +1445,5 @@ def main():
     print('=' * 60)
 
 
-def _completar_laps_sql(conn):
-    """Completa IF y VEL para todos los laps que falten. SQL puro, sin numpy."""
-    try:
-        # VEL desde distancia/duración
-        conn.execute("""
-            UPDATE laps SET avg_speed = ROUND((distance_km / NULLIF(duration_min, 0) * 60)::numeric, 1)
-            WHERE distance_km IS NOT NULL AND distance_km > 0
-            AND duration_min IS NOT NULL AND duration_min > 0
-            AND avg_speed IS NULL
-        """)
-        # IF desde NP/FTP
-        conn.execute("""
-            UPDATE laps l SET lap_if = ROUND((l.norm_power / a.ftp_watts)::numeric, 3)
-            FROM atletas a
-            WHERE l.atleta_id = a.id
-            AND l.norm_power IS NOT NULL AND l.norm_power > 0
-            AND a.ftp_watts IS NOT NULL AND a.ftp_watts > 0
-            AND l.lap_if IS NULL
-        """)
-        conn.commit()
-    except Exception:
-        pass
-
-
 if __name__ == '__main__':
     main()
-    # Paso final: completar laps que quedaron incompletos
-    try:
-        import noa_db
-        db = noa_db.NOADatabase()
-        with db._conn() as conn:
-            _completar_laps_sql(conn)
-            print('[OK] Laps IF/VEL completados')
-    except Exception as e:
-        print(f'[WARN] Completar laps SQL: {e}')
