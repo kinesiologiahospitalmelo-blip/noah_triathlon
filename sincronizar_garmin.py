@@ -728,6 +728,27 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
     except Exception:
         pass
 
+    # ── Retry: sesiones CON streams pero laps SIN potencia ────
+    try:
+        retry_laps_rows = conn.execute(
+            "SELECT DISTINCT s.id, s.sport FROM sesiones s "
+            "JOIN laps l ON l.sesion_id = s.id AND l.atleta_id = s.atleta_id "
+            "WHERE s.atleta_id=%s AND s.has_streams=1 "
+            "AND s.sport = 'cycling' "
+            "AND l.avg_power IS NULL "
+            "AND s.fecha::date >= CURRENT_DATE - INTERVAL '14 days' "
+            "ORDER BY s.id DESC LIMIT 5",
+            (atleta_id,)).fetchall()
+        for rs in retry_laps_rows:
+            sid, sp = rs[0], rs[1]
+            try:
+                _completar_laps_desde_samples(conn, atleta_id, sid)
+                print(f'  [RETRY-LAPS] Sesion {sid} laps recalculados')
+            except Exception as _er:
+                print(f'  [RETRY-LAPS] Sesion {sid} fallo: {_er}')
+    except Exception:
+        pass
+
     return sesiones_nuevas
 
 
@@ -888,12 +909,12 @@ def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
             vals = []
 
             if powers:
-                sets.append("avg_power = COALESCE(avg_power, %s)")
+                sets.append("avg_power = %s")
                 vals.append(round(sum(powers)/len(powers), 1))
-                sets.append("max_power = COALESCE(max_power, %s)")
+                sets.append("max_power = %s")
                 vals.append(round(max(powers), 1))
                 # kJ: potencia * tiempo real del lap (no cantidad de samples)
-                sets.append("work_kj = COALESCE(work_kj, %s)")
+                sets.append("work_kj = %s")
                 vals.append(round(sum(powers)/len(powers) * dur_s / 1000, 2))
                 if len(powers) >= 6:
                     # NP Coggan: rolling average^4 — Python puro, sin numpy
@@ -907,20 +928,20 @@ def _completar_laps_desde_samples(conn, atleta_id, sesion_id):
                         np_val = round(mean_4th ** 0.25, 1)
                     else:
                         np_val = round(sum(powers)/len(powers), 1)
-                    sets.append("norm_power = COALESCE(norm_power, %s)")
+                    sets.append("norm_power = %s")
                     vals.append(np_val)
                     if ftp and ftp > 0:
-                        sets.append("lap_if = COALESCE(lap_if, %s)")
+                        sets.append("lap_if = %s")
                         vals.append(round(np_val / ftp, 3))
 
             if cads:
-                sets.append("cadence = COALESCE(cadence, %s)")
+                sets.append("cadence = %s")
                 vals.append(round(sum(cads)/len(cads), 1))
 
             if speeds:
-                sets.append("avg_speed = COALESCE(avg_speed, %s)")
+                sets.append("avg_speed = %s")
                 vals.append(round(sum(speeds)/len(speeds) * 3.6, 1))
-                sets.append("max_speed = COALESCE(max_speed, %s)")
+                sets.append("max_speed = %s")
                 vals.append(round(max(speeds) * 3.6, 1))
 
             if sets:
