@@ -4207,9 +4207,8 @@ export default function AtletaDashboard({ atletaId }) {
             {syncStatus?.alerta && (
               <div style={{ fontSize:10, color:'#FCA5A5', background:'rgba(239,68,68,0.12)',
                 padding:'4px 10px', borderRadius:7, border:'1px solid rgba(239,68,68,0.2)',
-                display:'flex', alignItems:'center', gap:5, width:'fit-content', maxWidth:'100%',
-                whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', marginBottom:10 }}>
-                <AlertTriangle size={11} style={{flexShrink:0}}/> Sin sync hace {syncStatus.dias_sin_sync}d
+                display:'flex', alignItems:'center', gap:5, width:'fit-content', marginBottom:10 }}>
+                <AlertTriangle size={11}/> Sin sync hace {syncStatus.dias_sin_sync}d
               </div>
             )}
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', paddingBottom:8 }}>
