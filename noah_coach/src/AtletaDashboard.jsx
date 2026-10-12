@@ -4204,13 +4204,19 @@ export default function AtletaDashboard({ atletaId }) {
             <div style={{ fontSize:12, color:'rgba(255,255,255,0.55)', marginBottom:12 }}>
               {deporteLabel} · {hoyStr}
             </div>
-            {syncStatus?.alerta && (
+            {syncStatus?.alerta && (() => {
+              const _bd = (syncStatus.bio_dias_atras != null && syncStatus.bio_dias_atras < 999) ? syncStatus.bio_dias_atras : 0
+              const _ad = (syncStatus.act_dias_atras != null && syncStatus.act_dias_atras < 999) ? syncStatus.act_dias_atras : 0
+              const _d = (syncStatus.dias_sin_sync != null) ? syncStatus.dias_sin_sync : Math.max(_bd, _ad)
+              return (
               <div style={{ fontSize:10, color:'#FCA5A5', background:'rgba(239,68,68,0.12)',
                 padding:'4px 10px', borderRadius:7, border:'1px solid rgba(239,68,68,0.2)',
-                display:'flex', alignItems:'center', gap:5, width:'fit-content', marginBottom:10 }}>
-                <AlertTriangle size={11}/> Sin sync hace {syncStatus.dias_sin_sync}d
+                display:'inline-flex', alignItems:'center', gap:5, width:'fit-content', maxWidth:'100%',
+                whiteSpace:'nowrap', marginBottom:10 }}>
+                <AlertTriangle size={11} style={{flexShrink:0}}/> {_d > 0 ? `Sin sync hace ${_d}d` : 'Sincronización pendiente'}
               </div>
-            )}
+              )
+            })()}
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', paddingBottom:8 }}>
               <button className="noah-sync-btn" onClick={async () => {
                 setSyncBioLoad(true); setSyncResult(null)
