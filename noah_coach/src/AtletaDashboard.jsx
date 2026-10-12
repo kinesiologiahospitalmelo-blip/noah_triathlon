@@ -7,6 +7,8 @@ import SeccionTecnica from './SeccionTecnica'
 import { TwinAtleta } from './SeccionTwin'
 import NoahFuel from './NoahFuel'
 import SeccionTests from './SeccionTests'
+import AlertaPopup from './AlertaPopup'
+import AlertasCard from './AlertasCard'
 import axios from 'axios'
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -4095,6 +4097,7 @@ export default function AtletaDashboard({ atletaId }) {
         radial-gradient(circle at 50% 105%, rgba(52,211,153,0.07) 0%, transparent 50%),
         linear-gradient(145deg, #0A0A0F 0%, #0D0D14 55%, #080810 100%)
       `, fontFamily:'Inter, system-ui, -apple-system, sans-serif' }}>
+      <AlertaPopup atletaId={id} />
       <style>{`
         .hero-bg-img { background-color: #0A0A12; }
         @media (max-width: 640px) {
@@ -4204,8 +4207,9 @@ export default function AtletaDashboard({ atletaId }) {
             {syncStatus?.alerta && (
               <div style={{ fontSize:10, color:'#FCA5A5', background:'rgba(239,68,68,0.12)',
                 padding:'4px 10px', borderRadius:7, border:'1px solid rgba(239,68,68,0.2)',
-                display:'flex', alignItems:'center', gap:5, width:'fit-content', marginBottom:10 }}>
-                <AlertTriangle size={11}/> Sin sync hace {syncStatus.dias_sin_sync}d
+                display:'flex', alignItems:'center', gap:5, width:'fit-content', maxWidth:'100%',
+                whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', marginBottom:10 }}>
+                <AlertTriangle size={11} style={{flexShrink:0}}/> Sin sync hace {syncStatus.dias_sin_sync}d
               </div>
             )}
             <div style={{ display:'flex', gap:8, flexWrap:'wrap', paddingBottom:8 }}>
@@ -4623,6 +4627,9 @@ export default function AtletaDashboard({ atletaId }) {
             <div style={{background:NOAH_C.cardBg,borderRadius:16,padding:'14px 18px',border:`1px solid ${NOAH_C.border}`}}>
               <HannaLifeGrafico atletaId={id} modo="dark" />
             </div>
+
+            {/* ALERTAS de carga / intensidad / zonas */}
+            <AlertasCard atletaId={id} />
 
             {/* Módulos "puerta" — información progresiva, cerrados por defecto */}
             <ModuloMetrica title="Cumplimiento" subtitle="Tu constancia en el plan" meta="30 días" Icon={CheckCircle2} accent="#22D3EE">
