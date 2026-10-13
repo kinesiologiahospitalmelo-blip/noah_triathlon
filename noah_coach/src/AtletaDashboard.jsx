@@ -4101,14 +4101,17 @@ export default function AtletaDashboard({ atletaId }) {
       <style>{`
         .hero-bg-img { background-color: #0A0A12; }
         @media (max-width: 640px) {
-          .hero-container { min-height: 0 !important; aspect-ratio: 1077 / 467; }
+          /* FIX: antes el contenedor tenia aspect-ratio fijo + overflow:hidden,
+             y recortaba abajo los botones azules (Sincronizar Bio / Actividad)
+             cuando el contenido era mas alto que la imagen. Ahora el alto lo
+             manda el contenido y nada se corta. */
+          .hero-container { min-height: 0 !important; aspect-ratio: auto !important; overflow: visible !important; }
           .hero-bg-img {
             background-size: cover !important;
             background-position: center !important;
             background-repeat: no-repeat !important;
           }
-          .hero-content { min-height: 0 !important; height: auto !important; }
-          .hero-container { overflow: hidden !important; }
+          .hero-content { min-height: 240px !important; height: auto !important; }
         }
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
