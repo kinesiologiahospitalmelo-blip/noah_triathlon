@@ -202,6 +202,7 @@ def _parsear_streams(details: dict, sport: str) -> list:
     KEY_MAP = {
         'sumDistance':                      ('distance_m',          100.0),
         'sumDuration':                      ('ts_s',                1000.0),
+        'directTimestamp':                  ('ts_epoch_ms',          1.0),
         'directHeartRate':                  ('hr',                   1.0),
         'directSpeed':                      ('speed_ms',             0.1),
         'directEnhancedSpeed':              ('speed_ms',             0.1),
@@ -263,8 +264,22 @@ def _parsear_streams(details: dict, sport: str) -> list:
     if not samples_raw:
         return []
 
-    # Normalizar ts_s desde inicio
-    ts_min = min(s.get('ts_s', 0) for s in samples_raw)
+    # Normalizar ts_s desde inicio.
+    # FIX Bug 1+2: preferir el timestamp ABSOLUTO (directTimestamp, en ms) para
+    # calcular el segundo de cada punto. sumDuration venia en segundos en unas
+    # actividades y en ms en otras -> el ts_s colapsaba a 6-8 valores, chocaba
+    # con ON CONFLICT (sesion_id, ts_s) y se perdian casi todos los puntos
+    # (grafico de potencia cortado y laps sin potencia). directTimestamp siempre
+    # viene bien; si no esta, cae al comportamiento viejo con sumDuration.
+    _epochs = [s['ts_epoch_ms'] for s in samples_raw if s.get('ts_epoch_ms')]
+    if len(_epochs) >= 2 and (max(_epochs) - min(_epochs)) > 0:
+        _base = min(_epochs)
+        for s in samples_raw:
+            if s.get('ts_epoch_ms'):
+                s['ts_s'] = (s['ts_epoch_ms'] - _base) / 1000.0
+        ts_min = 0.0
+    else:
+        ts_min = min(s.get('ts_s', 0) for s in samples_raw)
     samples = []
     for s in samples_raw:
         hr    = s.get('hr')
@@ -782,6 +797,24 @@ def _bajar_streams(client, activity_id, atleta_id, sesion_id, sport, conn):
         details = client.get_activity_details(activity_id, maxchart=max_chart)
         samples = _parsear_streams(details, sport)
         if samples:
+            # BLINDAJE anti-colapso de tiempo: si los ts_s tienen pocos valores
+            # DISTINTOS (Garmin mando el tiempo mal/ausente), ON CONFLICT
+            # (sesion_id, ts_s) descartaria casi todos los puntos y quedarian
+            # 5-8 (grafico cortado + laps sin potencia). En ese caso repartimos
+            # los puntos uniformemente sobre la duracion REAL de la sesion, asi
+            # cada punto tiene un ts_s unico y el eje de tiempo queda correcto.
+            _n = len(samples)
+            _distintos = len(set(round(s.get('ts_s', 0), 1) for s in samples))
+            if _distintos < max(10, _n * 0.5):
+                _dur_row = conn.execute(
+                    'SELECT duration_min FROM sesiones WHERE id=%s', (sesion_id,)).fetchone()
+                _dur_s = float(_dur_row[0] or 0) * 60 if _dur_row else 0.0
+                if _dur_s <= 0:
+                    _dur_s = float(_n)   # ultimo recurso: usar el indice como segundos
+                for _i, _s in enumerate(samples):
+                    _s['ts_s'] = round(_dur_s * _i / max(1, _n - 1), 1)
+                print(f'    [FIX] ts_s colapsado ({_distintos} distintos en {_n} pts) '
+                      f'-> repartido en {_dur_s/60:.0f} min')
             n = _guardar_streams(conn, atleta_id, sesion_id, activity_id, samples)
             print(f'    [OK] Streams: {n} samples ({sport})')
 
