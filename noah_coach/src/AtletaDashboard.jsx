@@ -169,6 +169,106 @@ const ZONA_COLORS = {
 // nivel de zona (1=Z1 ... 6=Z6), no watts directos.
 const ZONA_COLORS_LABEL = {0:'', 1:'Z1', 2:'Z2', 3:'Z3', 4:'Z4', 5:'Z5', 6:'Z6'}
 
+// ── Render de markdown liviano para las respuestas del chat de NOAH ──────────
+// Entiende **negrita**, *cursiva*, `code`, titulos (#), viñetas (- * •),
+// listas numeradas (1.), tablas estilo | a | b | y separadores ---. No agrega
+// dependencias (parser propio). Ante algo raro, nunca tira: muestra el texto.
+function _mdInline(txt) {
+  if (txt == null) return null
+  const out = []
+  let rest = String(txt)
+  let key = 0
+  const re = /(\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`)/
+  let m
+  while ((m = rest.match(re))) {
+    const idx = m.index
+    if (idx > 0) out.push(rest.slice(0, idx))
+    if (m[2] != null) out.push(<strong key={key++} style={{ fontWeight:700, color:'#fff' }}>{m[2]}</strong>)
+    else if (m[3] != null) out.push(<em key={key++}>{m[3]}</em>)
+    else if (m[4] != null) out.push(<code key={key++} style={{ background:'rgba(255,255,255,0.08)', padding:'1px 5px', borderRadius:4, fontSize:'0.92em' }}>{m[4]}</code>)
+    rest = rest.slice(idx + m[0].length)
+  }
+  if (rest) out.push(rest)
+  return out
+}
+
+function MarkdownLite({ texto }) {
+  const raw = String(texto == null ? '' : texto).replace(/\r/g, '')
+  const lines = raw.split('\n')
+  const isRow = (l) => l.trim().startsWith('|') && l.indexOf('|', 1) > 0
+  const isSep = (l) => l.includes('-') && /^\s*\|?[\s:|-]+\|?\s*$/.test(l)
+  const cells = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
+  const blocks = []
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    if (isRow(line) && i + 1 < lines.length && isSep(lines[i + 1])) {
+      const head = cells(line); const rows = []; let j = i + 2
+      while (j < lines.length && isRow(lines[j])) { rows.push(cells(lines[j])); j++ }
+      blocks.push({ type: 'table', head, rows }); i = j; continue
+    }
+    if (line.match(/^\s*[-*•]\s+/) || line.match(/^\s*\d+\.\s+/)) {
+      const items = []
+      while (i < lines.length) {
+        const b = lines[i].match(/^\s*[-*•]\s+(.*)$/)
+        const n = lines[i].match(/^\s*(\d+)\.\s+(.*)$/)
+        if (b) { items.push({ t: b[1] }); i++ }
+        else if (n) { items.push({ t: n[2], n: n[1] }); i++ }
+        else break
+      }
+      blocks.push({ type: 'list', items }); continue
+    }
+    const mh = line.match(/^\s*(#{1,4})\s+(.*)$/)
+    if (mh) { blocks.push({ type: 'h', level: mh[1].length, text: mh[2] }); i++; continue }
+    if (/^\s*---+\s*$/.test(line)) { blocks.push({ type: 'hr' }); i++; continue }
+    if (line.trim() === '') { i++; continue }
+    const para = [line]; i++
+    while (i < lines.length && lines[i].trim() !== '' && !isRow(lines[i]) &&
+           !lines[i].match(/^\s*[-*•]\s+/) && !lines[i].match(/^\s*\d+\.\s+/) &&
+           !lines[i].match(/^\s*#{1,4}\s+/) && !/^\s*---+\s*$/.test(lines[i])) {
+      para.push(lines[i]); i++
+    }
+    blocks.push({ type: 'p', text: para.join(' ') })
+  }
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+      {blocks.map((b, bi) => {
+        if (b.type === 'table') return (
+          <div key={bi} style={{ overflowX:'auto', margin:'2px 0' }}>
+            <table style={{ borderCollapse:'collapse', width:'100%', fontSize:12.5 }}>
+              <thead><tr>{b.head.map((h, hi) => (
+                <th key={hi} style={{ textAlign:'left', padding:'6px 8px', color:'#C4B5FD', fontWeight:700,
+                  borderBottom:'1px solid rgba(255,255,255,0.18)', whiteSpace:'nowrap' }}>{_mdInline(h)}</th>
+              ))}</tr></thead>
+              <tbody>{b.rows.map((r, ri) => (
+                <tr key={ri}>{r.map((c, ci) => (
+                  <td key={ci} style={{ padding:'6px 8px', borderBottom:'1px solid rgba(255,255,255,0.06)',
+                    color:'rgba(255,255,255,0.88)', verticalAlign:'top' }}>{_mdInline(c)}</td>
+                ))}</tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )
+        if (b.type === 'list') return (
+          <div key={bi} style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            {b.items.map((it, ii) => (
+              <div key={ii} style={{ display:'flex', gap:8, alignItems:'flex-start' }}>
+                <span style={{ color:'#8B5CF6', fontWeight:700, flexShrink:0, minWidth:it.n ? 16 : 8 }}>{it.n ? it.n + '.' : '•'}</span>
+                <span style={{ flex:1 }}>{_mdInline(it.t)}</span>
+              </div>
+            ))}
+          </div>
+        )
+        if (b.type === 'h') return (
+          <div key={bi} style={{ fontWeight:700, color:'#fff', fontSize: b.level <= 2 ? 15 : 14, marginTop:2 }}>{_mdInline(b.text)}</div>
+        )
+        if (b.type === 'hr') return <div key={bi} style={{ height:1, background:'rgba(255,255,255,0.12)', margin:'2px 0' }}/>
+        return <div key={bi} style={{ lineHeight:1.5 }}>{_mdInline(b.text)}</div>
+      })}
+    </div>
+  )
+}
+
 // Iconos de deporte — wrappers de Lucide con la misma interfaz {size,color}
 // que usaban los SVG caseros, para no romper los call-sites existentes.
 const IconRun  = ({ size=18, color='currentColor' }) => <Footprints size={size} color={color} strokeWidth={2} />
@@ -3889,7 +3989,7 @@ function DistribucionEntrenamiento({ atletaId }) {
           <span style={{ fontSize:11.5, fontWeight:600, color:'rgba(255,255,255,0.4)',
             letterSpacing:'0.08em', textTransform:'uppercase' }}>Distribución del entrenamiento</span>
           <div style={{ display:'flex', gap:12, fontSize:11.5, fontWeight:600 }}>
-            {[28, 42].map(d => (
+            {[7, 28, 42].map(d => (
               <span key={d} onClick={() => setDias(d)} style={{
                 cursor:'pointer', color: dias === d ? '#fff' : 'rgba(255,255,255,0.3)',
                 transition:'color 0.25s ease',
@@ -6120,7 +6220,8 @@ function SeccionAsistente({ atletaId, nombre }) {
             alignSelf: m.rol === 'usuario' ? 'flex-end' : 'flex-start',
             display: 'flex', gap: 8, alignItems: 'flex-start',
             flexDirection: m.rol === 'usuario' ? 'row-reverse' : 'row',
-            maxWidth: '95%',
+            maxWidth: m.rol === 'usuario' ? '85%' : '100%',
+            width: m.rol === 'usuario' ? 'auto' : '100%',
           }}>
             {m.rol === 'asistente' && (
               <div className="avatar-noah-wrap">
@@ -6128,7 +6229,7 @@ function SeccionAsistente({ atletaId, nombre }) {
                 <div className="avatar-noah-online"/>
               </div>
             )}
-            <div>
+            <div style={ m.rol === 'asistente' ? { flex:1, minWidth:0 } : {} }>
               <div style={{ display:'flex', gap:6, alignItems:'baseline', marginBottom:4,
                 flexDirection: m.rol === 'usuario' ? 'row-reverse' : 'row' }}>
                 <span style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.85)' }}>
@@ -6144,9 +6245,10 @@ function SeccionAsistente({ atletaId, nombre }) {
                 color: 'rgba(255,255,255,0.92)',
                 fontSize: 14,
                 lineHeight: 1.5,
-                whiteSpace: 'pre-wrap',
+                whiteSpace: m.rol === 'usuario' ? 'pre-wrap' : 'normal',
+                overflowWrap: 'anywhere',
               }}>
-                {m.texto}
+                {m.rol === 'usuario' ? m.texto : <MarkdownLite texto={m.texto} />}
               </div>
             </div>
           </div>
