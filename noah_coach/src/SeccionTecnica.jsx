@@ -50,6 +50,93 @@ function MetricaOverlay({ label, valor, unidad, estado, x, y }) {
   )
 }
 
+// ── Interpretación de cada métrica: qué es (en criollo) + cómo usarla ────────
+// Para que el atleta no vea solo un número suelto, sino que entienda y actúe.
+const METRICA_INFO = {
+  cadencia_run: { que: 'Pasos por minuto: cuántas veces tus pies tocan el suelo.',
+                  uso: 'Apuntá a 170–180. Más cadencia = menos impacto por pisada y menor riesgo de lesión.' },
+  cadencia_bike:{ que: 'Pedaladas por minuto.',
+                  uso: '80–95 rpm reparte el esfuerzo entre corazón y piernas. Muy baja sobrecarga el músculo.' },
+  inicio_run:   { que: 'Tu cadencia al arrancar la salida.',
+                  uso: 'Es la referencia para ver cuánto se te cae cuando aparece el cansancio.' },
+  final_run:    { que: 'Tu cadencia al terminar.',
+                  uso: 'Si bajó mucho respecto al inicio, la técnica se te desarma con la fatiga.' },
+  drift:        { que: 'Cuánto cambió la cadencia del inicio al final (fatiga).',
+                  uso: 'Menos de 3% es estable. Más alto = perdés técnica al cansarte; sumá fuerza y rodajes largos.' },
+  gct:          { que: 'Tiempo de contacto con el suelo en cada pisada (ms).',
+                  uso: 'Menos contacto = carrera más elástica. Por debajo de 250 ms es bueno; bajarlo mejora la economía.' },
+  oscilacion:   { que: 'Cuánto sube y baja tu cuerpo en cada paso (cm).',
+                  uso: 'Menos rebote vertical = menos energía desperdiciada. Apuntá a menos de 9 cm.' },
+  economia:     { que: 'Ratio vertical: el rebote en relación a lo que avanzás.',
+                  uso: 'Cuanto más bajo, más eficiente corrés. Técnica y fuerza lo mejoran.' },
+  lr_balance:   { que: 'Balance de potencia entre pierna izquierda y derecha.',
+                  uso: 'Cerca de 50/50 es lo ideal. Mucha asimetría puede marcar una debilidad o una molestia.' },
+  torque:       { que: 'Efectividad del torque: cuánto de tu pedaleo realmente empuja la bici.',
+                  uso: 'Más alto = pedaleo más redondo y eficiente, menos energía malgastada.' },
+  inicio_bike:  { que: 'Tu cadencia de pedaleo al arrancar.',
+                  uso: 'Referencia para comparar contra el final y detectar fatiga.' },
+  final_bike:   { que: 'Tu cadencia de pedaleo al terminar.',
+                  uso: 'Si se cae mucho, estás perdiendo soltura por cansancio.' },
+  swolf:        { que: 'SWOLF: segundos del largo + brazadas. Eficiencia de tu nado.',
+                  uso: 'Cuanto más bajo, mejor deslizás. Bajalo nadando más largo por brazada, no más fuerte.' },
+  brazadas:     { que: 'Cuántas brazadas das por cada 25 m.',
+                  uso: 'Menos brazadas con el mismo ritmo = mejor técnica y agarre del agua.' },
+  dps:          { que: 'Distancia por brazada: cuánto avanzás con cada una.',
+                  uso: 'Más distancia por brazada = nado más eficiente. Trabajá técnica y deslizamiento.' },
+  ritmo_swim:   { que: 'Tu ritmo cada 100 m.',
+                  uso: 'Es tu referencia de velocidad sostenida en el agua.' },
+}
+
+// Color del estado (misma lógica que los overlays viejos, centralizada)
+function _estadoColor(estado) {
+  if (['óptima', 'bueno', 'equilibrado', 'elite'].includes(estado)) return C.green
+  if (['mejorar', 'significativo'].includes(estado)) return C.red
+  if (['baja', 'leve', 'alta'].includes(estado)) return C.yellow
+  return C.purple
+}
+
+// Tarjeta legible de una métrica: valor grande + qué es + cómo usarla.
+// Reemplaza a los números encimados sobre la foto (que se superponían en mobile).
+function MetricaCard({ label, valor, unidad, estado, info }) {
+  if (valor == null || valor === '' || (typeof valor === 'number' && isNaN(valor))) return null
+  const color = _estadoColor(estado)
+  return (
+    <div style={{
+      background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14,
+      padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 9.5, color: C.dim, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</span>
+        {estado && <span style={{ fontSize: 8, fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: 0.8 }}>{estado}</span>}
+      </div>
+      <div style={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1 }}>
+        {valor}<span style={{ fontSize: 11, color: C.dim, fontWeight: 600 }}> {unidad}</span>
+      </div>
+      {info && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>
+          <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.62)', lineHeight: 1.45 }}>{info.que}</div>
+          <div style={{ fontSize: 10.5, color: C.cyan, lineHeight: 1.45 }}>→ {info.uso}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Grilla responsive de tarjetas — 2 columnas en mobile, 3 en desktop, sin
+// superposiciones (cada métrica tiene su espacio y su explicación).
+function TecnicaGrid({ cards }) {
+  const items = (cards || []).filter(Boolean)
+  if (!items.length) return null
+  return (
+    <div style={{
+      display: 'grid', gap: 10, marginBottom: 4,
+      gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    }}>
+      {items.map((c, i) => <MetricaCard key={i} {...c} />)}
+    </div>
+  )
+}
+
 function SpiderChart({ data }) {
   if (!data || Object.keys(data).length === 0) return null
   const labels = {
@@ -147,8 +234,23 @@ function Sparklines({ data, cadUnidad = 'spm', linea2Key = 'gct', linea2Nombre =
   )
 }
 
-function SensorNotice({ sensores }) {
+function SensorNotice({ sensores, metricas }) {
   if (!sensores || !sensores.faltantes || sensores.faltantes.length === 0) return null
+  // FIX: no declarar "no disponible" una métrica que SÍ llegó en los datos.
+  // Antes listaba GCT / Oscilación aunque estuvieran presentes (se veían en la
+  // pantalla) — se filtran contra lo que realmente trae `metricas`.
+  const m = metricas || {}
+  const presente = (txt) => {
+    const t = String(txt).toLowerCase()
+    if ((t.includes('gct') || t.includes('contacto')) && m.gct) return true
+    if ((t.includes('oscila') || t.includes('vertical osc')) && m.vertical_osc) return true
+    if ((t.includes('ratio') || t.includes('econom')) && m.economia) return true
+    if ((t.includes('stride') || t.includes('zancada')) && (m.stride || m.economia)) return true
+    return false
+  }
+  const faltantesReales = sensores.faltantes.filter(f => !presente(f))
+  if (faltantesReales.length === 0) return null
+  sensores = { ...sensores, faltantes: faltantesReales }
   return (
     <div style={{
       padding: '12px 16px', borderRadius: 12, marginTop: 16,
@@ -694,36 +796,30 @@ function PanelRunning({ data }) {
   const cad = m.cadencia || {}
   return (
     <div>
-      {/* Imagen con overlays */}
-      <div style={{ position: 'relative', width: '100%', height: 350, borderRadius: 16, overflow: 'hidden', marginBottom: 4 }}>
-        <img src="/img/tecnica_run.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6 }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 30%, rgba(13,17,23,0.9) 100%)' }} />
-
-        {cad.promedio && <MetricaOverlay label="CADENCIA" valor={cad.promedio} unidad="spm" estado={cad.estado} x={50} y={22} />}
-        {cad.q1 && <MetricaOverlay label="INICIO" valor={cad.q1} unidad="spm"
-          estado={cad.q1 >= (cad.referencia?.min||170) ? 'óptima' : 'baja'} x={18} y={52} />}
-        {cad.q4 && <MetricaOverlay label="FINAL" valor={cad.q4} unidad="spm"
-          estado={Math.abs(cad.drift_pct||0) < 3 ? 'óptima' : 'mejorar'} x={82} y={52} />}
-        {cad.drift_pct !== undefined && (
-          <MetricaOverlay label="DRIFT" valor={`${cad.drift_pct > 0 ? '+' : ''}${cad.drift_pct}`}
-            unidad="%" estado={Math.abs(cad.drift_pct) < 3 ? 'óptima' : (Math.abs(cad.drift_pct) < 5 ? 'leve' : 'mejorar')} x={50} y={75} />
-        )}
-
-        {m.gct && <MetricaOverlay label="GCT" valor={m.gct.promedio_ms} unidad="ms" estado={m.gct.estado} x={30} y={38} />}
-        {m.vertical_osc && <MetricaOverlay label="OSC VERT" valor={m.vertical_osc.promedio_cm} unidad="cm" estado={m.vertical_osc.estado} x={70} y={38} />}
-        {m.economia && <MetricaOverlay label="ECONOMÍA" valor={m.economia.vertical_ratio} unidad="%" estado={m.economia.estado} x={50} y={50} />}
+      {/* Banner (solo imagen, sin números encimados) */}
+      <div style={{ position: 'relative', width: '100%', height: 150, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
+        <img src="/img/tecnica_run.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.55 }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 20%, rgba(13,17,23,0.92) 100%)' }} />
+        <div style={{ position: 'absolute', left: 16, bottom: 12 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Biomecánica · Running</div>
+          <div style={{ fontSize: 10, color: C.purple, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>Nivel: {data.nivel}</div>
+        </div>
       </div>
 
-      {/* Nivel del atleta */}
-      <div style={{ textAlign: 'center', marginBottom: 12 }}>
-        <span style={{ fontSize: 10, color: C.dim }}>Nivel: </span>
-        <span style={{ fontSize: 10, color: C.purple, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>
-          {data.nivel}
-        </span>
-      </div>
+      {/* Métricas en tarjetas legibles (qué es + cómo usarla) */}
+      <TecnicaGrid cards={[
+        cad.promedio && { label: 'Cadencia', valor: cad.promedio, unidad: 'spm', estado: cad.estado, info: METRICA_INFO.cadencia_run },
+        cad.drift_pct !== undefined && { label: 'Drift cadencia', valor: `${cad.drift_pct > 0 ? '+' : ''}${cad.drift_pct}`, unidad: '%',
+          estado: Math.abs(cad.drift_pct) < 3 ? 'óptima' : (Math.abs(cad.drift_pct) < 5 ? 'leve' : 'mejorar'), info: METRICA_INFO.drift },
+        m.gct && { label: 'GCT (contacto)', valor: m.gct.promedio_ms, unidad: 'ms', estado: m.gct.estado, info: METRICA_INFO.gct },
+        m.vertical_osc && { label: 'Oscilación vertical', valor: m.vertical_osc.promedio_cm, unidad: 'cm', estado: m.vertical_osc.estado, info: METRICA_INFO.oscilacion },
+        m.economia && { label: 'Economía', valor: m.economia.vertical_ratio, unidad: '%', estado: m.economia.estado, info: METRICA_INFO.economia },
+        cad.q1 && { label: 'Cadencia inicio', valor: cad.q1, unidad: 'spm', estado: cad.q1 >= (cad.referencia?.min || 170) ? 'óptima' : 'baja', info: METRICA_INFO.inicio_run },
+        cad.q4 && { label: 'Cadencia final', valor: cad.q4, unidad: 'spm', estado: Math.abs(cad.drift_pct || 0) < 3 ? 'óptima' : 'mejorar', info: METRICA_INFO.final_run },
+      ]} />
 
       {/* Sensor notice */}
-      <SensorNotice sensores={data.sensores} />
+      <SensorNotice sensores={data.sensores} metricas={m} />
 
       {/* ANÁLISIS / PLAN DE MEJORA — 3 gráficos reales sobre datos existentes */}
       <AnalisisFatigaTecnica data={data.analisis_fatiga} />
@@ -738,33 +834,30 @@ function PanelCycling({ data }) {
   const te = m.torque_effectiveness || {}
   return (
     <div>
-      <div style={{ position: 'relative', width: '100%', height: 350, borderRadius: 16, overflow: 'hidden', marginBottom: 4 }}>
-        <img src="/img/tecnica_bike.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6 }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 30%, rgba(13,17,23,0.9) 100%)' }} />
-
-        {cad.promedio && <MetricaOverlay label="CADENCIA" valor={cad.promedio} unidad="rpm" estado={cad.estado} x={50} y={22} />}
-        {cad.q1 && <MetricaOverlay label="INICIO" valor={cad.q1} unidad="rpm"
-          estado={cad.q1 >= 80 ? 'óptima' : 'baja'} x={18} y={38} />}
-        {cad.q4 && <MetricaOverlay label="FINAL" valor={cad.q4} unidad="rpm"
-          estado={Math.abs(cad.drift_pct||0) < 3 ? 'óptima' : 'mejorar'} x={82} y={38} />}
-        {lr.promedio_pct !== undefined && <MetricaOverlay label="L/R BALANCE" valor={`${lr.promedio_pct}/${(100-lr.promedio_pct).toFixed(1)}`} unidad="%" estado={lr.estado} x={22} y={62} />}
-        {te.promedio_pct && <MetricaOverlay label="TORQUE EFF" valor={te.promedio_pct} unidad="%" estado={te.estado} x={78} y={62} />}
+      <div style={{ position: 'relative', width: '100%', height: 150, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
+        <img src="/img/tecnica_bike.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.55 }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 20%, rgba(13,17,23,0.92) 100%)' }} />
+        <div style={{ position: 'absolute', left: 16, bottom: 12 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Biomecánica · Ciclismo</div>
+          <div style={{ fontSize: 10, color: C.purple, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>Nivel: {data.nivel}</div>
+        </div>
       </div>
 
-      {/* Nivel del atleta */}
-      <div style={{ textAlign: 'center', marginBottom: 12 }}>
-        <span style={{ fontSize: 10, color: C.dim }}>Nivel: </span>
-        <span style={{ fontSize: 10, color: C.purple, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>
-          {data.nivel}
-        </span>
-      </div>
+      {/* Métricas en tarjetas legibles (qué es + cómo usarla) */}
+      <TecnicaGrid cards={[
+        cad.promedio && { label: 'Cadencia', valor: cad.promedio, unidad: 'rpm', estado: cad.estado, info: METRICA_INFO.cadencia_bike },
+        lr.promedio_pct !== undefined && { label: 'Balance L/R', valor: `${lr.promedio_pct}/${(100 - lr.promedio_pct).toFixed(1)}`, unidad: '%', estado: lr.estado, info: METRICA_INFO.lr_balance },
+        te.promedio_pct && { label: 'Torque eff.', valor: te.promedio_pct, unidad: '%', estado: te.estado, info: METRICA_INFO.torque },
+        cad.q1 && { label: 'Cadencia inicio', valor: cad.q1, unidad: 'rpm', estado: cad.q1 >= 80 ? 'óptima' : 'baja', info: METRICA_INFO.inicio_bike },
+        cad.q4 && { label: 'Cadencia final', valor: cad.q4, unidad: 'rpm', estado: Math.abs(cad.drift_pct || 0) < 3 ? 'óptima' : 'mejorar', info: METRICA_INFO.final_bike },
+      ]} />
 
       <SpiderChart data={data.spider} />
       <DriftCard drift={data.drift} />
       <Sparklines data={data.sparkline} cadUnidad="rpm" linea2Key="torque_effectiveness" linea2Nombre="Torque Eff. (%)" />
       <CadenciaZonas data={m.cadencia_por_zona} tipo="cycling" />
       <Comparacion data={data.comparacion} />
-      <SensorNotice sensores={data.sensores} />
+      <SensorNotice sensores={data.sensores} metricas={m} />
       <Interpretacion items={data.interpretacion} />
       <AnalisisFatigaTecnica data={data.analisis_fatiga}
         clusterEjes={{ xNombre: 'Cadencia', xUnidad: ' rpm', yNombre: 'Potencia', yUnidad: ' W' }} />
@@ -880,17 +973,23 @@ function PanelSwimming({ data }) {
   const dist = data.distribucion || {}
   return (
     <div>
-      <div style={{ position: 'relative', width: '100%', height: 300, borderRadius: 16, overflow: 'hidden', marginBottom: 4 }}>
+      <div style={{ position: 'relative', width: '100%', height: 140, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
         <img src="/img/tecnica_swim.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.5 }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 30%, rgba(13,17,23,0.95) 100%)' }} />
-        {m.swolf_avg && <MetricaOverlay label="SWOLF" valor={m.swolf_avg} unidad="" estado={m.swolf_avg < 40 ? 'óptima' : m.swolf_avg < 50 ? 'bueno' : 'mejorar'} x={25} y={30} />}
-        {m.brazadas_avg && <MetricaOverlay label="BRAZADAS/25m" valor={m.brazadas_avg} unidad="" estado="bueno" x={75} y={30} />}
-        {m.dps_avg && <MetricaOverlay label="DPS" valor={m.dps_avg} unidad="m" estado={m.dps_avg > 2.0 ? 'óptima' : 'bueno'} x={25} y={60} />}
-        {m.pace_avg && <MetricaOverlay label="RITMO" valor={m.pace_avg} unidad="min/100m" estado="bueno" x={75} y={60} />}
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 20%, rgba(13,17,23,0.95) 100%)' }} />
+        <div style={{ position: 'absolute', left: 16, bottom: 12 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Biomecánica · Natación</div>
+          <div style={{ fontSize: 10, color: C.cyan, fontWeight: 600 }}>Pileta {data.pool_length || 25}m · {data.n_largos} largos</div>
+        </div>
       </div>
-      <p style={{ textAlign: 'center', fontSize: 10, color: C.dim, marginBottom: 12 }}>
-        Pileta {data.pool_length || 25}m · <strong style={{ color: C.cyan }}>{data.n_largos}</strong> largos analizados
-      </p>
+
+      {/* Métricas en tarjetas legibles (qué es + cómo usarla) */}
+      <TecnicaGrid cards={[
+        m.swolf_avg && { label: 'SWOLF', valor: m.swolf_avg, unidad: '', estado: m.swolf_avg < 40 ? 'óptima' : m.swolf_avg < 50 ? 'bueno' : 'mejorar', info: METRICA_INFO.swolf },
+        m.brazadas_avg && { label: 'Brazadas/25m', valor: m.brazadas_avg, unidad: '', estado: 'bueno', info: METRICA_INFO.brazadas },
+        m.dps_avg && { label: 'DPS', valor: m.dps_avg, unidad: 'm', estado: m.dps_avg > 2.0 ? 'óptima' : 'bueno', info: METRICA_INFO.dps },
+        m.pace_avg && { label: 'Ritmo', valor: m.pace_avg, unidad: 'min/100m', estado: 'bueno', info: METRICA_INFO.ritmo_swim },
+      ]} />
+
       {Object.keys(estilos).length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 12, color: C.cyan, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>POR ESTILO</div>

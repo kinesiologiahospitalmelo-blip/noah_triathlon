@@ -1044,6 +1044,31 @@ function NutricionPost({ atletaId, fecha, proxima24h }) {
         <div style={{marginTop:4}}><b>CHO recuperación:</b> {r.cho_recuperacion_g_total_4h}g en las próximas 4h — {(r.fuentes_cho||[]).slice(0,3).join(', ')}</div>
       )}
       <div style={{marginTop:4, opacity:0.85}}>{r.cho_mensaje}</div>
+
+      {/* Reposición de lo PERDIDO en esta sesión (hidratación + electrolitos + frutas) */}
+      {nut.reposicion && (nut.reposicion.liquido_a_reponer_ml || nut.reposicion.sodio_mg) && (
+        <div style={{marginTop:8, paddingTop:8, borderTop:`1px solid ${NUT_COLOR}22`}}>
+          {nut.reposicion.liquido_a_reponer_ml && (
+            <div><b>Hidratación:</b> reponé ~{nut.reposicion.liquido_a_reponer_ml} ml
+              {nut.reposicion.sodio_mg > 0 ? ` + ~${nut.reposicion.sodio_mg} mg de sodio` : ''} en las próximas horas</div>
+          )}
+          {(nut.reposicion.fuentes_electrolitos||[]).length > 0 && (
+            <div style={{marginTop:3, opacity:0.85}}><b>Electrolitos:</b> {nut.reposicion.fuentes_electrolitos.slice(0,3).join(' · ')}</div>
+          )}
+          {(nut.reposicion.frutas||[]).length > 0 && (
+            <div style={{marginTop:3, opacity:0.85}}><b>Frutas:</b> {nut.reposicion.frutas.slice(0,3).join(' · ')}</div>
+          )}
+          <div style={{marginTop:3, fontSize:10, opacity:0.6}}>Estimado según lo perdido en esta sesión.</div>
+        </div>
+      )}
+
+      {/* Recomendación "durante" para la próxima sesión de este tipo */}
+      {nut.durante?.texto_corto && (
+        <div style={{marginTop:8, paddingTop:8, borderTop:`1px solid ${NUT_COLOR}22`}}>
+          <div><b>Durante (próxima sesión de este tipo):</b></div>
+          <div style={{marginTop:3, opacity:0.85}}>{nut.durante.texto_corto}</div>
+        </div>
+      )}
     </div>
   )
 }

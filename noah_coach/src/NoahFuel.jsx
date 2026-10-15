@@ -63,6 +63,92 @@ const ASSET_COMIDA = {
 }
 const EMOJI_COMIDA = { desayuno: '🥣', almuerzo: '🍗', cena: '🐟', snack: '🍌', pre_entreno: '🍞', post_entreno: '🥤', ventana: '🍚' }
 
+// ── Render de markdown liviano para las respuestas del chat (negrita, viñetas,
+// títulos y TABLAS estilo | a | b |). Sin dependencias; ante algo raro muestra
+// el texto. Evita que NOAH devuelva "|", "*", "-" crudos en mobile. ──
+function _mdInline(txt) {
+  if (txt == null) return null
+  const out = []; let rest = String(txt); let key = 0
+  const re = /(\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`)/
+  let m
+  while ((m = rest.match(re))) {
+    const idx = m.index
+    if (idx > 0) out.push(rest.slice(0, idx))
+    if (m[2] != null) out.push(<strong key={key++} style={{ fontWeight: 700, color: C.ink }}>{m[2]}</strong>)
+    else if (m[3] != null) out.push(<em key={key++}>{m[3]}</em>)
+    else if (m[4] != null) out.push(<code key={key++} style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 4 }}>{m[4]}</code>)
+    rest = rest.slice(idx + m[0].length)
+  }
+  if (rest) out.push(rest)
+  return out
+}
+function MarkdownLite({ texto }) {
+  const lines = String(texto == null ? '' : texto).replace(/\r/g, '').split('\n')
+  const isRow = (l) => l.trim().startsWith('|') && l.indexOf('|', 1) > 0
+  const isSep = (l) => l.includes('-') && /^\s*\|?[\s:|-]+\|?\s*$/.test(l)
+  const cells = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim())
+  const blocks = []; let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    if (isRow(line) && i + 1 < lines.length && isSep(lines[i + 1])) {
+      const head = cells(line); const rows = []; let j = i + 2
+      while (j < lines.length && isRow(lines[j])) { rows.push(cells(lines[j])); j++ }
+      blocks.push({ type: 'table', head, rows }); i = j; continue
+    }
+    if (line.match(/^\s*[-*•]\s+/) || line.match(/^\s*\d+\.\s+/)) {
+      const items = []
+      while (i < lines.length) {
+        const b = lines[i].match(/^\s*[-*•]\s+(.*)$/); const n = lines[i].match(/^\s*(\d+)\.\s+(.*)$/)
+        if (b) { items.push({ t: b[1] }); i++ } else if (n) { items.push({ t: n[2], n: n[1] }); i++ } else break
+      }
+      blocks.push({ type: 'list', items }); continue
+    }
+    const mh = line.match(/^\s*(#{1,4})\s+(.*)$/)
+    if (mh) { blocks.push({ type: 'h', text: mh[2] }); i++; continue }
+    if (/^\s*---+\s*$/.test(line)) { blocks.push({ type: 'hr' }); i++; continue }
+    if (line.trim() === '') { i++; continue }
+    const para = [line]; i++
+    while (i < lines.length && lines[i].trim() !== '' && !isRow(lines[i]) &&
+           !lines[i].match(/^\s*[-*•]\s+/) && !lines[i].match(/^\s*\d+\.\s+/) &&
+           !lines[i].match(/^\s*#{1,4}\s+/) && !/^\s*---+\s*$/.test(lines[i])) { para.push(lines[i]); i++ }
+    blocks.push({ type: 'p', text: para.join(' ') })
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      {blocks.map((b, bi) => {
+        if (b.type === 'table') return (
+          <div key={bi} style={{ overflowX: 'auto', margin: '2px 0' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 11.5 }}>
+              <thead><tr>{b.head.map((h, hi) => (
+                <th key={hi} style={{ textAlign: 'left', padding: '5px 7px', color: C.accent, fontWeight: 700,
+                  borderBottom: '1px solid rgba(255,255,255,0.18)', whiteSpace: 'nowrap' }}>{_mdInline(h)}</th>
+              ))}</tr></thead>
+              <tbody>{b.rows.map((r, ri) => (
+                <tr key={ri}>{r.map((c, ci) => (
+                  <td key={ci} style={{ padding: '5px 7px', borderBottom: '1px solid rgba(255,255,255,0.06)', color: C.ink2, verticalAlign: 'top' }}>{_mdInline(c)}</td>
+                ))}</tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )
+        if (b.type === 'list') return (
+          <div key={bi} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {b.items.map((it, ii) => (
+              <div key={ii} style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
+                <span style={{ color: C.accent, fontWeight: 700, flexShrink: 0, minWidth: it.n ? 15 : 7 }}>{it.n ? it.n + '.' : '•'}</span>
+                <span style={{ flex: 1 }}>{_mdInline(it.t)}</span>
+              </div>
+            ))}
+          </div>
+        )
+        if (b.type === 'h') return <div key={bi} style={{ fontWeight: 700, color: C.ink, fontSize: 13 }}>{_mdInline(b.text)}</div>
+        if (b.type === 'hr') return <div key={bi} style={{ height: 1, background: 'rgba(255,255,255,0.12)' }}/>
+        return <div key={bi} style={{ lineHeight: 1.5 }}>{_mdInline(b.text)}</div>
+      })}
+    </div>
+  )
+}
+
 function FotoComida({ comida, size = 56, radius = 14 }) {
   const assetName = ASSET_COMIDA[comida.foto_key] || comida.foto_key
   const [intento, setIntento] = useState(0) // 0: .png, 1: .jpg, 2: foto_url backend, 3: emoji
@@ -654,10 +740,13 @@ function ChatNoah({ atletaId, quickActions }) {
         <div ref={scrollRef} style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
           {msgs.map((m, i) => (
             <div key={i} style={{
-              alignSelf: m.rol === 'usuario' ? 'flex-end' : 'flex-start', maxWidth: '85%',
+              alignSelf: m.rol === 'usuario' ? 'flex-end' : 'flex-start',
+              maxWidth: m.rol === 'usuario' ? '85%' : '100%',
+              width: m.rol === 'usuario' ? 'auto' : '100%',
               padding: '8px 12px', borderRadius: 12, fontSize: 12, lineHeight: 1.5,
               background: m.rol === 'usuario' ? 'rgba(139,92,246,0.20)' : 'rgba(255,255,255,0.04)', color: C.ink2,
-            }}>{m.texto}</div>
+              whiteSpace: m.rol === 'usuario' ? 'pre-wrap' : 'normal', overflowWrap: 'anywhere',
+            }}>{m.rol === 'usuario' ? m.texto : <MarkdownLite texto={m.texto} />}</div>
           ))}
           {sending && <div style={{ fontSize: 11, color: C.ink3, alignSelf: 'flex-start' }}>NOAH está pensando…</div>}
         </div>

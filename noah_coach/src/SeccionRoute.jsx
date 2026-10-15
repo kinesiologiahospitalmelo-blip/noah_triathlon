@@ -57,9 +57,17 @@ function smoothCoords(coords, w = 5) {
 // dispara a valores absurdos en cada pausa/semáforo) — se toma una ventana de
 // +-4 muestras y se mide distancia/tiempo real recorrido en esa ventana, igual
 // que hace Garmin/Strava para el "ritmo actual".
+// El backend puede mandar la distancia como dist_km (km) o como distance_m
+// (metros, clave cruda). Esta helper devuelve siempre km, venga como venga.
+function _dkm(p) {
+  if (p == null) return null
+  if (p.dist_km != null) return p.dist_km
+  if (p.distance_m != null) return p.distance_m / 1000
+  return null
+}
 function paceVelEnPunto(series, i, win = 4) {
   const lo = Math.max(0, i - win), hi = Math.min(series.length - 1, i + win)
-  const d0 = series[lo].dist_km, d1 = series[hi].dist_km, t0 = series[lo].t, t1 = series[hi].t
+  const d0 = _dkm(series[lo]), d1 = _dkm(series[hi]), t0 = series[lo].t, t1 = series[hi].t
   if (d0 == null || d1 == null || t0 == null || t1 == null) return { pace: null, vel: null }
   const metros = (d1 - d0) * 1000, seg = t1 - t0
   if (seg <= 0 || metros <= 0) return { pace: null, vel: null }
@@ -80,17 +88,17 @@ function svgBadge(inner, size = 22) { return `<svg width="${size}" height="${siz
 // actividad (no cambia con el mouse); el resto es el valor en el punto exacto.
 function fieldDefs(sport) {
   const all = [
-    { id:'km',    label:'KM',               unit:'km',   get:p=>p.dist_km },
+    { id:'km',    label:'KM',               unit:'km',   get:p=>{ const d=_dkm(p); return d!=null?+d.toFixed(2):null } },
     { id:'hr',    label:'HR',               unit:'bpm',  get:p=>p.hr },
     { id:'pace',  label:'Ritmo',            unit:'/km',  get:(p,i,s)=>paceVelEnPunto(s,i).pace,  hide: sport==='cycling' },
     { id:'vel',   label:'Velocidad',        unit:'km/h', get:(p,i,s)=>paceVelEnPunto(s,i).vel },
-    { id:'power', label:'Potencia',         unit:'W',    get:p=>p.power, hide: sport!=='cycling' },
-    { id:'elev',  label:'Elevación',        unit:'m',    get:p=>p.alt!=null?Math.round(p.alt):null },
+    { id:'power', label:'Potencia',         unit:'W',    get:p=>p.power!=null?p.power:p.power_w, hide: sport!=='cycling' },
+    { id:'elev',  label:'Elevación',        unit:'m',    get:p=>{ const a=p.alt!=null?p.alt:p.altitude_m; return a!=null?Math.round(a):null } },
     { id:'cad',   label:'Cadencia',         unit: sport==='running'?'spm':'rpm', get:p=>p.cadence },
     { id:'osc',   label:'Osc. vertical',    unit:'mm',   get:p=>p.vert_osc, hide: sport!=='running' },
     { id:'gct',   label:'Contacto suelo',   unit:'ms',   get:p=>p.gct, hide: sport!=='running' },
     { id:'stride',label:'Zancada',          unit:'cm',   get:p=>p.stride, hide: sport!=='running' },
-    { id:'temp',  label:'Temperatura',      unit:'°C',   get:p=>p.temp },
+    { id:'temp',  label:'Temperatura',      unit:'°C',   get:p=>p.temp!=null?p.temp:p.temperature },
     { id:'resp',  label:'Respiración',      unit:'rpm',  get:p=>p.resp },
     { id:'gctbal',label:'Balance apoyo',    unit:'%',    get:p=>p.gct_bal, hide: sport!=='running' },
     { id:'vratio',label:'Ratio vertical',   unit:'%',    get:p=>p.vert_ratio, hide: sport!=='running' },
@@ -103,7 +111,11 @@ function fieldDefs(sport) {
 // Campos ya conocidos (arriba) — cualquier otro campo numérico que venga en el
 // stream y no esté en esa lista (ej. algo específico de tu banda de pecho) se
 // agrega igual acá, en vez de perderse en silencio.
-const CAMPOS_CONOCIDOS = new Set(['t','lat','lon','dist_km','hr','power','pace','cadence','alt','temp','vert_osc','gct','stride','resp','gct_bal','vert_ratio','stress'])
+const CAMPOS_CONOCIDOS = new Set(['t','lat','lon','dist_km','hr','power','pace','cadence','alt','temp','vert_osc','gct','stride','resp','gct_bal','vert_ratio','stress',
+  // Claves CRUDAS que manda el backend (activity_streams) y que ya se muestran
+  // mapeadas arriba — se listan acá para que NO se filtren como campos sueltos
+  // feos en el tooltip (altitude_m, ts_s, etc).
+  'ts_s','power_w','speed_ms','altitude_m','distance_m','left_right_pct','temperature'])
 function fieldsDinamicos(series) {
   if (!series?.length) return []
   const claves = new Set()
@@ -165,12 +177,13 @@ export default function SeccionRoute({ sesionId, atletaId, sport = 'running', he
 
   const stats = useMemo(() => {
     if (!series || series.length < 2) return null
-    const distKm = series[series.length-1]?.dist_km
+    const distKm = _dkm(series[series.length-1])
     const dur = series[series.length-1]?.t - series[0]?.t
+    const _alt = (p) => p.alt != null ? p.alt : p.altitude_m
     let elevGain = 0
-    for (let i=1;i<series.length;i++){ const d=(series[i].alt??series[i-1].alt)-(series[i-1].alt??series[i].alt); if(d>0) elevGain+=d }
+    for (let i=1;i<series.length;i++){ const d=(_alt(series[i])??_alt(series[i-1]))-(_alt(series[i-1])??_alt(series[i])); if(d>0) elevGain+=d }
     const avg = (key) => { const vals = series.map(p=>p[key]).filter(v=>v!=null); return vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null }
-    return { distKm, dur, elevGain: Math.round(elevGain), power: avg('power'), hr: avg('hr'), cadence: avg('cadence') }
+    return { distKm: distKm != null ? +distKm.toFixed(2) : null, dur, elevGain: Math.round(elevGain), power: avg('power'), hr: avg('hr'), cadence: avg('cadence') }
   }, [series])
 
   useEffect(() => {
