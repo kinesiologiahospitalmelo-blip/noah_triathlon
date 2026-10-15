@@ -5320,63 +5320,83 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
       </button>
 
       {open && data && data.disponible && (
-        <div style={{marginTop:14,background:'#0D1117',borderRadius:12,padding:'14px 10px',border:'1px solid rgba(255,255,255,0.06)'}}>
-          <div style={{display:'flex',gap:14}}>
-            <div style={{flex:7}}>
-              <div style={{fontSize:10.5,color:'rgba(255,255,255,0.55)',lineHeight:1.45,marginBottom:8}}>
-                Cómo se fue vaciando tu energía durante la actividad. <b style={{color:'#fff'}}>100%</b> = lleno · <b style={{color:'#fff'}}>0%</b> = vacío.
+        <div style={{marginTop:14, borderRadius:16, padding:'18px 16px',
+          background:'linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012))',
+          border:'1px solid rgba(255,255,255,0.09)',
+          boxShadow:'0 30px 70px -40px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.05)'}}>
+
+          {/* Resumen */}
+          <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:12, marginBottom:16}}>
+            {[
+              ['Glucógeno gastado', glycGast!=null?`${glycGast} g`:'--', glycGast!=null?`≈ ${glycGast*4} kcal`:''],
+              ['Reserva al final', reservaFinal!=null?`${reservaFinal} %`:'--', (reservaFinal!=null&&reservaFinal<30)?'zona crítica':'del combustible inicial'],
+              ['Ritmo sostenible', csPace?`${fP(csPace)}/km`:'--', 'el que podés aguantar largo'],
+            ].map(([lab,val,sub],i)=>(
+              <div key={i} style={{padding:'13px 15px', borderRadius:14, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)'}}>
+                <div style={{fontSize:9.5,color:'rgba(255,255,255,0.4)',letterSpacing:'0.6px',textTransform:'uppercase',fontWeight:700,marginBottom:6}}>{lab}</div>
+                <div style={{fontSize:24,fontWeight:800,color:'#F3F4F6',lineHeight:1,letterSpacing:'-0.5px'}}>{val}</div>
+                <div style={{fontSize:10,color:'rgba(255,255,255,0.35)',marginTop:4,fontWeight:600}}>{sub}</div>
               </div>
-              {/* Lectura del punto (fija, no desaparece): se actualiza al pasar el mouse */}
-              <div style={{fontSize:11,marginBottom:8,minHeight:18}}>
-                {hP ? <span style={{color:'rgba(255,255,255,0.85)'}}>En el <b style={{color:'#fff'}}>min {fmtT(hP.ts_s)}</b> — Energía <b style={{color:'#A78BFA'}}>{Math.round(hP.energia_pct!=null?hP.energia_pct:(hP.glyc_pct||100)*rFactor)}%</b> · Ritmo <b style={{color:'#fff'}}>{fP(hP.pace)}/km</b></span>
-                     : <span style={{color:'rgba(255,255,255,0.4)'}}>Pasá el mouse por el gráfico para ver cada momento.</span>}
-              </div>
-              <svg width="100%" viewBox={`0 0 ${W} ${H1}`} style={{display:'block'}}
-                onMouseMove={onMouse} onMouseLeave={()=>setHIdx(null)}>
-                <defs><clipPath id="cER"><rect x={PL} y={PT} width={iW} height={iH}/></clipPath></defs>
-                <rect x={PL} y={yD(100)} width={iW} height={yD(50)-yD(100)} fill="rgba(34,197,94,0.06)"/>
-                <rect x={PL} y={yD(50)} width={iW} height={yD(25)-yD(50)} fill="rgba(234,179,8,0.05)"/>
-                <rect x={PL} y={yD(25)} width={iW} height={yD(10)-yD(25)} fill="rgba(249,115,22,0.05)"/>
-                <rect x={PL} y={yD(10)} width={iW} height={yD(0)-yD(10)} fill="rgba(239,68,68,0.06)"/>
-                {[100,50,25,10,0].map(v=><line key={v} x1={PL} y1={yD(v)} x2={W-PR} y2={yD(v)} stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>)}
-                {ticks.map(t=><line key={t} x1={x(t)} y1={PT} x2={x(t)} y2={PT+iH} stroke="rgba(255,255,255,0.04)" strokeWidth="1"/>)}
-                {ePath && <path d={ePath} fill="none" stroke="#A78BFA" strokeWidth="2.5" strokeLinejoin="round" clipPath="url(#cER)"/>}
-                {[100,50,25,10,0].map(v=><text key={v} x={PL-5} y={yD(v)+3} textAnchor="end" fontSize="8" fill="rgba(255,255,255,0.25)">{v}%</text>)}
-                {ticks.map(t=><text key={t} x={x(t)} y={H1-3} textAnchor="middle" fontSize="8" fill="rgba(255,255,255,0.25)">{fmtT(t)}</text>)}
-                {hP && <>
-                  <line x1={x(hP.ts_s)} y1={PT} x2={x(hP.ts_s)} y2={PT+iH} stroke="rgba(255,255,255,0.25)" strokeWidth="1"/>
-                  <circle cx={x(hP.ts_s)} cy={yD(hP.energia_pct!=null?hP.energia_pct:(hP.glyc_pct||100)*rFactor)} r={3.5} fill="#A78BFA" stroke="#0D1117" strokeWidth="2"/>
-                </>}
-              </svg>
-              <div style={{fontSize:10,color:'rgba(255,255,255,0.45)',marginTop:6,display:'flex',alignItems:'center',gap:8}}>
-                <span style={{width:16,height:0,borderTop:'2.5px solid #A78BFA',flexShrink:0}}/>
-                <span>Energía disponible (tu tanque)</span>
-              </div>
-            </div>
-            <div style={{flex:3,display:'flex',flexDirection:'column',gap:16,paddingTop:4}}>
-              {/* 4 datos, todos con la MISMA tipografía y color (sin arcoíris) */}
-              {[
-                ['Energía al terminar',
-                  (samples.length&&samples[samples.length-1])?`${Math.round(samples[samples.length-1].energia_pct!=null?samples[samples.length-1].energia_pct:(samples[samples.length-1].glyc_pct||100)*rFactor)}%`:'--',
-                  'cómo quedó tu tanque'],
-                ['Glucógeno gastado',
-                  metricas.glyc_consumido_g!=null?`${Math.round(metricas.glyc_consumido_g)} g`:'--',
-                  metricas.glyc_consumido_g!=null?`≈ ${Math.round(metricas.glyc_consumido_g*4)} kcal`:''],
-                ['Ritmo sostenible',
-                  metricas.cs_pace?`${fP(metricas.cs_pace)}/km`:'--',
-                  'el que podés aguantar largo'],
-                ['Recuperación hoy',
-                  metricas.readiness?`${Math.round(metricas.readiness)}%`:'--',
-                  'qué tan recuperado estás'],
-              ].map(([lab,val,sub],i)=>(
-                <div key={i}>
-                  <div style={{fontSize:9,color:'rgba(255,255,255,0.45)',letterSpacing:'0.5px',marginBottom:4,fontWeight:700,textTransform:'uppercase'}}>{lab}</div>
-                  <div style={{fontSize:22,fontWeight:800,color:'#F3F4F6',lineHeight:1}}>{val}</div>
-                  {sub?<div style={{fontSize:9.5,color:'rgba(255,255,255,0.35)',marginTop:3}}>{sub}</div>:null}
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
+
+          {/* Lectura del punto (fija, no desaparece) */}
+          <div style={{fontSize:11.5, minHeight:20, marginBottom:10, padding:'7px 11px', borderRadius:9,
+            background:'rgba(45,226,240,0.06)', border:'1px solid rgba(45,226,240,0.14)'}}>
+            {hP ? <span style={{color:'rgba(255,255,255,0.88)'}}>min <b style={{color:'#fff'}}>{fmtT(hP.ts_s)}</b> · Ritmo <b style={{color:'#fff'}}>{fP(hP.pace)}/km</b> · FC <b style={{color:'#fff'}}>{hP.hr||'--'} bpm</b> · Glucógeno <b style={{color:'#2DE2F0'}}>{Math.round(hP.glyc_pct)}%</b> · Esfuerzo <b style={{color:'#FF6F8B'}}>{(hIdx!=null&&eff[hIdx]!=null)?Math.round(eff[hIdx]):'--'}</b></span>
+                 : <span style={{color:'rgba(255,255,255,0.4)'}}>Pasá el mouse por los gráficos para ver cada momento.</span>}
+          </div>
+
+          {/* Gráfico 1 — Reserva de glucógeno */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',margin:'0 2px 6px'}}>
+            <span style={{fontSize:12.5,fontWeight:700,display:'flex',alignItems:'center',gap:8}}><span style={{width:20,height:3,borderRadius:2,background:'#2DE2F0',boxShadow:'0 0 8px #2DE2F0'}}/>Reserva de glucógeno</span>
+            <span style={{fontSize:9,color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:6,padding:'2px 8px',letterSpacing:'0.4px',fontWeight:600}}>ESTIMACIÓN</span>
+          </div>
+          <svg width="100%" viewBox={`0 0 ${W} ${H1}`} style={{display:'block'}} onMouseMove={onMouse} onMouseLeave={()=>setHIdx(null)}>
+            <defs>
+              <linearGradient id="egGradC" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2DE2F0" stopOpacity="0.40"/><stop offset="60%" stopColor="#2DE2F0" stopOpacity="0.08"/><stop offset="100%" stopColor="#2DE2F0" stopOpacity="0"/></linearGradient>
+              <filter id="egGlowC" x="-20%" y="-60%" width="140%" height="220%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            </defs>
+            <rect x={PL} y={yA(30)} width={iW} height={(PT+iH1)-yA(30)} fill="rgba(255,84,112,0.09)"/>
+            <line x1={PL} y1={yA(30)} x2={W-PR} y2={yA(30)} stroke="rgba(255,84,112,0.55)" strokeDasharray="5 4" strokeWidth="1.1"/>
+            <text x={W-PR} y={yA(30)-4} textAnchor="end" fontSize="9" fontWeight="700" fill="#FF5470">Zona crítica · 30%</text>
+            {[0,25,50,75,100].map(v=><line key={v} x1={PL} y1={yA(v)} x2={W-PR} y2={yA(v)} stroke="rgba(255,255,255,0.05)"/>)}
+            {[0,25,50,75,100].map(v=><text key={v} x={PL-6} y={yA(v)+3} textAnchor="end" fontSize="8.5" fill="rgba(255,255,255,0.28)">{v}%</text>)}
+            {ticks.map(t=><text key={t} x={x(t)} y={H1-6} textAnchor="middle" fontSize="8.5" fill="rgba(255,255,255,0.28)">{fmtT(t)}</text>)}
+            {glyArea && <path d={glyArea} fill="url(#egGradC)"/>}
+            {glyPath && <path d={glyPath} fill="none" stroke="#2DE2F0" strokeWidth="6" opacity="0.55" filter="url(#egGlowC)" strokeLinejoin="round" strokeLinecap="round"/>}
+            {glyPath && <path d={glyPath} fill="none" stroke="#2DE2F0" strokeWidth="2.6" strokeLinejoin="round" strokeLinecap="round"/>}
+            {reservaFinal!=null && <g>
+              <rect x={W-PR-42} y={yA(reservaFinal)-13} width="38" height="20" rx="6" fill="rgba(45,226,240,0.14)" stroke="#2DE2F0" strokeWidth="1"/>
+              <text x={W-PR-23} y={yA(reservaFinal)+1.5} textAnchor="middle" fontSize="11" fontWeight="800" fill="#2DE2F0">{reservaFinal}%</text>
+            </g>}
+            {hP && <>
+              <line x1={x(hP.ts_s)} y1={PT} x2={x(hP.ts_s)} y2={PT+iH1} stroke="rgba(255,255,255,0.3)" strokeDasharray="3 3"/>
+              <circle cx={x(hP.ts_s)} cy={yA(hP.glyc_pct)} r="7" fill="#2DE2F0" opacity="0.25"/>
+              <circle cx={x(hP.ts_s)} cy={yA(hP.glyc_pct)} r="4.2" fill="#2DE2F0" stroke="#0A0F1E" strokeWidth="2"/>
+            </>}
+          </svg>
+
+          {/* Gráfico 2 — Esfuerzo relativo */}
+          <div style={{display:'flex',alignItems:'center',margin:'14px 2px 6px'}}>
+            <span style={{fontSize:12.5,fontWeight:700,display:'flex',alignItems:'center',gap:8}}><span style={{width:20,height:3,borderRadius:2,background:'#FF6F8B',boxShadow:'0 0 8px #FF6F8B'}}/>Esfuerzo relativo</span>
+          </div>
+          <svg width="100%" viewBox={`0 0 ${W} ${H2}`} style={{display:'block'}} onMouseMove={onMouse} onMouseLeave={()=>setHIdx(null)}>
+            <defs>
+              <linearGradient id="egGradR" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#FF6F8B" stopOpacity="0.38"/><stop offset="60%" stopColor="#FF6F8B" stopOpacity="0.08"/><stop offset="100%" stopColor="#FF6F8B" stopOpacity="0"/></linearGradient>
+              <filter id="egGlowR" x="-20%" y="-60%" width="140%" height="220%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            </defs>
+            {[0,50,100].map(v=><line key={v} x1={PL} y1={yB(v)} x2={W-PR} y2={yB(v)} stroke="rgba(255,255,255,0.05)"/>)}
+            {[0,50,100].map(v=><text key={v} x={PL-6} y={yB(v)+3} textAnchor="end" fontSize="8.5" fill="rgba(255,255,255,0.28)">{v}</text>)}
+            {ticks.map(t=><text key={t} x={x(t)} y={H2-6} textAnchor="middle" fontSize="8.5" fill="rgba(255,255,255,0.28)">{fmtT(t)}</text>)}
+            {effArea && <path d={effArea} fill="url(#egGradR)"/>}
+            {effPath && <path d={effPath} fill="none" stroke="#FF6F8B" strokeWidth="6" opacity="0.5" filter="url(#egGlowR)" strokeLinejoin="round" strokeLinecap="round"/>}
+            {effPath && <path d={effPath} fill="none" stroke="#FF6F8B" strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round"/>}
+            {hP && hIdx!=null && eff[hIdx]!=null && <>
+              <line x1={x(hP.ts_s)} y1={PT} x2={x(hP.ts_s)} y2={PT+iH2} stroke="rgba(255,255,255,0.3)" strokeDasharray="3 3"/>
+              <circle cx={x(hP.ts_s)} cy={yB(eff[hIdx])} r="4.2" fill="#FF6F8B" stroke="#0A0F1E" strokeWidth="2"/>
+            </>}
+          </svg>
         </div>
       )}
       {open && data && !data.disponible && <div style={{marginTop:12,padding:14,color:'rgba(255,255,255,0.35)',fontSize:12,textAlign:'center'}}>{data.msg}</div>}
