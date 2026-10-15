@@ -5252,29 +5252,43 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
   useEffect(() => { setData(null); setOpen(false) }, [sesionId])
   const toggle = () => { setOpen(o => !o); if (!data) load() }
   const { samples=[], metricas={} } = data || {}
-  const step = Math.max(1, Math.floor(samples.length / 500))
+  const step = Math.max(1, Math.floor(samples.length / 420))
   const pts = samples.filter((_,i) => i % step === 0)
   const maxT = pts.length > 0 ? pts[pts.length-1].ts_s : 1
-  const fmtT = s => { const m=Math.floor(s/60); return `${m}:${String(Math.round(s%60)).padStart(2,'0')}` }
+  const fmtT = s => { const m=Math.floor(s/60), h=Math.floor(m/60); return h>0?`${h}:${String(m%60).padStart(2,'0')}`:`${m}:${String(Math.round(s%60)).padStart(2,'0')}` }
   const fP = p => { if(!p) return '--'; return `${Math.floor(p)}:${String(Math.round((p%1)*60)).padStart(2,'0')}` }
 
-  const W=580, H1=200, H2=55, PL=42, PR=8, PT=16, PB=22
-  const iW=W-PL-PR, iH=H1-PT-PB, iH2=H2-8-18
-  const x = t => PL + (t/maxT)*iW
-  const yD = p => PT + iH - (Math.max(0,Math.min(100,p))/100)*iH
-  const pVals = pts.map(p=>p.pace).filter(Boolean)
-  const pMn = pVals.length ? Math.min(...pVals)*0.95 : 3
-  const pMx = pVals.length ? Math.max(...pVals)*1.05 : 8
-  const yP = p => 8 + iH2 - ((pMx-p)/(pMx-pMn||1))*iH2
-
-  const dPath = pts.length>1 ? pts.map((p,i)=>`${i?'L':'M'}${x(p.ts_s).toFixed(1)},${yD(p.dbal_pct).toFixed(1)}`).join(' ') : ''
-  const dArea = dPath ? dPath+` L${x(pts[pts.length-1].ts_s).toFixed(1)},${yD(0)} L${x(0).toFixed(1)},${yD(0)} Z` : ''
-  const gPath = pts.length>1 ? pts.map((p,j)=>`${j?'L':'M'}${x(p.ts_s).toFixed(1)},${yD(p.glyc_pct||100).toFixed(1)}`).join(' ') : ''
-  const gArea = gPath ? gPath+` L${x(pts[pts.length-1].ts_s).toFixed(1)},${yD(0)} L${x(0).toFixed(1)},${yD(0)} Z` : ''
-  const rFactor = (data?.metricas?.readiness || 100) / 100
-  const ePath = pts.length>1 ? pts.map((p,j)=>`${j?'L':'M'}${x(p.ts_s).toFixed(1)},${yD(p.energia_pct!=null?p.energia_pct:(p.glyc_pct||100)*rFactor).toFixed(1)}`).join(' ') : ''
-  const pPath = pts.filter(p=>p.pace).length>1 ? pts.filter(p=>p.pace).map((p,i)=>`${i?'L':'M'}${x(p.ts_s).toFixed(1)},${yP(p.pace).toFixed(1)}`).join(' ') : ''
+  // Geometria de los DOS graficos (comparten eje X)
+  const W=660, PL=44, PR=14, PT=14, PB=24
+  const H1=210, H2=140
+  const iW=W-PL-PR, iH1=H1-PT-PB, iH2=H2-PT-PB
+  const x  = t => PL + (t/maxT)*iW
+  const yA = v => PT + iH1 - (Math.max(0,Math.min(100,v))/100)*iH1   // grafico glucogeno
+  const yB = v => PT + iH2 - (Math.max(0,Math.min(100,v))/100)*iH2   // grafico esfuerzo
   const ticks = Array.from({length:7},(_,i)=>Math.round(maxT*i/6))
+
+  // Esfuerzo relativo: FC + ritmo REALES, normalizados a ESTA sesion (0-100).
+  // No es contribucion metabolica; no inventa nada, usa lo medido.
+  const hrs = pts.map(p=>p.hr).filter(v=>v!=null)
+  const pcs = pts.map(p=>p.pace).filter(v=>v!=null)
+  const hrLo=hrs.length?Math.min(...hrs):0, hrHi=hrs.length?Math.max(...hrs):1
+  const pcLo=pcs.length?Math.min(...pcs):0, pcHi=pcs.length?Math.max(...pcs):1
+  const effOf = p => { let s=0,w=0
+    if(p.hr!=null && hrHi>hrLo){ s+=0.6*((p.hr-hrLo)/(hrHi-hrLo)); w+=0.6 }
+    if(p.pace!=null && pcHi>pcLo){ s+=0.4*((pcHi-p.pace)/(pcHi-pcLo)); w+=0.4 }
+    return w>0 ? Math.max(0,Math.min(100, s/w*100)) : null }
+  const eff = pts.map(effOf)
+
+  const mkP = (arr,Yf)=> arr.length>1 ? arr.map((o,i)=>`${i?'L':'M'}${x(o.t).toFixed(1)} ${Yf(o.v).toFixed(1)}`).join(' ') : ''
+  const mkArea = (arr,Yf)=> arr.length>1 ? mkP(arr,Yf)+` L${x(arr[arr.length-1].t).toFixed(1)} ${Yf(0).toFixed(1)} L${x(arr[0].t).toFixed(1)} ${Yf(0).toFixed(1)} Z` : ''
+  const glyA = pts.map(p=>({t:p.ts_s,v:p.glyc_pct})).filter(o=>o.v!=null)
+  const effA = pts.map((p,i)=>({t:p.ts_s,v:eff[i]})).filter(o=>o.v!=null)
+  const glyPath=mkP(glyA,yA), glyArea=mkArea(glyA,yA)
+  const effPath=mkP(effA,yB), effArea=mkArea(effA,yB)
+
+  const glycGast     = metricas.glyc_consumido_g!=null ? Math.round(metricas.glyc_consumido_g) : null
+  const reservaFinal = pts.length && pts[pts.length-1].glyc_pct!=null ? Math.round(pts[pts.length-1].glyc_pct) : null
+  const csPace       = metricas.cs_pace
   const hP = hIdx!=null && hIdx<pts.length ? pts[hIdx] : null
 
   const onMouse = e => {
@@ -5283,9 +5297,6 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
     const idx = Math.round(ratio*(pts.length-1))
     if(idx>=0 && idx<pts.length) setHIdx(idx); else setHIdx(null)
   }
-
-  const tRojo = Math.round((metricas.tiempo_rojo_s||0)/60)
-  const tNar = Math.round((metricas.tiempo_naranja_s||0)/60)
 
   return (
     <div style={{padding:'12px 6px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
@@ -5312,60 +5323,58 @@ function EnergyReserveTimeline({ atletaId, sesionId }) {
         <div style={{marginTop:14,background:'#0D1117',borderRadius:12,padding:'14px 10px',border:'1px solid rgba(255,255,255,0.06)'}}>
           <div style={{display:'flex',gap:14}}>
             <div style={{flex:7}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'1px',marginBottom:6}}>RESERVA ENERGETICA — <span style={{color:'#4ADE80'}}>Anaerobica</span> / <span style={{color:'#EAB308'}}>Glucogeno</span> / <span style={{color:'#F472B6'}}>Energia</span></div>
+              <div style={{fontSize:10.5,color:'rgba(255,255,255,0.55)',lineHeight:1.45,marginBottom:8}}>
+                Cómo se fue vaciando tu energía durante la actividad. <b style={{color:'#fff'}}>100%</b> = lleno · <b style={{color:'#fff'}}>0%</b> = vacío.
+              </div>
+              {/* Lectura del punto (fija, no desaparece): se actualiza al pasar el mouse */}
+              <div style={{fontSize:11,marginBottom:8,minHeight:18}}>
+                {hP ? <span style={{color:'rgba(255,255,255,0.85)'}}>En el <b style={{color:'#fff'}}>min {fmtT(hP.ts_s)}</b> — Energía <b style={{color:'#A78BFA'}}>{Math.round(hP.energia_pct!=null?hP.energia_pct:(hP.glyc_pct||100)*rFactor)}%</b> · Ritmo <b style={{color:'#fff'}}>{fP(hP.pace)}/km</b></span>
+                     : <span style={{color:'rgba(255,255,255,0.4)'}}>Pasá el mouse por el gráfico para ver cada momento.</span>}
+              </div>
               <svg width="100%" viewBox={`0 0 ${W} ${H1}`} style={{display:'block'}}
                 onMouseMove={onMouse} onMouseLeave={()=>setHIdx(null)}>
-                <defs>
-                  <clipPath id="cER"><rect x={PL} y={PT} width={iW} height={iH}/></clipPath>
-                </defs>
-                <rect x={PL} y={yD(100)} width={iW} height={yD(50)-yD(100)} fill="rgba(34,197,94,0.07)"/>
-                <rect x={PL} y={yD(50)} width={iW} height={yD(25)-yD(50)} fill="rgba(234,179,8,0.06)"/>
-                <rect x={PL} y={yD(25)} width={iW} height={yD(10)-yD(25)} fill="rgba(249,115,22,0.06)"/>
-                <rect x={PL} y={yD(10)} width={iW} height={yD(0)-yD(10)} fill="rgba(239,68,68,0.07)"/>
+                <defs><clipPath id="cER"><rect x={PL} y={PT} width={iW} height={iH}/></clipPath></defs>
+                <rect x={PL} y={yD(100)} width={iW} height={yD(50)-yD(100)} fill="rgba(34,197,94,0.06)"/>
+                <rect x={PL} y={yD(50)} width={iW} height={yD(25)-yD(50)} fill="rgba(234,179,8,0.05)"/>
+                <rect x={PL} y={yD(25)} width={iW} height={yD(10)-yD(25)} fill="rgba(249,115,22,0.05)"/>
+                <rect x={PL} y={yD(10)} width={iW} height={yD(0)-yD(10)} fill="rgba(239,68,68,0.06)"/>
                 {[100,50,25,10,0].map(v=><line key={v} x1={PL} y1={yD(v)} x2={W-PR} y2={yD(v)} stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>)}
                 {ticks.map(t=><line key={t} x1={x(t)} y1={PT} x2={x(t)} y2={PT+iH} stroke="rgba(255,255,255,0.04)" strokeWidth="1"/>)}
-                {gArea && <path d={gArea} fill="rgba(234,179,8,0.06)" clipPath="url(#cER)"/>}
-                {gPath && <path d={gPath} fill="none" stroke="#EAB308" strokeWidth="1.5" strokeDasharray="4 2" strokeLinejoin="round" clipPath="url(#cER)"/>}
-                {ePath && <path d={ePath} fill="none" stroke="#F472B6" strokeWidth="2" strokeLinejoin="round" clipPath="url(#cER)"/>}
-                {dArea && <path d={dArea} fill="rgba(74,222,128,0.06)" clipPath="url(#cER)"/>}
-                {dPath && <path d={dPath} fill="none" stroke="#4ADE80" strokeWidth="2" strokeLinejoin="round" clipPath="url(#cER)"/>}
+                {ePath && <path d={ePath} fill="none" stroke="#A78BFA" strokeWidth="2.5" strokeLinejoin="round" clipPath="url(#cER)"/>}
                 {[100,50,25,10,0].map(v=><text key={v} x={PL-5} y={yD(v)+3} textAnchor="end" fontSize="8" fill="rgba(255,255,255,0.25)">{v}%</text>)}
                 {ticks.map(t=><text key={t} x={x(t)} y={H1-3} textAnchor="middle" fontSize="8" fill="rgba(255,255,255,0.25)">{fmtT(t)}</text>)}
                 {hP && <>
-                  <line x1={x(hP.ts_s)} y1={PT} x2={x(hP.ts_s)} y2={PT+iH} stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
-                  <circle cx={x(hP.ts_s)} cy={yD(hP.dbal_pct)} r={3.5} fill="#4ADE80" stroke="#0D1117" strokeWidth="2"/>
-                  <text x={x(hP.ts_s)} y={PT-4} textAnchor="middle" fontSize="9" fill="#fff" fontWeight="600">{Math.round(hP.dbal_pct)}% D | {Math.round(hP.glyc_pct||100)}% G{` | ${Math.round(hP.energia_pct!=null?hP.energia_pct:(hP.glyc_pct||100)*rFactor)}% E`} | {fP(hP.pace)}/km</text>
+                  <line x1={x(hP.ts_s)} y1={PT} x2={x(hP.ts_s)} y2={PT+iH} stroke="rgba(255,255,255,0.25)" strokeWidth="1"/>
+                  <circle cx={x(hP.ts_s)} cy={yD(hP.energia_pct!=null?hP.energia_pct:(hP.glyc_pct||100)*rFactor)} r={3.5} fill="#A78BFA" stroke="#0D1117" strokeWidth="2"/>
                 </>}
               </svg>
+              <div style={{fontSize:10,color:'rgba(255,255,255,0.45)',marginTop:6,display:'flex',alignItems:'center',gap:8}}>
+                <span style={{width:16,height:0,borderTop:'2.5px solid #A78BFA',flexShrink:0}}/>
+                <span>Energía disponible (tu tanque)</span>
+              </div>
             </div>
-            <div style={{flex:3,display:'flex',flexDirection:'column',gap:14,paddingTop:8}}>
-              <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>GLUCÓGENO</div>
-                <div style={{fontSize:24,fontWeight:800,color:(samples.length&&samples[samples.length-1].glyc_pct!=null?(samples[samples.length-1].glyc_pct>60?'#4ADE80':samples[samples.length-1].glyc_pct>35?'#EAB308':'#EF4444'):'#4ADE80'),lineHeight:1}}>{samples.length&&samples[samples.length-1].glyc_pct!=null?`${Math.round(samples[samples.length-1].glyc_pct)}%`:'--'}</div>
-                <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:2}}>restante</div>
-              </div>
-              <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>GASTADO</div>
-                <div style={{fontSize:24,fontWeight:800,color:'#F472B6',lineHeight:1}}>{metricas.glyc_consumido_g!=null?`${Math.round(metricas.glyc_consumido_g)} g`:'--'}</div>
-                {metricas.glyc_consumido_g!=null?<div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:2}}>≈ {Math.round(metricas.glyc_consumido_g*4)} kcal</div>:null}
-              </div>
-              <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>ZONA ROJA</div>
-                <div style={{fontSize:20,fontWeight:700,color:'#EF4444',lineHeight:1}}>{tRojo?`${tRojo}min`:'0'}</div>
-              </div>
-              <div style={{borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:10}}>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>CS</div>
-                <div style={{fontSize:18,fontWeight:700,color:'#F97316',lineHeight:1}}>{fP(metricas.cs_pace)}/km</div>
-              </div>
-              <div>
-              {metricas.readiness && metricas.readiness < 100 ? <div>
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>READINESS</div>
-                <div style={{fontSize:18,fontWeight:700,color:metricas.readiness>70?'#4ADE80':metricas.readiness>40?'#EAB308':'#EF4444',lineHeight:1}}>{Math.round(metricas.readiness)}%</div>
-                {metricas.hanna_life ? <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',marginTop:2}}>Hanna {metricas.hanna_life}</div> : null}
-              </div> : null}
-                <div style={{fontSize:8,color:'rgba(255,255,255,0.3)',letterSpacing:'0.8px',marginBottom:3}}>D PRIMA</div>
-                <div style={{fontSize:18,fontWeight:700,color:'#A855F7',lineHeight:1}}>{metricas.d_prime_m?`${Math.round(metricas.d_prime_m)}m`:'--'}</div>
-              </div>
+            <div style={{flex:3,display:'flex',flexDirection:'column',gap:16,paddingTop:4}}>
+              {/* 4 datos, todos con la MISMA tipografía y color (sin arcoíris) */}
+              {[
+                ['Energía al terminar',
+                  (samples.length&&samples[samples.length-1])?`${Math.round(samples[samples.length-1].energia_pct!=null?samples[samples.length-1].energia_pct:(samples[samples.length-1].glyc_pct||100)*rFactor)}%`:'--',
+                  'cómo quedó tu tanque'],
+                ['Glucógeno gastado',
+                  metricas.glyc_consumido_g!=null?`${Math.round(metricas.glyc_consumido_g)} g`:'--',
+                  metricas.glyc_consumido_g!=null?`≈ ${Math.round(metricas.glyc_consumido_g*4)} kcal`:''],
+                ['Ritmo sostenible',
+                  metricas.cs_pace?`${fP(metricas.cs_pace)}/km`:'--',
+                  'el que podés aguantar largo'],
+                ['Recuperación hoy',
+                  metricas.readiness?`${Math.round(metricas.readiness)}%`:'--',
+                  'qué tan recuperado estás'],
+              ].map(([lab,val,sub],i)=>(
+                <div key={i}>
+                  <div style={{fontSize:9,color:'rgba(255,255,255,0.45)',letterSpacing:'0.5px',marginBottom:4,fontWeight:700,textTransform:'uppercase'}}>{lab}</div>
+                  <div style={{fontSize:22,fontWeight:800,color:'#F3F4F6',lineHeight:1}}>{val}</div>
+                  {sub?<div style={{fontSize:9.5,color:'rgba(255,255,255,0.35)',marginTop:3}}>{sub}</div>:null}
+                </div>
+              ))}
             </div>
           </div>
         </div>
