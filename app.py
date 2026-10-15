@@ -3597,6 +3597,21 @@ def get_dbal_running(atleta_id, sesion_id):
         # Glucogeno total (Romijn 1993): ~7g por kg peso corporal
         glyc_total = peso_kg * 7.0  # gramos
 
+        lthr_run = float(atleta[1]) if atleta and atleta[1] else None
+        # Intensidad media de respaldo (si falta velocidad Y FC por-muestra):
+        # IF real de la sesion, o estimada desde TSS/duracion, o 0.80 (Z2).
+        if_fallback = 0.80
+        try:
+            _sif = conn.execute(
+                "SELECT intensity_factor, tss_total, duration_min FROM sesiones WHERE id=%s",
+                (sesion_id,)).fetchone()
+            if _sif and _sif[0] and float(_sif[0]) > 0:
+                if_fallback = float(_sif[0])
+            elif _sif and _sif[1] and _sif[2] and float(_sif[2]) > 0:
+                if_fallback = min((float(_sif[1]) / ((float(_sif[2]) / 60.0) * 100)) ** 0.5, 1.2)
+        except Exception:
+            pass
+
         # Hanna Life
         sesion = conn.execute("SELECT fecha FROM sesiones WHERE id=%s", (sesion_id,)).fetchone()
         fecha = sesion[0][:10] if sesion and sesion[0] else None
@@ -3704,7 +3719,21 @@ def get_dbal_running(atleta_id, sesion_id):
             tiempo_total += dt
             dt_min = dt / 60.0
 
-            ratio = speed / umbral_speed if umbral_speed > 0 and speed > 0.3 else 0
+            # Intensidad ROBUSTA para el gasto de glucogeno: antes dependia
+            # SOLO de la velocidad por-muestra, que en muchas actividades viene
+            # floja/rota -> ratio 0 -> no quemaba glucogeno -> quedaba en ~85%
+            # tras horas (irreal). Ahora: velocidad si es confiable; si no, FC
+            # relativa al umbral; y si tampoco hay FC, la intensidad media de la
+            # sesion. Asi siempre refleja la carga real, para todo atleta.
+            ratio = 0
+            if umbral_speed > 0 and speed > 0.3:
+                _r = speed / umbral_speed
+                if 0.3 < _r < 2.5:
+                    ratio = _r
+            if ratio == 0 and hr and lthr_run and lthr_run > 0:
+                ratio = hr / lthr_run
+            if ratio == 0:
+                ratio = if_fallback
 
             # --- D-bal (Skiba 2012) --- solo encima del umbral
             if speed > umbral_speed:
@@ -3718,7 +3747,13 @@ def get_dbal_running(atleta_id, sesion_id):
 
             # --- Glucogeno (Romijn 1993) --- siempre baja
             if ratio > 0:
-                consumo = glyc_rate(ratio) * dt_min  # gramos
+                # glyc_rate es la oxidacion TOTAL de CHO. El glucogeno MUSCULAR
+                # es solo una fraccion (el resto: glucosa en sangre, higado,
+                # ingesta durante el ejercicio). Factor GLYC_FRAC ~0.55 -> evita
+                # que toda sesion larga termine en 0% (bonk total irreal) y deja
+                # una deplecion realista. Es la perilla a calibrar con datos reales.
+                GLYC_FRAC = 0.55
+                consumo = glyc_rate(ratio) * dt_min * GLYC_FRAC  # gramos
                 glyc = max(0, glyc - consumo)
 
             dbal_pct = (dbal / dbal_inicio) * 100 if dbal_inicio > 0 else 100
@@ -3789,7 +3824,7 @@ def get_dbal_swimming(atleta_id, sesion_id):
     conn = get_conn()
     try:
         atleta = conn.execute(
-            "SELECT css_100m, peso_kg FROM atletas WHERE id=%s", (atleta_id,)
+            "SELECT css_100m, peso_kg, lthr_run FROM atletas WHERE id=%s", (atleta_id,)
         ).fetchone()
 
         if not atleta or not atleta[0]:
@@ -3800,6 +3835,21 @@ def get_dbal_swimming(atleta_id, sesion_id):
         peso_kg = float(atleta[1]) if atleta[1] else 65.0
         d_prime = 75.0  # ~25-30s supra-CSS (era 20, muy bajo)
         glyc_total = peso_kg * 7.0
+
+        # FC de umbral en agua (~8% menor que en tierra) para usar la FC como
+        # respaldo de intensidad cuando falta la velocidad de la vuelta.
+        lthr_swim = round(float(atleta[2]) * 0.92) if atleta and atleta[2] else None
+        if_fallback = 0.80
+        try:
+            _sif = conn.execute(
+                "SELECT intensity_factor, tss_total, duration_min FROM sesiones WHERE id=%s",
+                (sesion_id,)).fetchone()
+            if _sif and _sif[0] and float(_sif[0]) > 0:
+                if_fallback = float(_sif[0])
+            elif _sif and _sif[1] and _sif[2] and float(_sif[2]) > 0:
+                if_fallback = min((float(_sif[1]) / ((float(_sif[2]) / 60.0) * 100)) ** 0.5, 1.2)
+        except Exception:
+            pass
 
         # Hanna Life
         sesion = conn.execute("SELECT fecha FROM sesiones WHERE id=%s", (sesion_id,)).fetchone()
@@ -3905,7 +3955,17 @@ def get_dbal_swimming(atleta_id, sesion_id):
                 speed = 0
 
             pace_100m = (100.0 / (speed * 60)) if speed > 0 else None
-            ratio = speed / css_speed if css_speed > 0 and speed > 0 else 0
+            # Intensidad robusta: velocidad vs CSS si existe; si no, FC relativa
+            # al umbral en agua; y si tampoco hay, la intensidad media de la sesion.
+            ratio = 0
+            if css_speed > 0 and speed > 0:
+                _r = speed / css_speed
+                if 0.3 < _r < 2.5:
+                    ratio = _r
+            if ratio == 0 and hr and lthr_swim and lthr_swim > 0:
+                ratio = hr / lthr_swim
+            if ratio == 0:
+                ratio = if_fallback
 
             # D-bal (Skiba)
             if speed > css_speed:
@@ -3917,9 +3977,10 @@ def get_dbal_swimming(atleta_id, sesion_id):
                     tau = (200 * math.exp(-0.8 * dcp) + 150) * tau_factor
                     dbal = min(dbal_inicio, dbal + deficit * (1 - math.exp(-dur_s / tau)))
 
-            # Glucogeno (Romijn)
+            # Glucogeno (Romijn) — glyc_rate es CHO total; el glucogeno muscular
+            # es una fraccion (GLYC_FRAC), igual que en running.
             if ratio > 0:
-                consumo = glyc_rate(ratio) * dur_min
+                consumo = glyc_rate(ratio) * dur_min * 0.55
                 glyc = max(0, glyc - consumo)
 
             tiempo_acum += dur_s

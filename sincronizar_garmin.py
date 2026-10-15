@@ -815,6 +815,27 @@ def _bajar_streams(client, activity_id, atleta_id, sesion_id, sport, conn):
                     _s['ts_s'] = round(_dur_s * _i / max(1, _n - 1), 1)
                 print(f'    [FIX] ts_s colapsado ({_distintos} distintos en {_n} pts) '
                       f'-> repartido en {_dur_s/60:.0f} min')
+
+            # BLINDAJE distancia: Garmin manda sumDistance a veces en metros y a
+            # veces en centimetros, y el parser divide por 100 fijo -> en algunas
+            # actividades la distancia queda 100x mas chica (26.9km -> 0.27km).
+            # Si no cuadra con la distancia REAL de la sesion, se reescala
+            # proporcionalmente (la forma del recorrido es correcta, solo la escala).
+            try:
+                _dmax = max((s.get('distance_m') or 0) for s in samples)
+                _drow = conn.execute('SELECT distance_km FROM sesiones WHERE id=%s', (sesion_id,)).fetchone()
+                _dkm_real = float(_drow[0]) if _drow and _drow[0] else 0.0
+                if _dmax > 0 and _dkm_real > 0.3:
+                    _ratio = (_dkm_real * 1000.0) / _dmax
+                    if _ratio > 3 or _ratio < 0.33:   # desfasaje grande -> corregir escala
+                        for _s in samples:
+                            if _s.get('distance_m') is not None:
+                                _s['distance_m'] = round(_s['distance_m'] * _ratio, 1)
+                        print(f'    [FIX] distancia reescalada x{round(_ratio,1)} '
+                              f'(venia {round(_dmax/1000,2)}km, real {_dkm_real}km)')
+            except Exception:
+                pass
+
             n = _guardar_streams(conn, atleta_id, sesion_id, activity_id, samples)
             print(f'    [OK] Streams: {n} samples ({sport})')
 
