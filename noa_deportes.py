@@ -218,6 +218,11 @@ class ZonasCycling:
         zonas = {}
         for codigo, nombre, pct_min, pct_max, lactato, vo2, biblio, color in self.DEFINICIONES:
             w_min = round(self.ftp * pct_min)
+            # Z1 (pct_min=0) no debe arrancar en 0W: 0W = sin pedalear. Cualquier
+            # pedaleo suave ya ronda 40-60W. Se le da un piso real de movimiento
+            # que escala suave con el FTP (y nunca baja de 40W), para todos los atletas.
+            if pct_min <= 0:
+                w_min = max(40, round(self.ftp * 0.20))
             w_max = round(self.ftp * pct_max) if pct_max < 9 else None
             hr_estimado_min = round(self.lthr_bike * pct_min) if pct_min > 0.4 else None
             hr_estimado_max = round(self.lthr_bike * min(pct_max, 1.1))

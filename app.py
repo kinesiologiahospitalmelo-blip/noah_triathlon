@@ -29,6 +29,21 @@ from functools import wraps
 BASE_DIR = Path(__file__).parent
 sys.path.insert(0, str(BASE_DIR))
 
+# Zona horaria del proceso: Argentina. El server corre en UTC; sin esto,
+# date.today()/datetime.now() cambiaban de día a las 21:00 de Argentina
+# (medianoche UTC) -- de ahí que "tipo 20 pasaba al día siguiente". Fijar TZ
+# hace que TODAS las llamadas naive a fecha/hora usen hora argentina de una
+# sola vez, sin tocar los 44 call-sites. (datetime.utcnow() sigue siendo UTC).
+# Interruptor: para apagarlo sin tocar código ni redeployar, poné
+# NOAH_TZ_AR=0 en las variables de entorno (Vercel) y vuelve a UTC.
+try:
+    if os.environ.get('NOAH_TZ_AR', '1') != '0':
+        os.environ['TZ'] = 'America/Argentina/Buenos_Aires'
+        import time as _time
+        _time.tzset()   # solo Unix (el server de producción es Linux)
+except Exception:
+    pass
+
 import os
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -1470,14 +1485,17 @@ def get_nutricion_post(atleta_id):
         # existen en absoluto) -- este endpoint tiraba excepción siempre
         # que se lo llamaba. Se deja con rollback-safe por si en algún
         # entorno faltase incluso 'calorias'.
+        # intensity_factor SÍ existe en 'sesiones' (lo usa nutricion_dia). Se
+        # lee para que la recomendación NO sea igual para todos: la intensidad
+        # real de la sesión cambia proteína, CHO, hidratación y sodio.
         if sesion_id:
             act = _query_rollback_safe(conn, """
-                SELECT sport, duration_min, tss_total, calorias
+                SELECT sport, duration_min, tss_total, calorias, intensity_factor
                 FROM sesiones WHERE id=%s
             """, (sesion_id,))
         else:
             act = _query_rollback_safe(conn, """
-                SELECT sport, duration_min, tss_total, calorias
+                SELECT sport, duration_min, tss_total, calorias, intensity_factor
                 FROM sesiones WHERE atleta_id=%s AND fecha=%s
                 ORDER BY duration_min DESC LIMIT 1
             """, (atleta_id, fecha))
@@ -1487,10 +1505,21 @@ def get_nutricion_post(atleta_id):
         if not act:
             return ok({'sin_actividad': True, 'mensaje': 'Sin actividad real registrada ese día.'})
 
-        sport, dur_min, tss_total, calorias = act
-        # if_sesion/temperatura_avg no existen en la tabla -- se usa un
-        # valor por defecto conservador en vez de asumir un dato que no hay.
-        intensidad_if = 0.75
+        sport, dur_min, tss_total, calorias, if_real = act
+        # Intensidad REAL de la sesión. Si no vino el IF directo, se estima
+        # desde el TSS y la duración (proxy conservador), y recién como último
+        # recurso cae a 0.75. Así cada sesión da una recomendación distinta.
+        try:
+            _ifr = float(if_real) if if_real else 0
+        except Exception:
+            _ifr = 0
+        if _ifr and _ifr > 0:
+            intensidad_if = min(_ifr, 1.2)
+        elif tss_total and dur_min and float(dur_min) > 0:
+            _dh = float(dur_min) / 60.0
+            intensidad_if = min((float(tss_total) / (_dh * 100)) ** 0.5, 1.2) if _dh > 0 else 0.75
+        else:
+            intensidad_if = 0.75
 
         if not dur_min or dur_min <= 0:
             return ok({'sin_actividad': True, 'mensaje': 'Actividad sin duración válida.'})
@@ -1505,7 +1534,9 @@ def get_nutricion_post(atleta_id):
                 'sport': sport, 'duracion_real_min': dur_min,
             })
 
-        from noah_nutricion_completa import construir_recomendacion_post
+        from noah_nutricion_completa import (construir_recomendacion_post,
+                                             construir_recomendacion_durante,
+                                             calcular_hidratacion_durante)
 
         rec = construir_recomendacion_post(
             peso_kg=peso_kg, dur_real_min=dur_min, intensidad_if_real=intensidad_if,
@@ -1514,6 +1545,36 @@ def get_nutricion_post(atleta_id):
         rec['sport'] = sport
         rec['duracion_real_min'] = dur_min
         rec['calorias_reales'] = calorias
+        rec['intensidad_if_usada'] = round(intensidad_if, 2)
+
+        # REPOSICIÓN según lo PERDIDO en ESTA sesión (no genérico para todos):
+        # se estima el líquido/sodio sudados con el modelo de hidratación por
+        # duración+intensidad+deporte, y se repone 125-150% del déficit
+        # (Shirreffs & Sawka 2011). Declarado como estimación.
+        try:
+            hid = calcular_hidratacion_durante(dur_min, peso_kg, 20, intensidad_if, sport)
+            perdida_ml = hid.get('liquido_ml_total') or 0
+            sodio_mg = hid.get('sodio_mg_total') or 0
+            rec['reposicion'] = {
+                'liquido_perdido_ml_estimado': perdida_ml,
+                'liquido_a_reponer_ml': round(perdida_ml * 1.35) if perdida_ml else None,
+                'sodio_mg': sodio_mg,
+                'es_estimacion': True,
+                'fuentes_electrolitos': (['Bebida isotónica', 'Una pizca de sal en la comida/caldo',
+                                          'Sales de rehidratación efervescentes'] if sodio_mg > 0 else []),
+                'frutas': ['Banana (potasio + CHO rápido)', 'Naranja o mandarina',
+                           'Dátiles', 'Sandía o melón (hidratan)'],
+                'mensaje': hid.get('mensaje'),
+            }
+        except Exception as _e_hid:
+            rec['reposicion'] = {'es_estimacion': True, 'error': str(_e_hid)}
+
+        # Recomendación DURANTE (para mostrar junto al plan / próxima sesión de
+        # este tipo), además del apartado de estrategias.
+        try:
+            rec['durante'] = construir_recomendacion_durante(sport, dur_min, intensidad_if, peso_kg)
+        except Exception:
+            rec['durante'] = None
 
         return ok(rec)
 
