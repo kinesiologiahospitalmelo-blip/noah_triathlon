@@ -65,6 +65,46 @@ function _dkm(p) {
   if (p.distance_m != null) return p.distance_m / 1000
   return null
 }
+// Distancia a partir de las coordenadas GPS (Haversine, metros entre 2 puntos).
+function _haversine(aLat, aLon, bLat, bLon) {
+  const R = 6371000, toR = Math.PI / 180
+  const dLat = (bLat - aLat) * toR, dLon = (bLon - aLon) * toR
+  const la1 = aLat * toR, la2 = bLat * toR
+  const h = Math.sin(dLat/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+// BLINDAJE DISTANCIA (para TODOS los atletas y TODAS las actividades con GPS):
+// en muchos entrenos continuos el stream de distancia (dist_km/distance_m) viene
+// colapsado -> la distancia total y el ritmo quedan mal (ej. 0.07 km fijo). Si el
+// stream no cuadra con la distancia real recorrida según las coordenadas GPS, se
+// reconstruye dist_km acumulado desde el GPS. No depende de re-sincronizar: corrige
+// al vuelo lo ya guardado. Si el stream es confiable, no se toca nada.
+function _aplicarDistanciaGps(series) {
+  if (!series || series.length < 2) return series
+  let acc = 0
+  const cum = [0]
+  for (let i = 1; i < series.length; i++) {
+    const p = series[i], q = series[i-1]
+    let d = 0
+    if (p.lat != null && p.lon != null && q.lat != null && q.lon != null) {
+      d = _haversine(q.lat, q.lon, p.lat, p.lon)
+      const dt = (p.t != null && q.t != null) ? (p.t - q.t) : 1
+      const maxStep = Math.max(30, 30 * (dt > 0 ? dt : 1)) // cap ~30 m/s -> ignora saltos GPS
+      if (d > maxStep) d = 0
+    }
+    acc += d
+    cum.push(acc)
+  }
+  const gpsKm = acc / 1000
+  if (gpsKm < 0.05) return series // sin GPS útil (cinta/pileta): no tocar
+  const last = series[series.length - 1]
+  const streamKm = last.dist_km != null ? last.dist_km
+                 : (last.distance_m != null ? last.distance_m / 1000 : null)
+  const roto = streamKm == null || streamKm < gpsKm * 0.5 || streamKm > gpsKm * 2.0
+  if (!roto) return series // el stream es confiable -> se respeta
+  for (let i = 0; i < series.length; i++) series[i].dist_km = +(cum[i] / 1000).toFixed(4)
+  return series
+}
 function paceVelEnPunto(series, i, win = 4) {
   const lo = Math.max(0, i - win), hi = Math.min(series.length - 1, i + win)
   const d0 = _dkm(series[lo]), d1 = _dkm(series[hi]), t0 = series[lo].t, t1 = series[hi].t
@@ -168,6 +208,7 @@ export default function SeccionRoute({ sesionId, atletaId, sport = 'running', he
       .then(r => {
         const s = r.data?.series || []
         const conGps = s.filter(p => p.lat != null && p.lon != null && !(p.lat === 0 && p.lon === 0))
+        _aplicarDistanciaGps(conGps)   // distancia robusta desde GPS si el stream vino roto
         _routeCache[cacheKey] = conGps
         setSeries(conGps)
         setLoading(false)

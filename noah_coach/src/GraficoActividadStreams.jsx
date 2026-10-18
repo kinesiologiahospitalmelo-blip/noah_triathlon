@@ -121,17 +121,6 @@ function getZoneByPace(pace, umbral, sport) {
   return r < 0.78 ? 'Z1' : r < 0.86 ? 'Z2' : r < 0.94 ? 'Z3'
        : r < 1.00 ? 'Z4' : r < 1.06 ? 'Z5' : 'Z6'
 }
-// Seleccionar la mejor zona disponible para un lap
-function getLapZone(lap, actLthr, sport, paceUmbral) {
-  // Swimming: siempre por pace (no suele tener HR)
-  if (sport === 'swimming' && lap.pace && paceUmbral) return getZoneByPace(lap.pace, paceUmbral, 'swimming')
-  // Si hay HR, usarla
-  if (lap.hr && actLthr) return getZone(lap.hr, actLthr)
-  // Fallback: pace si hay umbral
-  if (lap.pace && paceUmbral) return getZoneByPace(lap.pace, paceUmbral, sport)
-  return 'Z2'
-}
-
 // ── Zonas REALES (= "Mis Zonas"): clasifica un pace contra los rangos que
 //    devuelve /zonas/:sport (pace_min/pace_max "mm:ss"). Mismos límites, por atleta.
 function _paceToMin(p) {
@@ -161,6 +150,28 @@ function zonaPorMisZonas(pace, zonasArr) {
 function colorZonaArr(zona, zonasArr) {
   if (Array.isArray(zonasArr)) { const z = zonasArr.find(zz => zz.zona === zona); if (z && z.color) return z.color }
   return (D.zone && D.zone[zona]) || null
+}
+
+// ── FUENTE ÚNICA DE ZONA ──────────────────────────────────────────────
+// Antes había 4 clasificaciones distintas (fondo, barra de zona, barra de %,
+// tabla de laps) con fallbacks y colores diferentes -> nunca coincidían. Ahora
+// TODAS usan estas dos funciones: misma zona y mismo color en todos lados.
+// Natación: el pace a veces viene 10x (ej. 19 en vez de 1.9); se normaliza acá.
+function _swimPace(p) { return (p != null && p > 5) ? p / 10 : p }
+function zonaDeLap(lap, sport, zonasArr, paceUmbral, lthr) {
+  const pc = sport === 'swimming' ? _swimPace(lap.pace) : lap.pace
+  const hr = lap.hr != null ? lap.hr : lap.hr_avg     // fondo usa hr, tabla hr_avg
+  if ((sport === 'running' || sport === 'swimming') && pc != null) {
+    const z = zonaPorMisZonas(pc, zonasArr)          // 1) "mis zonas" por pace
+    if (z) return z
+    const um = sport === 'swimming' ? _swimPace(paceUmbral) : paceUmbral
+    if (um) return getZoneByPace(pc, um, sport)       // 2) por umbral/CSS
+  }
+  if (hr && lthr) return getZone(hr, lthr)            // 3) por FC
+  return 'Z2'
+}
+function colorDeZona(z, zonasArr) {
+  return colorZonaArr(z, zonasArr) || (D.zone && D.zone[z]) || (D.zone && D.zone.Z1) || '#8884d8'
 }
 function bezierPath(points) {
   if (!points || points.length < 2) return ''
@@ -322,8 +333,47 @@ export default function GraficoActividadStreams({
   // esta cargando, no se usa ese relleno -- se espera a que termine.
   const _rawSeries = usarLaps ? lapsComoSeries
     : (tieneStreams ? streams : (loading ? [] : (tieneLaps ? lapsComoSeries : [])))
+
+  // Pace por-muestra desde GPS (lat/lon): fuente confiable e independiente del
+  // speed_ms (que a veces viene 10x mal y por eso la línea de ritmo salía ~8:00
+  // cuando el lap real era ~4:57). SOLO display: NO toca el sync ni el parche x10.
+  // Si no hay GPS útil (pileta/cinta), devuelve null y cae al speed_ms de siempre.
+  // Solo run/swim (bike se maneja por potencia).
+  const _gpsPace = (() => {
+    if (!(sport === 'running' || sport === 'swimming')) return null
+    const n = _rawSeries.length
+    if (n < 3 || !_rawSeries.some(p => p.lat != null && p.lon != null)) return null
+    const R = 6371000, toR = Math.PI / 180
+    const cum = new Array(n).fill(0)
+    for (let i = 1; i < n; i++) {
+      const p = _rawSeries[i], q = _rawSeries[i-1]
+      let d = 0
+      if (p.lat != null && p.lon != null && q.lat != null && q.lon != null) {
+        const dLat = (p.lat - q.lat)*toR, dLon = (p.lon - q.lon)*toR
+        const h = Math.sin(dLat/2)**2 + Math.cos(q.lat*toR)*Math.cos(p.lat*toR)*Math.sin(dLon/2)**2
+        d = 2*R*Math.asin(Math.min(1, Math.sqrt(h)))
+        const dt = (p.t != null && q.t != null) ? (p.t - q.t) : 1
+        if (d > Math.max(40, 40*(dt > 0 ? dt : 1))) d = 0   // ignora saltos GPS espurios
+      }
+      cum[i] = cum[i-1] + d
+    }
+    if (cum[n-1] < 50) return null   // sin GPS útil
+    const Wn = 5
+    const out = new Array(n).fill(null)
+    for (let i = 0; i < n; i++) {
+      const lo = Math.max(0, i - Wn), hi = Math.min(n - 1, i + Wn)
+      const dm = cum[hi] - cum[lo]
+      const dt = (_rawSeries[hi].t != null ? _rawSeries[hi].t : 0) - (_rawSeries[lo].t != null ? _rawSeries[lo].t : 0)
+      if (dm > 1 && dt > 0) {
+        const spd = dm / dt
+        if (spd > 0.4) out[i] = parseFloat((sport === 'swimming' ? 100/(spd*60) : 1000/(spd*60)).toFixed(3))
+      }
+    }
+    return out
+  })()
+
   const series = _rawSeries.map((s, idx) => {
-    let pace = s.pace
+    let pace = (_gpsPace && _gpsPace[idx] != null) ? _gpsPace[idx] : s.pace
     if (pace == null && s.speed_ms && s.speed_ms > 0.01) {
       // speed_ms en la DB de Garmin esta 10x mas chico (factor 0.1 en sincronizar_garmin)
       const spd = s.speed_ms < 0.5 ? s.speed_ms * 10 : s.speed_ms
@@ -378,6 +428,14 @@ export default function GraficoActividadStreams({
   const paceUmbral = sport === 'swimming'
     ? (_zonasData?.css || cssProp || act?.css_100m || act?.css || null)
     : (_zonasData?.pace_umbral || paceUmbralProp || act?.pace_umbral || act?.pace_umbral_run || null)
+
+  // Umbral EFECTIVO para clasificar zonas por pace (lo usan fondo, barras y
+  // tabla, vía zonaDeLap, para que TODOS coincidan). En swim, si no hay CSS,
+  // se estima desde la mediana-baja de los paces de los laps.
+  const effUmbral = paceUmbral || (sport === 'swimming' ? (() => {
+    const wp = _lapsNorm.map(l => l.pace).filter(Boolean).map(p => p > 5 ? p/10 : p).sort((a,b)=>a-b)
+    return wp.length ? wp[Math.floor(wp.length*0.4)] : null
+  })() : null)
 
   // Suavizado rolling average para potencia en cycling
   const smoothWindow = sport === 'cycling' ? 3 : 1
@@ -691,25 +749,10 @@ export default function GraficoActividadStreams({
               const x2 = PL + (t2 / Math.max(maxT,1)) * iW
               const w  = Math.max(1, x2 - x1)
 
-              // Si swimming y no hay paceUmbral, estimar CSS desde mediana de paces
-              const _pu = paceUmbral || (sport==='swimming' ? (() => {
-                const wPaces = _lapsNorm.map(l=>l.pace).filter(Boolean).map(p=>p>5?p/10:p).sort((a,b)=>a-b)
-                return wPaces.length > 0 ? wPaces[Math.floor(wPaces.length*0.4)] : null
-              })() : null)
-              const _css = paceUmbral || _pu
-              let z = 'Z2'
-              const _zReal = (sport==='running'||sport==='swimming') && lap.pace ? zonaPorMisZonas(lap.pace, _zonasData?.zonas) : null
-              if (_zReal) {
-                z = _zReal
-              } else if (sport === 'swimming' && lap.pace && _css) {
-                const p100 = lap.pace > 5 ? lap.pace / 10 : lap.pace
-                const r = _css / p100
-                z = r < 0.78 ? 'Z1' : r < 0.86 ? 'Z2' : r < 0.94 ? 'Z3' : r < 1.00 ? 'Z4' : r < 1.06 ? 'Z5' : 'Z6'
-              } else if (lap.hr && actLthr) {
-                const r = lap.hr / actLthr
-                z = r < 0.82 ? 'Z1' : r < 0.88 ? 'Z2' : r < 0.94 ? 'Z3' : r < 1.00 ? 'Z4' : r < 1.06 ? 'Z5' : 'Z6'
-              }
-              const zoneCol = D.zone[z] || D.zone.Z2
+              // Zona + color UNIFICADOS (misma fuente que la barrita, la barra de
+              // % y la tabla de laps) -> todos coinciden.
+              const z = zonaDeLap(lap, sport, _zonasData?.zonas, effUmbral, actLthr)
+              const zoneCol = colorDeZona(z, _zonasData?.zonas)
 
               // Altura del bloque según la métrica principal del deporte
               let blockTop = PT
@@ -891,9 +934,9 @@ export default function GraficoActividadStreams({
               const x1 = PL + (t1 / Math.max(maxT,1)) * iW
               const x2 = PL + (t2 / Math.max(maxT,1)) * iW
               const w  = Math.max(1, x2 - x1 - 0.5)
-              const z  = ((sport==='running'||sport==='swimming') && lap.pace && zonaPorMisZonas(lap.pace, _zonasData?.zonas)) || getLapZone(lap, actLthr, sport, paceUmbral)
+              const z  = zonaDeLap(lap, sport, _zonasData?.zonas, effUmbral, actLthr)
               return <rect key={i} x={x1} y={barY} width={w} height={barH}
-                fill={D.zone[z] || D.zone.Z1} opacity="0.85" rx="1"/>
+                fill={colorDeZona(z, _zonasData?.zonas)} opacity="0.85" rx="1"/>
             })
           })()}
           {(!tieneLaps || _lapsNorm.length < 1) && canalesOn.hr && hrVals.length > 0 && (() => {
@@ -989,23 +1032,30 @@ export default function GraficoActividadStreams({
           de color de cada zona debajo -- igual criterio que Endurance/FTP/VO2
           en Distribución: mismo lenguaje de zonas en toda la app. */}
       {(() => {
-        // Distribución por MIS ZONAS (clasifica laps con los rangos reales del atleta);
-        // si no hay zonas reales (ej. cycling), usa streamZonas.
+        // El % de cada zona se calcula clasificando cada LAP por su pace de
+        // Garmin (dato autoritativo del reloj), ponderado por duración. Es la
+        // MISMA clasificación que la columna ZONA de la tabla de laps -> barra y
+        // tabla coinciden. (El pace por-muestra del stream a veces viene roto y
+        // pintaba todo en Z1; por eso NO se usa streamZonas como fuente acá.)
+        // Se recorren EXACTAMENTE los mismos laps que pinta el fondo (_lapsNorm),
+        // con la MISMA función (zonaDeLap) y ponderando por duración -> el % de
+        // cada zona coincide con lo pintado y con la columna ZONA de la tabla.
         let lista = null
-        if (tieneLaps && (sport==='running'||sport==='swimming') && _zonasData?.zonas) {
+        if (tieneLaps && (sport==='running'||sport==='swimming') && _lapsNorm.length) {
           const acc = {}; let tot = 0
-          for (const l of laps) {
+          for (const l of _lapsNorm) {
             const dur = l.duration_min || 0
-            if (dur<=0 || !l.pace) continue
-            const z = zonaPorMisZonas(l.pace, _zonasData.zonas)
+            if (dur <= 0) continue
+            const z = zonaDeLap(l, sport, _zonasData?.zonas, effUmbral, actLthr)
             if (!z) continue
             acc[z] = (acc[z]||0) + dur; tot += dur
           }
           if (tot>0) lista = ['Z1','Z2','Z3','Z4','Z5','Z6'].filter(z=>acc[z]>0)
-            .map(z => [z, { pct: acc[z]/tot*100, _c: colorZonaArr(z, _zonasData.zonas) }])
+            .map(z => [z, { pct: acc[z]/tot*100, _c: colorDeZona(z, _zonasData?.zonas) }])
         }
-        if (!lista && series.length >= 1 && streamZonas) {
-          lista = Object.entries(streamZonas).filter(([,v]) => v.pct > 0).map(([z,v]) => [z, { pct: v.pct }])
+        // Fallback solo si no hay laps: distribución por-muestra.
+        if ((!lista || !lista.length) && series.length >= 1 && streamZonas) {
+          lista = Object.entries(streamZonas).filter(([,v]) => v.pct > 0).map(([z,v]) => [z, { pct: v.pct, _c: colorDeZona(z, _zonasData?.zonas) }])
         }
         if (!lista || !lista.length) return null
         return (
@@ -1030,7 +1080,7 @@ export default function GraficoActividadStreams({
         <LapsColapsable laps={laps} sport={sport} lthr={actLthr}
           hover={hover} setHover={setHover}
           ftp={act?.ftp_watts || act?.ftp}
-          defaultOpen={esLaps} paceUmbral={paceUmbral} zonasReales={_zonasData?.zonas}/>
+          defaultOpen={esLaps} paceUmbral={effUmbral} zonasReales={_zonasData?.zonas}/>
       )}
     </div>
   )
@@ -1140,7 +1190,6 @@ function TablaLaps({ laps, sport, lthr, hover, setHover, ftp, paceUmbral, zonasR
   const fmtP    = p => { if(!p) return '--'; const m=Math.floor(p),s=Math.round((p-m)*60); return `${m}:${String(s).padStart(2,'0')} /km` }
   const fmtDur  = min => { if(!min) return '--'; return `${Math.floor(min)}'${String(Math.round((min%1)*60)).padStart(2,'0')}"` }
   const hrColor = hr => { if(!hr||!lthr) return '#6366F1'; const r=hr/lthr; return r<0.82?'#6366F1':r<0.88?'#3B82F6':r<0.94?'#22C55E':r<1.00?'#EAB308':r<1.06?'#F97316':'#EF4444' }
-  const hrZone  = hr => { if(!hr||!lthr) return 'Z1'; const r=hr/lthr; return r<0.82?'Z1':r<0.88?'Z2':r<0.94?'Z3':r<1.00?'Z4':r<1.06?'Z5':'Z6' }
   const swimZone = pace => {
     if (!pace || !paceUmbral) return 'Z1'
     const p100 = pace > 5 ? pace / 10 : pace
@@ -1217,14 +1266,18 @@ function TablaLaps({ laps, sport, lthr, hover, setHover, ftp, paceUmbral, zonasR
         </thead>
         <tbody>
           {laps.map((l,i) => {
-            const _zR  = (sport==='running'||sport==='swimming') ? zonaPorMisZonas(l.pace, zonasReales) : null
             const zc  = sport === 'swimming' ? swimColor(l.pace) : hrColor(l.hr_avg)
-            const zn  = _zR || (sport === 'swimming' ? swimZone(l.pace) : hrZone(l.hr_avg))
-            const znC = colorZonaArr(zn, zonasReales) || (sport === 'swimming' ? swimColor(l.pace) : hrColor(l.hr_avg))
+            const zn  = zonaDeLap(l, sport, zonasReales, paceUmbral, lthr)   // MISMA función que el fondo/barras
+            const znC = colorDeZona(zn, zonasReales)
             const isH = hover===i
-            const metrica = sport==='swimming'&&l.swolf?l.swolf.toFixed(1)
-              :(l.avg_power||l.watts)?`${Math.round(l.avg_power||l.watts)}W`
-              :l.pace?fmtP(l.pace):'--'
+            // Columna de ritmo (esta tabla es running/swimming — NO ciclismo).
+            // Antes priorizaba avg_power -> en running con medidor de potencia
+            // mostraba "261W" en la columna PACE. Correcto: running = ritmo,
+            // swimming = swolf si hay, si no ritmo. La potencia va en la tabla
+            // de ciclismo, no acá.
+            const metrica = sport==='swimming'
+              ? (l.swolf ? l.swolf.toFixed(1) : (l.pace ? fmtP(l.pace) : '--'))
+              : (l.pace ? fmtP(l.pace) : '--')
             return (
               <tr key={i} onMouseEnter={()=>setHover?.(i)} onMouseLeave={()=>setHover?.(null)}
                 style={{ background:isH?'rgba(255,255,255,0.05)':'transparent', cursor:'default' }}>
