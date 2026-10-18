@@ -1032,42 +1032,61 @@ function NutricionPost({ atletaId, fecha, proxima24h }) {
   // el resto de la app para "completado / buena señal" -- reutilizarlo acá
   // confundía nutrición con un estado de cumplimiento. Celeste, en línea
   // con el ícono de hidratación.
-  const NUT_COLOR = '#38BDF8', NUT_COLOR_L = 'rgba(56,189,248,0.12)'
+  const NUT_COLOR = '#38BDF8'
+  // Recomendación de recuperación COMPLETA pero ORDENADA en secciones (según lo
+  // que gastó la sesión): qué comer en la ventana, hidratación (agua+electrolitos),
+  // fruta/snack y qué hacer durante la próxima según duración/intensidad. Todo con
+  // datos reales del backend (nut.recuperacion / nut.reposicion / nut.durante).
+  const rep   = nut.reposicion || {}
+  const fcho  = (r.fuentes_cho || []).slice(0,3).join(' · ')
+  const fprot = (r.fuentes_proteina || []).slice(0,3).join(' · ')
+  const fele  = (rep.fuentes_electrolitos || []).slice(0,3).join(' · ')
+  const ffru  = (rep.frutas || []).slice(0,3).join(' · ')
+
+  const secs = []
+  if (r.cho_recuperacion_g_total_4h || r.proteina_g_por_toma) secs.push({
+    Ic: Flame, color:'#FB923C', label:'Comer en la ventana (0–2 h)',
+    body: (<>
+      {r.cho_recuperacion_g_total_4h ? <><b style={{color:'#fff'}}>{r.cho_recuperacion_g_total_4h} g de hidratos</b> en las próximas 4 h</> : null}
+      {(r.cho_recuperacion_g_total_4h && r.proteina_g_por_toma) ? ' + ' : null}
+      {r.proteina_g_por_toma ? <><b style={{color:'#fff'}}>{r.proteina_g_por_toma} g de proteína</b> por toma</> : null}.
+      {(fcho || fprot) && <div style={{opacity:0.7, marginTop:2, fontSize:11}}>{[fcho, fprot].filter(Boolean).join('  ·  ')}</div>}
+    </>)
+  })
+  if (rep.liquido_a_reponer_ml || rep.sodio_mg) secs.push({
+    Ic: GlassWater, color:'#38BDF8', label:'Hidratación',
+    body: (<>
+      Reponé <b style={{color:'#fff'}}>{rep.liquido_a_reponer_ml || '--'} ml</b>{rep.sodio_mg > 0 ? <> + <b style={{color:'#fff'}}>{rep.sodio_mg} mg de sodio</b></> : null} en las próximas horas.
+      {fele && <div style={{opacity:0.7, marginTop:2, fontSize:11}}>Electrolitos: {fele}</div>}
+    </>)
+  })
+  if (ffru) secs.push({ Ic: Banana, color:'#FACC15', label:'Fruta / snack rápido', body: ffru })
+  if (nut.durante?.texto_corto) secs.push({
+    Ic: Zap, color:'#A78BFA', label:'Durante la próxima sesión de este tipo', body: nut.durante.texto_corto
+  })
+
   return (
-    <div style={{ marginTop:12, padding:'12px 14px', background:NUT_COLOR_L,
-      border:`1px solid ${NUT_COLOR}40`, borderRadius:8, fontSize:12, color:NUT_COLOR, lineHeight:1.6 }}>
-      <div style={{ fontWeight:700, marginBottom:6, display:'flex', alignItems:'center', gap:5 }}>
-        <GlassWater size={14}/> Recuperación post-entreno
+    <div style={{ marginTop:12, padding:'14px 15px', borderRadius:13,
+      background:'linear-gradient(180deg, rgba(56,189,248,0.07), rgba(255,255,255,0.015))',
+      border:'1px solid rgba(56,189,248,0.22)' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+        <GlassWater size={16} color={NUT_COLOR}/>
+        <span style={{ fontWeight:800, fontSize:13.5, color:'#EAF6FF' }}>Recuperación post-entreno</span>
+        <span style={{ marginLeft:'auto', fontSize:9, opacity:0.55, fontWeight:700, color:'#fff', textTransform:'uppercase', letterSpacing:'0.5px' }}>según lo gastado</span>
       </div>
-      <div><b>Proteína:</b> {r.proteina_g_por_toma}g por toma — {(r.fuentes_proteina||[]).slice(0,3).join(', ')}</div>
-      {r.cho_recuperacion_g_total_4h && (
-        <div style={{marginTop:4}}><b>CHO recuperación:</b> {r.cho_recuperacion_g_total_4h}g en las próximas 4h — {(r.fuentes_cho||[]).slice(0,3).join(', ')}</div>
-      )}
-      <div style={{marginTop:4, opacity:0.85}}>{r.cho_mensaje}</div>
-
-      {/* Reposición de lo PERDIDO en esta sesión (hidratación + electrolitos + frutas) */}
-      {nut.reposicion && (nut.reposicion.liquido_a_reponer_ml || nut.reposicion.sodio_mg) && (
-        <div style={{marginTop:8, paddingTop:8, borderTop:`1px solid ${NUT_COLOR}22`}}>
-          {nut.reposicion.liquido_a_reponer_ml && (
-            <div><b>Hidratación:</b> reponé ~{nut.reposicion.liquido_a_reponer_ml} ml
-              {nut.reposicion.sodio_mg > 0 ? ` + ~${nut.reposicion.sodio_mg} mg de sodio` : ''} en las próximas horas</div>
-          )}
-          {(nut.reposicion.fuentes_electrolitos||[]).length > 0 && (
-            <div style={{marginTop:3, opacity:0.85}}><b>Electrolitos:</b> {nut.reposicion.fuentes_electrolitos.slice(0,3).join(' · ')}</div>
-          )}
-          {(nut.reposicion.frutas||[]).length > 0 && (
-            <div style={{marginTop:3, opacity:0.85}}><b>Frutas:</b> {nut.reposicion.frutas.slice(0,3).join(' · ')}</div>
-          )}
-          <div style={{marginTop:3, fontSize:10, opacity:0.6}}>Estimado según lo perdido en esta sesión.</div>
+      {secs.map((s,i)=>(
+        <div key={i} style={{ display:'flex', gap:10, padding:'10px 0', borderTop:'1px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ width:26, height:26, borderRadius:8, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:`${s.color}1f`, border:`1px solid ${s.color}3a` }}>
+            <s.Ic size={14} color={s.color}/>
+          </div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:9.5, fontWeight:800, color:s.color, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:3 }}>{s.label}</div>
+            <div style={{ fontSize:12, color:'rgba(255,255,255,0.82)', lineHeight:1.5 }}>{s.body}</div>
+          </div>
         </div>
-      )}
-
-      {/* Recomendación "durante" para la próxima sesión de este tipo */}
-      {nut.durante?.texto_corto && (
-        <div style={{marginTop:8, paddingTop:8, borderTop:`1px solid ${NUT_COLOR}22`}}>
-          <div><b>Durante (próxima sesión de este tipo):</b></div>
-          <div style={{marginTop:3, opacity:0.85}}>{nut.durante.texto_corto}</div>
-        </div>
+      ))}
+      {r.cho_mensaje && (
+        <div style={{ marginTop:9, paddingTop:9, borderTop:'1px solid rgba(255,255,255,0.07)', fontSize:10.5, color:'rgba(255,255,255,0.5)', fontStyle:'italic' }}>{r.cho_mensaje}</div>
       )}
     </div>
   )
@@ -1210,7 +1229,12 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
         <SeccionRoute sesionId={act.sesion_id || act.id} atletaId={atletaId} sport={sport} />
       </div>
 
-      {/* Torque y W'bal — solo para ciclismo, bajo demanda */}
+      {/* Reserva energética — MISMO panel para los 3 deportes.
+          run/swim -> glucógeno+D-bal+energía ; bike -> W'bal (su motor). */}
+      <EnergyReserveTimeline atletaId={atletaId} sesionId={act.sesion_id || act.id} act={act} sport={sport} />
+
+      {/* Torque, cuadrantes y curva de potencia — análisis extra de ciclismo
+          (el W'bal ya vive arriba, en el panel unificado). */}
       {sport === 'cycling' && (
         <TorqueWbalBotones
           atletaId={atletaId}
@@ -1218,14 +1242,6 @@ const ActividadCard = memo(function ActividadCard({ act, sesionPresc, atletaId }
           ftp={act.ftp || 200}
           cadenciaOptima={85}
         />
-      )}
-
-      {sport === 'running' && (
-        <EnergyReserveTimeline atletaId={atletaId} sesionId={act.sesion_id || act.id} act={act} />
-      )}
-
-      {sport === 'swimming' && (
-        <SwimEnergyTimeline atletaId={atletaId} sesionId={act.sesion_id || act.id} />
       )}
 
 
@@ -3656,7 +3672,7 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
         Métricas avanzadas
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom: vista ? 14 : 0 }}>
-        {[['torque', Zap, 'Torque'], ['wbal', BatteryFull, "W'bal"]].map(([v, Icon, label]) => (
+        {[['torque', Zap, 'Torque']].map(([v, Icon, label]) => (
           <button key={v} onClick={() => toggle(v)} style={{
             display:'flex', alignItems:'center', gap:10, width:'100%',
             padding:'10px 12px', borderRadius:12, fontSize:13, fontWeight:600,
@@ -5149,88 +5165,6 @@ function ProyeccionMultideporte({ atletaId }) {
 
 
 
-// -- Energy Reserve Timeline -- D-bal premium para running
-
-// -- SwimEnergyTimeline v2 -- 3 curvas
-function SwimEnergyTimeline({ atletaId, sesionId }) {
-  const [open, setOpen] = useState(false)
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [hIdx, setHIdx] = useState(null)
-  const load = async () => {
-    if (data) return; setLoading(true)
-    try { const r = await authFetch(`${API}/atletas/${atletaId}/sesiones/${sesionId}/dbal_swimming`); const d = await r.json(); setData(d.data || d) } catch {}
-    setLoading(false)
-  }
-  useEffect(() => { setData(null); setOpen(false) }, [sesionId])
-  const toggle = () => { setOpen(o => !o); if (!data) load() }
-  const { samples=[], metricas={} } = data || {}
-  const fP = p => { if(!p) return '--'; return `${Math.floor(p)}:${String(Math.round((p%1)*60)).padStart(2,'0')}` }
-  const W=580, H=200, PL=42, PR=8, PT=16, PB=22, iW=580-42-8, iH=200-16-22, n=samples.length||1
-  const xL = i => PL+(i/(n-1||1))*iW
-  const yD = p => PT+iH-(Math.max(0,Math.min(100,p))/100)*iH
-  const dP = n>1?samples.map((s,i)=>`${i?'L':'M'}${xL(i).toFixed(1)},${yD(s.dbal_pct).toFixed(1)}`).join(' '):''
-  const gP = n>1?samples.map((s,i)=>`${i?'L':'M'}${xL(i).toFixed(1)},${yD(s.glyc_pct||100).toFixed(1)}`).join(' '):''
-  const eP = n>1?samples.map((s,i)=>`${i?'L':'M'}${xL(i).toFixed(1)},${yD(s.energia_pct!=null?s.energia_pct:100).toFixed(1)}`).join(' '):''
-  const hP = hIdx!=null&&hIdx<n?samples[hIdx]:null
-  const onM = e => {const r=e.currentTarget.getBoundingClientRect();const ratio=(e.clientX-r.left-(PL*(r.width/W)))/(iW*(r.width/W));const idx=Math.round(ratio*(n-1));if(idx>=0&&idx<n)setHIdx(idx);else setHIdx(null)}
-  return (
-    <div style={{padding:'12px 6px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-      <div style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.35)',
-        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8, padding:'0 2px' }}>
-        Métricas avanzadas
-      </div>
-      <button onClick={toggle} style={{
-        display:'flex', alignItems:'center', gap:10, width:'100%',
-        padding:'10px 12px', borderRadius:12, fontSize:13, fontWeight:600,
-        background: open ? 'rgba(52,211,153,0.10)' : 'rgba(255,255,255,0.03)',
-        border:`1px solid ${open ? 'rgba(52,211,153,0.35)' : 'rgba(255,255,255,0.07)'}`,
-        color: open ? '#34D399' : 'rgba(255,255,255,0.75)',
-        cursor:'pointer', transition:'all 0.15s', textAlign:'left',
-      }}>
-        <BatteryFull size={15} color={open ? '#34D399' : 'rgba(255,255,255,0.4)'}/>
-        <span style={{ flex:1 }}>{loading ? 'Calculando...' : 'Reserva energética'}</span>
-        <span style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>Ver análisis</span>
-        <ChevronRight size={14} color="rgba(255,255,255,0.3)"
-          style={{ transform: open ? 'rotate(90deg)' : 'none', transition:'transform 0.2s' }}/>
-      </button>
-      {open && data && data.disponible && (
-        <div style={{marginTop:14,background:'#0D1117',borderRadius:12,padding:'14px 10px',border:'1px solid rgba(255,255,255,0.06)'}}>
-          <div style={{display:'flex',gap:14}}>
-            <div style={{flex:7}}>
-              <div style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'1px',marginBottom:6}}>RESERVA — <span style={{color:'#34D399'}}>D-bal</span> / <span style={{color:'#EAB308'}}>Glucogeno</span> / <span style={{color:'#F472B6'}}>Energia</span></div>
-              <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{display:'block'}} onMouseMove={onM} onMouseLeave={()=>setHIdx(null)}>
-                <defs><clipPath id="cES"><rect x={PL} y={PT} width={iW} height={iH}/></clipPath></defs>
-                <rect x={PL} y={yD(100)} width={iW} height={yD(50)-yD(100)} fill="rgba(52,211,153,0.07)"/>
-                <rect x={PL} y={yD(50)} width={iW} height={yD(25)-yD(50)} fill="rgba(234,179,8,0.06)"/>
-                <rect x={PL} y={yD(25)} width={iW} height={yD(10)-yD(25)} fill="rgba(249,115,22,0.06)"/>
-                <rect x={PL} y={yD(10)} width={iW} height={yD(0)-yD(10)} fill="rgba(239,68,68,0.07)"/>
-                {[100,50,25,10,0].map(v=><line key={v} x1={PL} y1={yD(v)} x2={W-PR} y2={yD(v)} stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>)}
-                {gP&&<path d={gP} fill="none" stroke="#EAB308" strokeWidth="1.5" strokeDasharray="4 2" clipPath="url(#cES)"/>}
-                {eP&&<path d={eP} fill="none" stroke="#F472B6" strokeWidth="2" clipPath="url(#cES)"/>}
-                {dP&&<path d={dP} fill="none" stroke="#34D399" strokeWidth="2.5" clipPath="url(#cES)"/>}
-                {samples.map((s,i)=><circle key={i} cx={xL(i)} cy={yD(s.dbal_pct)} r={hIdx===i?5:3} fill={s.dbal_pct>50?'#34D399':s.dbal_pct>25?'#EAB308':s.dbal_pct>10?'#F97316':'#EF4444'} stroke="#0D1117" strokeWidth="1.5" style={{cursor:'pointer'}} onMouseEnter={()=>setHIdx(i)}/>)}
-                {[100,50,25,10,0].map(v=><text key={v} x={PL-5} y={yD(v)+3} textAnchor="end" fontSize="8" fill="rgba(255,255,255,0.25)">{v}%</text>)}
-                {samples.filter((_,i)=>i%(Math.ceil(n/8)||1)===0||i===n-1).map(s=>{const idx=samples.indexOf(s);return <text key={idx} x={xL(idx)} y={H-3} textAnchor="middle" fontSize="7" fill="rgba(255,255,255,0.25)">{s.lap}</text>})}
-                {hP&&<><line x1={xL(hIdx)} y1={PT} x2={xL(hIdx)} y2={PT+iH} stroke="rgba(255,255,255,0.15)" strokeWidth="1"/><rect x={xL(hIdx)-60} y={yD(hP.dbal_pct)-22} width={120} height={18} rx={4} fill="rgba(0,0,0,0.85)"/><text x={xL(hIdx)} y={yD(hP.dbal_pct)-10} textAnchor="middle" fontSize="8" fill="#fff" fontWeight="600">{Math.round(hP.dbal_pct)}%D {Math.round(hP.glyc_pct||100)}%G {Math.round(hP.energia_pct||100)}%E L{hP.lap}</text></>}
-              </svg>
-            </div>
-            <div style={{flex:3,display:'flex',flexDirection:'column',gap:12,paddingTop:8}}>
-              <div><div style={{fontSize:8,color:'rgba(255,255,255,0.3)',marginBottom:2}}>D-BAL</div><div style={{fontSize:22,fontWeight:800,color:'#34D399'}}>{n>0?`${Math.round(samples[n-1].dbal_pct)}%`:'--'}</div></div>
-              <div><div style={{fontSize:8,color:'rgba(255,255,255,0.3)',marginBottom:2}}>GLUCOGENO</div><div style={{fontSize:22,fontWeight:800,color:'#EAB308'}}>{n>0?`${Math.round(samples[n-1].glyc_pct||100)}%`:'--'}</div>{metricas.glyc_consumido_g?<div style={{fontSize:9,color:'rgba(255,255,255,0.3)'}}>{metricas.glyc_consumido_g}g</div>:null}</div>
-              <div><div style={{fontSize:8,color:'rgba(255,255,255,0.3)',marginBottom:2}}>ENERGIA</div><div style={{fontSize:22,fontWeight:800,color:'#F472B6'}}>{n>0?`${Math.round(samples[n-1].energia_pct||100)}%`:'--'}</div></div>
-              <div style={{borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:8}}><div style={{fontSize:8,color:'rgba(255,255,255,0.3)',marginBottom:2}}>CSS</div><div style={{fontSize:16,fontWeight:700,color:'#34D399'}}>{fP(metricas.css_min100)}/100m</div></div>
-              {metricas.readiness&&metricas.readiness<100?<div><div style={{fontSize:8,color:'rgba(255,255,255,0.3)',marginBottom:2}}>READINESS</div><div style={{fontSize:16,fontWeight:700,color:metricas.readiness>70?'#34D399':metricas.readiness>40?'#EAB308':'#EF4444'}}>{Math.round(metricas.readiness)}%</div></div>:null}
-            </div>
-          </div>
-        </div>
-      )}
-      {open&&data&&!data.disponible&&<div style={{marginTop:12,padding:14,color:'rgba(255,255,255,0.35)',fontSize:12,textAlign:'center'}}>{data.msg}</div>}
-      {open&&!data&&loading&&<div style={{marginTop:12,padding:16,color:'rgba(255,255,255,0.35)',fontSize:12,textAlign:'center'}}>Calculando...</div>}
-    </div>
-  )
-}
-
 
 // ── Reserva energética (RUN/SWIM) — reproducción fiel de la referencia:
 //    un único gráfico con las TRES curvas reales del backend
@@ -5245,21 +5179,24 @@ const ER_C = {
   ener:  '#F472B6',   // magenta
   crit:  '#FF5470',   // rojo SOLO para la zona crítica 30%
 }
-const ER_SERIES = [
-  { key:'glyc_pct',    id:'gluc', label:'Glucógeno', color:ER_C.gluc, Icon:Flame },
-  { key:'dbal_pct',    id:'dbal', label:'D-bal',     color:ER_C.dbal, Icon:Zap },
-  { key:'energia_pct', id:'ener', label:'Energía',   color:ER_C.ener, Icon:BatteryFull },
-]
-const ER_TABS = [
-  { id:'resumen', label:'Resumen'   },
-  { id:'gluc',    label:'Glucógeno' },
-  { id:'dbal',    label:'D-bal'     },
-  { id:'ener',    label:'Energía'   },
-  { id:'css',     label:'CSS · Ritmo' },
-  { id:'ready',   label:'Readiness' },
-]
+// Catálogo de TODAS las series posibles (se eligen según deporte).
+const ER_ALLSERIES = {
+  gluc: { key:'glyc_pct',    id:'gluc', label:'Glucógeno', color:ER_C.gluc, Icon:Flame },
+  dbal: { key:'dbal_pct',    id:'dbal', label:'D-bal',     color:ER_C.dbal, Icon:Zap },
+  ener: { key:'energia_pct', id:'ener', label:'Energía',   color:ER_C.ener, Icon:BatteryFull },
+  wbal: { key:'wbal_pct',    id:'wbal', label:"W'bal",     color:ER_C.dbal, Icon:Zap },
+}
+// Config por deporte: mismo panel visual, datos reales de cada motor.
+// run/swim -> glucógeno+D-bal+energía ; bike -> W'bal (no tiene glucógeno).
+const ER_SPORT = {
+  running:  { ep:'dbal_running',  seriesIds:['gluc','dbal','ener'], paceKey:'pace',      paceUnit:'/km',   hasReadiness:true,  badge:'ESTIMACIÓN', subt:'Evolución de las reservas durante la sesión' },
+  swimming: { ep:'dbal_swimming', seriesIds:['gluc','dbal','ener'], paceKey:'pace_100m', paceUnit:'/100m', hasReadiness:true,  badge:'ESTIMACIÓN', subt:'Evolución de las reservas durante la sesión' },
+  cycling:  { ep:'torque_wbal',   seriesIds:['wbal'],               paceKey:null,        powerKey:'power', cadKey:'cadence',   hasReadiness:false, badge:"MODELO W′BAL", subt:"Evolución de tu W'bal (reserva anaeróbica) durante la sesión" },
+}
 
-function EnergyReserveTimeline({ atletaId, sesionId, act }) {
+function EnergyReserveTimeline({ atletaId, sesionId, act, sport='running' }) {
+  const cfg = ER_SPORT[sport] || ER_SPORT.running
+  const SER = cfg.seriesIds.map(id => ER_ALLSERIES[id])
   const [open, setOpen] = useState(false)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -5270,17 +5207,19 @@ function EnergyReserveTimeline({ atletaId, sesionId, act }) {
     if (data) return
     setLoading(true)
     try {
-      const r = await authFetch(`${API}/atletas/${atletaId}/sesiones/${sesionId}/dbal_running`)
+      const r = await authFetch(`${API}/atletas/${atletaId}/sesiones/${sesionId}/${cfg.ep}`)
       const d = await r.json()
       setData(d.data || d)
     } catch {}
     setLoading(false)
   }
 
-  useEffect(() => { setData(null); setOpen(false); setTab('resumen'); setHIdx(null) }, [sesionId])
+  useEffect(() => { setData(null); setOpen(false); setTab('resumen'); setHIdx(null) }, [sesionId, sport])
   const toggle = () => { setOpen(o => !o); if (!data) load() }
 
   const { samples=[], metricas={} } = data || {}
+  // torque_wbal no manda 'disponible'; se deriva de que haya muestras.
+  const disponible = data ? (data.disponible === true || (data.disponible === undefined && samples.length > 0)) : false
   const step = Math.max(1, Math.floor(samples.length / 440))
   const pts = samples.filter((_,i) => i % step === 0)
   const maxT = pts.length > 0 ? (pts[pts.length-1].ts_s || 1) : 1
@@ -5288,13 +5227,13 @@ function EnergyReserveTimeline({ atletaId, sesionId, act }) {
   const fP = p => { if(!p) return '--'; return `${Math.floor(p)}:${String(Math.round((p%1)*60)).padStart(2,'0')}` }
 
   // Geometría del gráfico único (0-100% en Y, tiempo real en X)
-  const W=680, PL=40, PR=56, PT=16, PB=26, H=248
+  const W=680, PL=40, PR=56, PT=16, PB=26, H=300
   const iW=W-PL-PR, iH=H-PT-PB
   const x = t => PL + (maxT>0 ? (t/maxT) : 0)*iW
   const y = v => PT + iH - (Math.max(0,Math.min(100,v))/100)*iH
   const ticks = Array.from({length:7},(_,i)=>Math.round(maxT*i/6))
 
-  // Paths de las tres curvas reales
+  // Paths de las curvas reales del deporte
   const mkArr = key => pts.map(p=>({t:p.ts_s, v:p[key]})).filter(o=>o.v!=null)
   const mkP   = arr => arr.length>1 ? arr.map((o,i)=>`${i?'L':'M'}${x(o.t).toFixed(1)} ${y(o.v).toFixed(1)}`).join(' ') : ''
   const mkArea= arr => arr.length>1 ? mkP(arr)+` L${x(arr[arr.length-1].t).toFixed(1)} ${y(0).toFixed(1)} L${x(arr[0].t).toFixed(1)} ${y(0).toFixed(1)} Z` : ''
@@ -5303,16 +5242,18 @@ function EnergyReserveTimeline({ atletaId, sesionId, act }) {
   const lastPt = pts.length ? pts[pts.length-1] : null
   const finalOf = key => lastPt && lastPt[key]!=null ? Math.round(lastPt[key]) : null
 
-  // Datos de sesión (reales; nada inventado)
-  const hrsA = pts.map(p=>p.hr).filter(v=>v!=null)
-  const pcsA = pts.map(p=>p.pace).filter(v=>v!=null)
-  const avgHr   = hrsA.length ? Math.round(hrsA.reduce((a,b)=>a+b,0)/hrsA.length) : null
-  const avgPace = pcsA.length ? pcsA.reduce((a,b)=>a+b,0)/pcsA.length : null
+  // Datos de sesión (reales; nada inventado) — adaptados por deporte
+  const avgOf = key => { const a=pts.map(p=>p[key]).filter(v=>v!=null); return a.length ? a.reduce((x,y)=>x+y,0)/a.length : null }
+  const avgHr   = avgOf('hr')!=null ? Math.round(avgOf('hr')) : null
+  const avgPace = cfg.paceKey ? avgOf(cfg.paceKey) : null
+  const avgPow  = cfg.powerKey ? (avgOf(cfg.powerKey)!=null?Math.round(avgOf(cfg.powerKey)):null) : null
+  const avgCad  = cfg.cadKey ? (avgOf(cfg.cadKey)!=null?Math.round(avgOf(cfg.cadKey)):null) : null
   const durMin  = metricas.duracion_min!=null ? metricas.duracion_min : (maxT/60)
   const distKm  = act && act.distance_km!=null ? Number(act.distance_km) : null
-  const csPace  = metricas.cs_pace
+  const csPace  = metricas.cs_pace!=null ? metricas.cs_pace : metricas.css_min100
   const readiness = metricas.readiness
   const glycGast  = metricas.glyc_consumido_g!=null ? Math.round(metricas.glyc_consumido_g) : null
+  const npW       = metricas.np_watts
 
   const hP = hIdx!=null && hIdx<pts.length ? pts[hIdx] : null
   const onMouse = e => {
@@ -5322,10 +5263,17 @@ function EnergyReserveTimeline({ atletaId, sesionId, act }) {
     if(idx>=0 && idx<pts.length) setHIdx(idx); else setHIdx(null)
   }
 
-  // Qué curvas se resaltan según el tab (navegación, no duplica cifras)
-  const emph = s => tab==='resumen' || tab==='css' || tab==='ready' ? true : tab===s.id
+  // Tabs dinámicos según deporte (navegación, no duplican cifras)
+  const tabs = [{id:'resumen',label:'Resumen'}, ...SER.map(s=>({id:s.id,label:s.label})),
+    (sport==='cycling' ? {id:'pot',label:'Potencia'} : {id:'css',label: sport==='swimming'?'CSS':'Ritmo crítico'}),
+    ...(cfg.hasReadiness ? [{id:'ready',label:'Readiness'}] : [])]
+  const SUMMARY_TABS = ['resumen','css','pot','ready']
+  const emph = s => SUMMARY_TABS.includes(tab) || tab===s.id
 
   const fmtDur = m => { const h=Math.floor(m/60), mm=Math.round(m%60); return h>0?`${h}h ${mm}m`:`${mm}m` }
+  const statsRow = sport==='cycling'
+    ? [['Duración', durMin!=null?fmtDur(durMin):'--'], ['Distancia', distKm!=null?`${distKm.toFixed(1)} km`:'--'], ['Potencia prom.', avgPow!=null?`${avgPow} W`:'--'], ['Cadencia prom.', avgCad!=null?`${avgCad} rpm`:'--']]
+    : [['Duración', durMin!=null?fmtDur(durMin):'--'], ['Distancia', distKm!=null?`${distKm.toFixed(1)} km`:'--'], ['Ritmo prom.', avgPace?`${fP(avgPace)}${cfg.paceUnit}`:'--'], ['FC prom.', avgHr!=null?`${avgHr} bpm`:'--']]
 
   return (
     <div style={{padding:'12px 6px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
@@ -5348,39 +5296,57 @@ function EnergyReserveTimeline({ atletaId, sesionId, act }) {
           style={{ transform: open ? 'rotate(90deg)' : 'none', transition:'transform 0.2s' }}/>
       </button>
 
-      {open && data && data.disponible && (
+      {open && data && disponible && (
         <div style={{marginTop:14, borderRadius:18, padding:'20px 18px',
           background:`radial-gradient(130% 90% at 15% 0%, rgba(45,226,240,0.06), transparent 55%), radial-gradient(120% 90% at 100% 0%, rgba(244,114,182,0.06), transparent 55%), ${ER_C.bg}`,
           border:'1px solid rgba(255,255,255,0.09)',
           boxShadow:'0 40px 90px -45px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.05)'}}>
+          <style>{`
+            .er-main{display:flex;flex-direction:column;gap:14px}
+            .er-chart{width:100%}
+            .er-reserves{width:100%;display:flex;flex-direction:column;gap:8px}
+            .er-rescards{display:flex;flex-direction:row;gap:10px}
+            .er-rescards>div{flex:1;min-width:0}
+            .er-resnum{font-size:26px;font-weight:800;line-height:1;letter-spacing:-0.5px}
+            @media(max-width:560px){
+              .er-rescards{gap:7px}
+              .er-rescards>div{padding:9px 8px}
+              .er-resnum{font-size:18px}
+            }
+          `}</style>
 
           {/* Título de sección */}
           <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16, padding:'0 2px'}}>
             <div style={{width:40,height:40,borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
-              background:'linear-gradient(135deg, rgba(45,226,240,0.18), rgba(244,114,182,0.18))',border:'1px solid rgba(255,255,255,0.12)',boxShadow:'0 0 18px -6px rgba(45,226,240,0.6)'}}>
-              <BatteryFull size={20} color="#2DE2F0"/>
+              background:`linear-gradient(135deg, ${SER[0].color}2e, ${SER[SER.length-1].color}2e)`,border:'1px solid rgba(255,255,255,0.12)',boxShadow:`0 0 18px -6px ${SER[0].color}`}}>
+              <BatteryFull size={20} color={SER[0].color}/>
             </div>
             <div>
               <div style={{fontSize:9.5,color:'rgba(255,255,255,0.4)',letterSpacing:'1.2px',textTransform:'uppercase',fontWeight:800}}>Métricas avanzadas</div>
               <div style={{fontSize:20,fontWeight:800,color:'#F3F4F6',letterSpacing:'-0.4px',marginTop:1}}>Reserva energética</div>
-              <div style={{fontSize:11.5,color:'rgba(255,255,255,0.45)',marginTop:2,fontWeight:500}}>Evolución de las reservas durante la sesión</div>
+              <div style={{fontSize:11.5,color:'rgba(255,255,255,0.45)',marginTop:2,fontWeight:500}}>{cfg.subt}</div>
             </div>
           </div>
 
           {/* Lectura del punto (fija) */}
           <div style={{fontSize:11.5, minHeight:20, marginBottom:12, padding:'7px 11px', borderRadius:9,
             background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)'}}>
-            {hP ? <span style={{color:'rgba(255,255,255,0.85)'}}>min <b style={{color:'#fff'}}>{fmtT(hP.ts_s)}</b> · Glucógeno <b style={{color:ER_C.gluc}}>{hP.glyc_pct!=null?Math.round(hP.glyc_pct):'--'}%</b> · D-bal <b style={{color:ER_C.dbal}}>{hP.dbal_pct!=null?Math.round(hP.dbal_pct):'--'}%</b> · Energía <b style={{color:ER_C.ener}}>{hP.energia_pct!=null?Math.round(hP.energia_pct):'--'}%</b>{hP.pace!=null?<> · Ritmo <b style={{color:'#fff'}}>{fP(hP.pace)}/km</b></>:null}{hP.hr!=null?<> · FC <b style={{color:'#fff'}}>{hP.hr} bpm</b></>:null}</span>
+            {hP ? <span style={{color:'rgba(255,255,255,0.85)'}}>min <b style={{color:'#fff'}}>{fmtT(hP.ts_s)}</b>
+                   {SER.map(s=><span key={s.id}> · {s.label} <b style={{color:s.color}}>{hP[s.key]!=null?Math.round(hP[s.key]):'--'}%</b></span>)}
+                   {cfg.paceKey && hP[cfg.paceKey]!=null?<> · Ritmo <b style={{color:'#fff'}}>{fP(hP[cfg.paceKey])}{cfg.paceUnit}</b></>:null}
+                   {cfg.powerKey && hP[cfg.powerKey]!=null?<> · Potencia <b style={{color:'#fff'}}>{Math.round(hP[cfg.powerKey])} W</b></>:null}
+                   {cfg.cadKey && hP[cfg.cadKey]!=null?<> · Cad <b style={{color:'#fff'}}>{Math.round(hP[cfg.cadKey])} rpm</b></>:null}
+                   {hP.hr!=null?<> · FC <b style={{color:'#fff'}}>{hP.hr} bpm</b></>:null}</span>
                  : <span style={{color:'rgba(255,255,255,0.4)'}}>Pasá el cursor por el gráfico para leer cada momento.</span>}
           </div>
 
           {/* Área principal: gráfico (3 curvas) + panel RESERVAS AL FINAL */}
-          <div style={{display:'flex', flexWrap:'wrap', gap:14, alignItems:'stretch'}}>
+          <div className="er-main">
             {/* GRÁFICO */}
-            <div style={{flex:'1 1 420px', minWidth:280}}>
+            <div className="er-chart">
               <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{display:'block'}} onMouseMove={onMouse} onMouseLeave={()=>setHIdx(null)}>
                 <defs>
-                  {ER_SERIES.map(s=>(
+                  {SER.map(s=>(
                     <linearGradient key={s.id} id={`erG_${s.id}`} x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor={s.color} stopOpacity="0.22"/>
                       <stop offset="70%" stopColor={s.color} stopOpacity="0.04"/>
@@ -5393,77 +5359,74 @@ function EnergyReserveTimeline({ atletaId, sesionId, act }) {
                 {/* zona crítica <30% */}
                 <rect x={PL} y={y(30)} width={iW} height={(PT+iH)-y(30)} fill="rgba(255,84,112,0.07)"/>
                 <line x1={PL} y1={y(30)} x2={W-PR} y2={y(30)} stroke="rgba(255,84,112,0.6)" strokeDasharray="5 4" strokeWidth="1.1"/>
-                <text x={W-PR} y={y(30)-4} textAnchor="end" fontSize="9" fontWeight="700" fill={ER_C.crit}>Zona crítica &lt;30%</text>
+                <text x={W-PR} y={y(30)-5} textAnchor="end" fontSize="12" fontWeight="700" fill={ER_C.crit}>Zona crítica &lt;30%</text>
 
                 {/* grilla + ejes */}
                 {[0,25,50,75,100].map(v=><line key={v} x1={PL} y1={y(v)} x2={W-PR} y2={y(v)} stroke="rgba(255,255,255,0.05)"/>)}
-                {[0,25,50,75,100].map(v=><text key={v} x={PL-6} y={y(v)+3} textAnchor="end" fontSize="8.5" fill="rgba(255,255,255,0.3)">{v}%</text>)}
-                {ticks.map(t=><text key={t} x={x(t)} y={H-7} textAnchor="middle" fontSize="8.5" fill="rgba(255,255,255,0.3)">{fmtT(t)}</text>)}
+                {[0,25,50,75,100].map(v=><text key={v} x={PL-6} y={y(v)+4} textAnchor="end" fontSize="11.5" fill="rgba(255,255,255,0.42)">{v}%</text>)}
+                {ticks.map(t=><text key={t} x={x(t)} y={H-6} textAnchor="middle" fontSize="11.5" fill="rgba(255,255,255,0.42)">{fmtT(t)}</text>)}
 
                 {/* áreas (solo curvas resaltadas) */}
-                {ER_SERIES.map(s=>{ const a=mkArr(s.key); const ar=mkArea(a); return (emph(s)&&ar)?<path key={'a'+s.id} d={ar} fill={`url(#erG_${s.id})`}/>:null })}
+                {SER.map(s=>{ const a=mkArr(s.key); const ar=mkArea(a); return (emph(s)&&ar)?<path key={'a'+s.id} d={ar} fill={`url(#erG_${s.id})`}/>:null })}
 
                 {/* curvas: glow + línea nítida */}
-                {ER_SERIES.map(s=>{ const a=mkArr(s.key); const p=mkP(a); if(!p) return null; const on=emph(s)
+                {SER.map(s=>{ const a=mkArr(s.key); const p=mkP(a); if(!p) return null; const on=emph(s)
                   return <g key={'l'+s.id} opacity={on?1:0.14}>
                     {on && <path d={p} fill="none" stroke={s.color} strokeWidth="5.5" opacity="0.5" filter="url(#erGlow)" strokeLinejoin="round" strokeLinecap="round"/>}
                     <path d={p} fill="none" stroke={s.color} strokeWidth={on?2.4:1.4} strokeLinejoin="round" strokeLinecap="round"/>
                   </g> })}
 
                 {/* etiquetas numéricas finales alineadas con cada curva */}
-                {ER_SERIES.map(s=>{ const fv=finalOf(s.key); if(fv==null||!emph(s)) return null
+                {SER.map(s=>{ const fv=finalOf(s.key); if(fv==null||!emph(s)) return null
                   return <g key={'t'+s.id}>
-                    <rect x={W-PR+2} y={y(fv)-9} width="50" height="18" rx="5" fill={`${s.color}22`} stroke={s.color} strokeWidth="0.9"/>
-                    <text x={W-PR+27} y={y(fv)+4} textAnchor="middle" fontSize="10.5" fontWeight="800" fill={s.color}>{fv}%</text>
+                    <rect x={W-PR+3} y={y(fv)-10} width="52" height="20" rx="5" fill={`${s.color}22`} stroke={s.color} strokeWidth="0.9"/>
+                    <text x={W-PR+29} y={y(fv)+4} textAnchor="middle" fontSize="12" fontWeight="800" fill={s.color}>{fv}%</text>
                   </g> })}
 
                 {/* cursor */}
                 {hP && <>
                   <line x1={x(hP.ts_s)} y1={PT} x2={x(hP.ts_s)} y2={PT+iH} stroke="rgba(255,255,255,0.28)" strokeDasharray="3 3"/>
-                  {ER_SERIES.map(s=> (emph(s)&&hP[s.key]!=null) ? <circle key={'c'+s.id} cx={x(hP.ts_s)} cy={y(hP[s.key])} r="4" fill={s.color} stroke={ER_C.bg} strokeWidth="2"/> : null)}
+                  {SER.map(s=> (emph(s)&&hP[s.key]!=null) ? <circle key={'c'+s.id} cx={x(hP.ts_s)} cy={y(hP[s.key])} r="4" fill={s.color} stroke={ER_C.bg} strokeWidth="2"/> : null)}
                 </>}
               </svg>
 
               {/* leyenda */}
               <div style={{display:'flex',flexWrap:'wrap',gap:14,marginTop:8,padding:'0 2px'}}>
-                {ER_SERIES.map(s=>(
+                {SER.map(s=>(
                   <span key={s.id} style={{fontSize:11,fontWeight:700,display:'flex',alignItems:'center',gap:6,color:emph(s)?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.35)'}}>
                     <s.Icon size={13} color={emph(s)?s.color:'rgba(255,255,255,0.35)'}/>
                     <span style={{width:16,height:3,borderRadius:2,background:s.color,boxShadow:emph(s)?`0 0 8px ${s.color}`:'none'}}/>{s.label}
                   </span>
                 ))}
-                <span style={{fontSize:9,color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:6,padding:'2px 8px',letterSpacing:'0.4px',fontWeight:600,marginLeft:'auto'}}>ESTIMACIÓN</span>
+                <span style={{fontSize:9,color:'rgba(255,255,255,0.35)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:6,padding:'2px 8px',letterSpacing:'0.4px',fontWeight:600,marginLeft:'auto'}}>{cfg.badge}</span>
               </div>
             </div>
 
             {/* PANEL RESERVAS AL FINAL */}
-            <div style={{flex:'0 0 200px', minWidth:180, display:'flex', flexDirection:'column', gap:10}}>
+            <div className="er-reserves">
               <div style={{fontSize:9.5,color:'rgba(255,255,255,0.42)',letterSpacing:'1px',textTransform:'uppercase',fontWeight:800}}>Reservas al final</div>
-              {ER_SERIES.map(s=>{ const fv=finalOf(s.key); const crit=fv!=null&&fv<30
+              <div className="er-rescards">
+              {SER.map(s=>{ const fv=finalOf(s.key); const crit=fv!=null&&fv<30
                 return (
                   <div key={s.id} style={{padding:'11px 13px',borderRadius:13,background:`linear-gradient(180deg, ${s.color}14, rgba(255,255,255,0.015))`,border:`1px solid ${s.color}3a`}}>
                     <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:6}}>
                       <s.Icon size={14} color={s.color}/>
                       <span style={{fontSize:10.5,fontWeight:700,color:'rgba(255,255,255,0.72)',letterSpacing:'0.3px'}}>{s.label}</span>
                     </div>
-                    <div style={{fontSize:26,fontWeight:800,color:s.color,lineHeight:1,letterSpacing:'-0.5px'}}>{fv!=null?`${fv}%`:'--'}</div>
+                    <div className="er-resnum" style={{color:s.color}}>{fv!=null?`${fv}%`:'--'}</div>
                     <div style={{height:5,borderRadius:3,marginTop:8,background:'rgba(255,255,255,0.08)',overflow:'hidden'}}>
                       <div style={{height:'100%',width:`${fv!=null?Math.max(0,Math.min(100,fv)):0}%`,background:s.color,boxShadow:`0 0 6px ${s.color}`,borderRadius:3}}/>
                     </div>
                     {crit && <div style={{fontSize:9,color:ER_C.crit,fontWeight:700,marginTop:5}}>zona crítica</div>}
                   </div>
                 ) })}
+              </div>
             </div>
           </div>
 
           {/* Fila de datos de la sesión */}
           <div style={{display:'flex',flexWrap:'wrap',gap:0,marginTop:16,borderRadius:13,overflow:'hidden',border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.025)'}}>
-            {[
-              ['Duración', durMin!=null?fmtDur(durMin):'--'],
-              ['Distancia', distKm!=null?`${distKm.toFixed(1)} km`:'--'],
-              ['Ritmo prom.', avgPace?`${fP(avgPace)}/km`:'--'],
-              ['FC prom.', avgHr!=null?`${avgHr} bpm`:'--'],
-            ].map(([l,v],i)=>(
+            {statsRow.map(([l,v],i)=>(
               <div key={i} style={{flex:'1 1 110px',padding:'11px 14px',borderLeft:i?'1px solid rgba(255,255,255,0.07)':'none'}}>
                 <div style={{fontSize:9,color:'rgba(255,255,255,0.4)',letterSpacing:'0.6px',textTransform:'uppercase',fontWeight:700}}>{l}</div>
                 <div style={{fontSize:16,fontWeight:800,color:'#EEF2F6',marginTop:3,letterSpacing:'-0.3px'}}>{v}</div>
@@ -5473,7 +5436,7 @@ function EnergyReserveTimeline({ atletaId, sesionId, act }) {
 
           {/* Tabs de navegación */}
           <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:16,marginBottom:14}}>
-            {ER_TABS.map(t=>{ const sel=tab===t.id; const sc = t.id==='gluc'?ER_C.gluc:t.id==='dbal'?ER_C.dbal:t.id==='ener'?ER_C.ener:'#7DD3FC'
+            {tabs.map(t=>{ const sel=tab===t.id; const sc = ER_ALLSERIES[t.id]?ER_ALLSERIES[t.id].color:'#7DD3FC'
               return (
                 <button key={t.id} onClick={()=>setTab(t.id)} style={{
                   padding:'7px 13px',borderRadius:10,fontSize:11.5,fontWeight:700,cursor:'pointer',transition:'all 0.15s',
@@ -5488,10 +5451,10 @@ function EnergyReserveTimeline({ atletaId, sesionId, act }) {
           {/* Panel inferior de explicaciones */}
           <div style={{display:'flex',flexWrap:'wrap',gap:0,borderRadius:14,overflow:'hidden',border:'1px solid rgba(255,255,255,0.08)',background:'rgba(255,255,255,0.02)'}}>
             {(() => {
-              const blocks = {
+              const blocksRunSwim = {
                 resumen: [
                   { c:ER_C.gluc, ic:Flame, t:'Glucógeno', tag:'ESTIMACIÓN', d:`Combustible de hidratos en músculo e hígado. Empezaste con ~${metricas.glyc_inicio_pct!=null?Math.round(metricas.glyc_inicio_pct):100}% y terminaste en ${finalOf('glyc_pct')??'--'}%.` },
-                  { c:ER_C.dbal, ic:Zap, t:'D-bal', tag:'MODELO', d:`Capacidad anaeróbica disponible (D′ de tu perfil CS/D′). Baja SOLO cuando corrés por encima de tu ritmo crítico y se recupera al aflojar.` },
+                  { c:ER_C.dbal, ic:Zap, t:'D-bal', tag:'MODELO', d:`Capacidad anaeróbica disponible (D′ de tu perfil CS/D′). Baja SOLO cuando vas por encima de tu ritmo crítico y se recupera al aflojar.` },
                   { c:ER_C.ener, ic:BatteryFull, t:'Energía', tag:'DERIVADA', d:`Índice combinado (25% D-bal + 75% glucógeno). Resumen general, no una medición directa.` },
                   { c:ER_C.crit, ic:AlertTriangle, t:'Zona crítica <30%', tag:null, d:`Por debajo del 30% el rendimiento cae: hay que dosificar o reponer. La línea roja la marca en el gráfico.` },
                 ],
@@ -5501,21 +5464,37 @@ function EnergyReserveTimeline({ atletaId, sesionId, act }) {
                 ],
                 dbal: [
                   { c:ER_C.dbal, ic:Zap, t:'D-bal', tag:'MODELO', d:`Balance de D′ (capacidad anaeróbica). Mínimo de la sesión: ${metricas.dbal_min_pct!=null?Math.round(metricas.dbal_min_pct):'--'}%. Se vacía en los picos por encima del ritmo crítico y se rellena al bajar la intensidad.` },
-                  { c:'#7DD3FC', ic:Activity, t:'Cómo leerlo', tag:null, d:`Si se mantiene en 100% es que corriste todo por debajo de tu ritmo crítico (rodaje fácil): no tocaste la reserva anaeróbica.` },
+                  { c:'#7DD3FC', ic:Activity, t:'Cómo leerlo', tag:null, d:`Si se mantiene en 100% es que fue todo por debajo de tu ritmo crítico (rodaje fácil): no tocaste la reserva anaeróbica.` },
                 ],
                 ener: [
                   { c:ER_C.ener, ic:BatteryFull, t:'Energía', tag:'DERIVADA', d:`Índice combinado (25% D-bal + 75% glucógeno). Terminaste en ${finalOf('energia_pct')??'--'}%. Es un resumen, no una medición fisiológica directa.` },
                   { c:ER_C.crit, ic:AlertTriangle, t:'Limitación', tag:null, d:`Al ser una combinación de dos estimaciones, usala como tendencia general, no como valor exacto.` },
                 ],
                 css: [
-                  { c:'#7DD3FC', ic:Activity, t:'Ritmo crítico (CS)', tag:'MODELO', d:`Ritmo sostenible estimado de tu perfil CS/D′: ${csPace?`${fP(csPace)}/km`:'--'}. Es el umbral que podés aguantar largo.` },
-                  { c:'#fff', ic:Footprints, t:'Tu sesión', tag:null, d:`Ritmo promedio de hoy: ${avgPace?`${fP(avgPace)}/km`:'--'}. Comparalo con el CS para ver cuán exigente fue.` },
+                  { c:'#7DD3FC', ic:Activity, t:sport==='swimming'?'CSS (velocidad crítica)':'Ritmo crítico (CS)', tag:'MODELO', d:`Ritmo sostenible estimado de tu perfil ${sport==='swimming'?'CSS':'CS/D′'}: ${csPace?`${fP(csPace)}${cfg.paceUnit}`:'--'}. Es el umbral que podés aguantar largo.` },
+                  { c:'#fff', ic:sport==='swimming'?Waves:Footprints, t:'Tu sesión', tag:null, d:`Ritmo promedio de hoy: ${avgPace?`${fP(avgPace)}${cfg.paceUnit}`:'--'}. Comparalo con el umbral para ver cuán exigente fue.` },
                 ],
                 ready: [
                   { c:'#4ADE80', ic:HeartPulse, t:'Readiness', tag:'HANNA LIFE', d:`Disponibilidad de arranque: ${readiness!=null?Math.round(readiness):'--'}%. Ajusta las reservas iniciales según tu descanso y carga reciente.` },
                   { c:'#7DD3FC', ic:Activity, t:'Cómo influye', tag:null, d:`Con readiness bajo, las curvas parten de un nivel menor: menos margen antes de la zona crítica.` },
                 ],
               }
+              const blocksCycling = {
+                resumen: [
+                  { c:ER_C.dbal, ic:Zap, t:"W'bal", tag:"MODELO", d:`Reserva anaeróbica (W′, Skiba 2012) sobre tu potencia crítica (CP). Se vacía cuando pedaleás por encima de CP y se recupera al aflojar. Terminaste en ${finalOf('wbal_pct')??'--'}%.` },
+                  { c:ER_C.crit, ic:AlertTriangle, t:'Zona crítica <30%', tag:null, d:`Por debajo del 30% de W′ estás cerca del límite: cada pique extra cuesta mucho más. La línea roja lo marca.` },
+                  { c:'#7DD3FC', ic:Activity, t:'Cómo leerlo', tag:null, d:`Si se mantiene cerca de 100% fue rodaje por debajo de tu CP; las caídas marcan los esfuerzos fuertes y la recuperación al bajar.` },
+                ],
+                wbal: [
+                  { c:ER_C.dbal, ic:Zap, t:"W'bal", tag:'MODELO', d:`Balance de W′ (Skiba). En bici la reserva de energía se mide así — no con glucógeno. Mínimo de hoy marca cuánto apretaste por encima de tu potencia crítica.` },
+                  { c:'#7DD3FC', ic:Activity, t:'Cómo influye', tag:null, d:`Cada esfuerzo sobre CP baja W′; al aflojar se rellena. Vaciarlo seguido acerca la fatiga.` },
+                ],
+                pot: [
+                  { c:'#7DD3FC', ic:Activity, t:'Potencia', tag:'MEDICIÓN', d:`NP (potencia normalizada): ${npW?`${npW} W`:'--'}. Potencia promedio: ${avgPow!=null?`${avgPow} W`:'--'}.` },
+                  { c:'#fff', ic:BikeIcon, t:'Tu sesión', tag:null, d:`Cadencia promedio: ${avgCad!=null?`${avgCad} rpm`:'--'}. El detalle de torque y cuadrantes está en el panel de abajo.` },
+                ],
+              }
+              const blocks = sport==='cycling' ? blocksCycling : blocksRunSwim
               return (blocks[tab]||blocks.resumen).map((b,i)=>(
                 <div key={i} style={{flex:'1 1 200px',minWidth:180,padding:'13px 15px',borderLeft:i?'1px solid rgba(255,255,255,0.06)':'none'}}>
                   <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:6}}>
