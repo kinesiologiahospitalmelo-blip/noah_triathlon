@@ -731,7 +731,7 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
             "SELECT id, garmin_activity_id, sport FROM sesiones "
             "WHERE atleta_id=%s AND has_streams=0 AND garmin_activity_id IS NOT NULL "
             "AND fecha::date >= CURRENT_DATE - INTERVAL '14 days' "
-            "ORDER BY fecha DESC LIMIT 3",
+            "ORDER BY fecha DESC LIMIT 12",
             (atleta_id,)).fetchall()
         for rs in retry_rows:
             sid, gid, sp = rs[0], rs[1], rs[2]
@@ -793,8 +793,25 @@ def _bajar_streams(client, activity_id, atleta_id, sesion_id, sport, conn):
         # maxchart=2000: Garmin distribuye ~2000 puntos en toda la actividad CON power.
         # Valores mas altos devuelven samples sin power — no sirven.
         max_chart = 2000
-        import time; time.sleep(1)  # Evitar rate limit de Garmin
-        details = client.get_activity_details(activity_id, maxchart=max_chart)
+        import time
+        # REINTENTO CON BACKOFF: Garmin corta por rate-limit (429) o timeout en
+        # entrenos largos o cuando hay backlog de varios dias. Antes fallaba al
+        # primer intento y la sesion quedaba SIN streams (sin grafico de potencia,
+        # sin NP/IF). Ahora reintenta hasta 3 veces (espera 6s, 12s) antes de rendirse;
+        # si igual falla, queda has_streams=0 y lo agarra el retry del final.
+        details = None
+        for _intento in range(3):
+            try:
+                time.sleep(1)  # pausa base anti rate-limit
+                details = client.get_activity_details(activity_id, maxchart=max_chart)
+                break
+            except Exception as _e:
+                if _intento < 2:
+                    _espera = 6 * (_intento + 1)
+                    print(f'    [RETRY streams] intento {_intento+1} fallo ({str(_e)[:70]}); espero {_espera}s')
+                    time.sleep(_espera)
+                else:
+                    raise
         samples = _parsear_streams(details, sport)
         if samples:
             # BLINDAJE anti-colapso de tiempo: si los ts_s tienen pocos valores
