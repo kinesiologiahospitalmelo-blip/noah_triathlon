@@ -2,7 +2,10 @@ name: Resumen semanal NOAH
 
 on:
   schedule:
-    - cron: '0 11 * * 1'       # lunes 11:00 UTC = 08:00 Buenos Aires (va a TODOS)
+    # TODOS los dias 11:00 UTC = 08:00 Buenos Aires. El script es idempotente por
+    # semana ISO: solo manda una vez por semana (el lunes, o el primer dia que
+    # GitHub logre disparar). Si el lunes se saltea el cron, el martes lo COMPLETA.
+    - cron: '0 11 * * *'
   workflow_dispatch:            # botón "Run workflow" para probar
     inputs:
       modo:
