@@ -700,6 +700,11 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
                             conn.execute('UPDATE sesiones SET garmin_activity_id=%s WHERE id=%s',
                                          (gid, ses_row[0]))
                         _bajar_streams(client, gid, atleta_id, ses_row[0], sport, conn)
+                        # FIX: rellenar los laps con los samples recien bajados.
+                        # Sin esto, el grafico de potencia aparece pero los laps
+                        # quedan sin NP/IF/promedios (caso sesion que YA existia,
+                        # como las de Rodrigo). Jimena bajaba de cero y si se llamaba.
+                        _completar_laps_desde_samples(conn, atleta_id, ses_row[0])
                 print(f'    {sport.upper()} ya existía para {fecha_str}')
 
         except Exception as e:
@@ -764,6 +769,27 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
                         break
         except Exception:
             pass
+
+    # ── AUTO-REPARAR laps sin potencia ────────────────────────────────────────
+    # Recupera sesiones que YA tienen streams de potencia (el grafico se ve) pero
+    # cuyos laps quedaron sin NP/IF/promedios porque el streams bajo por un camino
+    # que no completo los laps. _completar usa COALESCE -> no pisa lo ya cargado
+    # (idempotente). Una vez rellenos, no se vuelven a seleccionar.
+    try:
+        reparar = conn.execute(
+            "SELECT DISTINCT s.id FROM sesiones s "
+            "JOIN activity_samples sa ON sa.sesion_id = s.id AND sa.power_w IS NOT NULL "
+            "JOIN laps l ON l.sesion_id = s.id "
+            "WHERE s.atleta_id = %s "
+            "AND s.fecha::date >= CURRENT_DATE - INTERVAL '14 days' "
+            "AND l.norm_power IS NULL",
+            (atleta_id,)).fetchall()
+        for rp in reparar:
+            _completar_laps_desde_samples(conn, atleta_id, rp[0])
+        if reparar:
+            print(f'  [REPARAR laps] {len(set(r[0] for r in reparar))} sesion(es) con potencia completadas')
+    except Exception as _erp:
+        print(f'  [REPARAR laps] {_erp}')
 
     return sesiones_nuevas
 
