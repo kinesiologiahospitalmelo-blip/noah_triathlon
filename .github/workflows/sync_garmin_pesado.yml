@@ -13,6 +13,11 @@ on:
     - cron: '0 18 * * *'   # 15:00 ART
     - cron: '0 0  * * *'   # 21:00 ART
   workflow_dispatch:        # boton "Run workflow" para forzar una corrida
+    inputs:
+      dias:
+        description: 'Dias hacia atras a bajar (catch-up manual; default 7)'
+        required: false
+        default: '14'
 
 # Evita que dos corridas pesadas se pisen (si una se atrasa, la siguiente espera)
 concurrency:
@@ -35,15 +40,17 @@ jobs:
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install garminconnect psycopg2-binary pandas numpy
+          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
 
       - name: Sincronizar (todos los atletas)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          # --dias 7: red de seguridad, completa la semana de actividades/bio de
-          # TODOS los atletas (lo que el boton no alcanzo a bajar). El backfill de
-          # streams (potencia/IF/NP) mira 14 dias hacia atras y es a prueba de
-          # cortes (cooldown + tope + corte en 429), asi que la corrida termina rapido.
-          python sincronizar_garmin.py --modo todo --dias 7
+          # Programado: 7 dias (red de seguridad semanal). Manual: el valor que
+          # elijas (default 14) para un catch-up grande y "quedar en cero".
+          # El backfill de streams (potencia/IF/NP) mira 14 dias igual y es a
+          # prueba de cortes (cooldown + tope + corte en 429).
+          DIAS="${{ github.event.inputs.dias || '7' }}"
+          echo "Sincronizando ultimos $DIAS dias de TODOS los atletas"
+          python sincronizar_garmin.py --modo todo --dias "$DIAS"
