@@ -96,6 +96,11 @@ def main():
 
     semana    = _semana_clave()
     es_prueba = bool(prueba_to)
+    # Copia oculta al coach en CADA mail de atleta (asi ves que salio y a quien).
+    # En modo prueba no hace falta: ya va todo a tu casilla.
+    coach_email = (os.environ.get('COACH_EMAIL')
+                   or os.environ.get('GMAIL_USER')
+                   or 'kinesiologia.hospital.melo@gmail.com')
     if not es_prueba:
         _asegurar_tabla(conn)
 
@@ -140,8 +145,9 @@ def main():
 
         # reintentos ante fallo transitorio de SMTP
         ok = False; det = ''
+        bcc = None if es_prueba else coach_email
         for intento in range(1, REINTENTOS_SMTP + 1):
-            ok, det = enviar_mail(destino, asunto, html)
+            ok, det = enviar_mail(destino, asunto, html, bcc=bcc)
             if ok:
                 break
             if intento < REINTENTOS_SMTP:

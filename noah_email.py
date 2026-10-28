@@ -14,8 +14,10 @@ from email.mime.multipart import MIMEMultipart
 
 GMAIL_USER_DEFAULT = 'kinesiologia.hospital.melo@gmail.com'
 
-def enviar_mail(destino, asunto, html, texto=None):
-    """Devuelve (ok: bool, detalle: str)."""
+def enviar_mail(destino, asunto, html, texto=None, bcc=None):
+    """Devuelve (ok: bool, detalle: str).
+    bcc: copia oculta (p.ej. el coach). No se agrega como header, asi el atleta
+    no la ve; solo se suma a la lista de entrega del SMTP."""
     user = os.environ.get('GMAIL_USER') or GMAIL_USER_DEFAULT
     pwd = os.environ.get('GMAIL_APP_PASSWORD')
     if not pwd:
@@ -29,11 +31,15 @@ def enviar_mail(destino, asunto, html, texto=None):
     if texto:
         msg.attach(MIMEText(texto, 'plain', 'utf-8'))
     msg.attach(MIMEText(html, 'html', 'utf-8'))
+    # Lista real de entrega: destinatario + copia oculta (si la hay y no es el mismo)
+    rcpts = [destino]
+    if bcc and bcc != destino:
+        rcpts.append(bcc)
     try:
         ctx = ssl.create_default_context()
         with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=ctx, timeout=30) as s:
             s.login(user, pwd)
-            s.sendmail(user, [destino], msg.as_string())
+            s.sendmail(user, rcpts, msg.as_string())
         return True, 'enviado'
     except Exception as e:
         return False, f'{type(e).__name__}: {e}'
