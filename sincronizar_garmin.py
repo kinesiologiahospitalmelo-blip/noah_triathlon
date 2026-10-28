@@ -89,6 +89,8 @@ def asegurar_columnas(conn):
         ('water_estimated',      'REAL'),   # ml
         ('temperatura_avg',      'REAL'),
         ('has_streams',          'INTEGER DEFAULT 0'),
+        ('streams_intentos',     'INTEGER DEFAULT 0'),   # cuantas veces se intento bajar streams (cooldown)
+        ('streams_ultimo',       'TIMESTAMP'),           # ultimo intento de streams (para no re-martillar)
     ])
 
     # Tabla garmin_performance - métricas diarias de rendimiento
@@ -522,7 +524,10 @@ def descargar_bio(client, fecha_str: str, atleta_id: int,
 
 # ── Descargar actividades ─────────────────────────────────────────────────────
 def descargar_actividades(client, fecha_str: str, atleta_id: int,
-                           conn, db) -> list:
+                           conn, db, con_streams: bool = True) -> list:
+    # con_streams=False -> modo RAPIDO (boton): baja solo resumen + laps de la
+    # actividad para que aparezca YA en la app. NO baja streams punto a punto ni
+    # corre el backfill de 14 dias (eso lo hace el sync PESADO programado 2-3x/dia).
     from sincronizar_activities import (
         TIPO_A_SPORT, DEPORTES_VALIDOS,
         procesar_running, procesar_cycling, procesar_swimming,
@@ -665,11 +670,11 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
                     _bajar_laps(client, act_id, atleta_id, fecha_str, sport,
                                 sesion_id, conn, db)
 
-                    # Bajar streams (punto a punto)
-                    _bajar_streams(client, act_id, atleta_id, sesion_id, sport, conn)
-
-                    # Completar laps desde samples (después de que los streams estén en DB)
-                    _completar_laps_desde_samples(conn, atleta_id, sesion_id)
+                    # Bajar streams (punto a punto) — solo en modo PESADO
+                    if con_streams:
+                        _bajar_streams(client, act_id, atleta_id, sesion_id, sport, conn)
+                        # Completar laps desde samples (después de que los streams estén en DB)
+                        _completar_laps_desde_samples(conn, atleta_id, sesion_id)
             else:
                 # Si ya existe: re-bajar laps si --relaps, o streams si no los tiene
                 ses_row = conn.execute(
@@ -688,7 +693,7 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
                         _bajar_laps(client, int(gid), atleta_id, fecha_str, sport,
                                     sesion_id_exist, conn, db)
                         print(f'    [OK] Laps re-descargados para sesión {sesion_id_exist}')
-                if ses_row and not ses_row[2]:
+                if con_streams and ses_row and not ses_row[2]:
                     gid = ses_row[1] or str(act.get('activityId', ''))
                     if gid:
                         if not ses_row[1]:
@@ -725,23 +730,40 @@ def descargar_actividades(client, fecha_str: str, atleta_id: int,
     except Exception as _ec:
         print(f'  [CARRERA] {_ec}')
 
-    # ── Retry: sesiones sin streams completos ──────────────────
-    try:
-        retry_rows = conn.execute(
-            "SELECT id, garmin_activity_id, sport FROM sesiones "
-            "WHERE atleta_id=%s AND has_streams=0 AND garmin_activity_id IS NOT NULL "
-            "AND fecha::date >= CURRENT_DATE - INTERVAL '14 days' "
-            "ORDER BY fecha DESC LIMIT 12",
-            (atleta_id,)).fetchall()
-        for rs in retry_rows:
-            sid, gid, sp = rs[0], rs[1], rs[2]
-            try:
-                _bajar_streams(client, int(gid), atleta_id, sid, sp, conn)
-                _completar_laps_desde_samples(conn, atleta_id, sid)
-            except Exception as _er:
-                print(f'  [RETRY] Sesion {sid} fallo: {_er}')
-    except Exception:
-        pass
+    # ── Retry: sesiones sin streams completos (solo modo PESADO) ──
+    # Clave para que NO se ponga cada vez mas lento:
+    #  - NO re-martilla: salta sesiones intentadas hace < 3h (cooldown).
+    #  - Se rinde con una sesion tras 8 intentos (no la intenta mas).
+    #  - Tope de 6 por corrida -> la corrida siempre termina rapido.
+    #  - Si Garmin devuelve 429 (rate-limit), CORTA el backfill y lo retoma
+    #    en la proxima corrida programada, en vez de seguir gatillando baneos.
+    if con_streams:
+        try:
+            retry_rows = conn.execute(
+                "SELECT id, garmin_activity_id, sport FROM sesiones "
+                "WHERE atleta_id=%s AND has_streams=0 AND garmin_activity_id IS NOT NULL "
+                "AND fecha::date >= CURRENT_DATE - INTERVAL '14 days' "
+                "AND (streams_ultimo IS NULL OR streams_ultimo < NOW() - INTERVAL '3 hours') "
+                "AND COALESCE(streams_intentos, 0) < 8 "
+                "ORDER BY fecha DESC LIMIT 6",
+                (atleta_id,)).fetchall()
+            for rs in retry_rows:
+                sid, gid, sp = rs[0], rs[1], rs[2]
+                # marcar el intento ANTES de bajar, asi aunque falle no se re-martilla
+                conn.execute("UPDATE sesiones SET streams_intentos=COALESCE(streams_intentos,0)+1, "
+                             "streams_ultimo=NOW() WHERE id=%s", (sid,))
+                conn.commit()
+                try:
+                    _bajar_streams(client, int(gid), atleta_id, sid, sp, conn)
+                    _completar_laps_desde_samples(conn, atleta_id, sid)
+                except Exception as _er:
+                    msg = str(_er)
+                    print(f'  [RETRY] Sesion {sid} fallo: {msg[:80]}')
+                    if '429' in msg or 'too many' in msg.lower() or 'rate' in msg.lower():
+                        print('  [RETRY] Garmin rate-limit: corto el backfill, sigo en la proxima corrida.')
+                        break
+        except Exception:
+            pass
 
     return sesiones_nuevas
 
@@ -800,16 +822,20 @@ def _bajar_streams(client, activity_id, atleta_id, sesion_id, sport, conn):
         # sin NP/IF). Ahora reintenta hasta 3 veces (espera 6s, 12s) antes de rendirse;
         # si igual falla, queda has_streams=0 y lo agarra el retry del final.
         details = None
-        for _intento in range(3):
+        for _intento in range(2):
             try:
-                time.sleep(1)  # pausa base anti rate-limit
+                time.sleep(0.5)  # pausa base anti rate-limit
                 details = client.get_activity_details(activity_id, maxchart=max_chart)
                 break
             except Exception as _e:
-                if _intento < 2:
-                    _espera = 6 * (_intento + 1)
-                    print(f'    [RETRY streams] intento {_intento+1} fallo ({str(_e)[:70]}); espero {_espera}s')
-                    time.sleep(_espera)
+                _m = str(_e)
+                # Si es rate-limit (429), NO insistir aca: esperar no lo arregla y
+                # solo alarga el baneo. Propaga para que el caller corte el backfill.
+                if '429' in _m or 'too many' in _m.lower() or 'rate' in _m.lower():
+                    raise
+                if _intento < 1:
+                    print(f'    [RETRY streams] fallo ({_m[:70]}); un reintento en 4s')
+                    time.sleep(4)
                 else:
                     raise
         samples = _parsear_streams(details, sport)
@@ -1377,7 +1403,11 @@ def configurar_credenciales(conn, atleta_id):
 def main():
     ap = argparse.ArgumentParser(description='NOAH - Sync Garmin')
     ap.add_argument('--atleta',   type=int, default=None)
-    ap.add_argument('--modo',     default='todo', choices=['todo','bio','actividad','perf','intradiario'])
+    ap.add_argument('--modo',     default='todo',
+                     choices=['todo','bio','actividad','perf','intradiario','rapido','streams'])
+    # rapido  = BOTON del atleta: solo resumen + laps de la actividad (veloz, sin streams/bio/perf)
+    # streams = backfill de streams punto a punto (potencia/IF/NP) sin bio/perf; util suelto
+    # todo    = PESADO completo (programar 2-3 veces al dia)
     ap.add_argument('--fecha',    default=None)
     ap.add_argument('--dias',     type=int, default=1)
     ap.add_argument('--rellenar', action='store_true')
@@ -1461,9 +1491,10 @@ def main():
                 try: descargar_bio(client, fecha_iter, atleta_id, conn, db)
                 except Exception as e: print(f'  Bio error: {e}'); exito = False
 
-            if args.modo in ('todo', 'actividad'):
+            if args.modo in ('todo', 'actividad', 'rapido', 'streams'):
                 try:
-                    nuevas = descargar_actividades(client, fecha_iter, atleta_id, conn, db)
+                    con_s = args.modo != 'rapido'   # rapido = solo resumen+laps, SIN streams (boton veloz)
+                    nuevas = descargar_actividades(client, fecha_iter, atleta_id, conn, db, con_streams=con_s)
                     if nuevas: print(f'  [OK] Nuevas: {", ".join(nuevas)}')
                 except Exception as e: print(f'  Act error: {e}'); exito = False
 

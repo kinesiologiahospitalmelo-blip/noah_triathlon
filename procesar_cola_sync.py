@@ -47,7 +47,12 @@ except ImportError:
 
 TIMEOUT_SEG          = 120   # tope por dia individual (antes era por atleta entero)
 MAX_DETALLE          = 3000  # no guardar logs gigantes en sync_log.detalle
-MAX_DIAS_BACKFILL    = 21    # tope de seguridad: nunca bajar mas de N dias por corrida
+# BOTON = rapido: bajamos solo los dias recientes (hoy + atrasados cortos), con
+# TODO (incluye streams/potencia) para que el atleta vea su actividad completa en
+# minutos. El historial mas viejo y lo que falte lo completa el sync PESADO 3x/dia
+# (workflow sync_garmin_pesado.yml). Antes esto era 21 -> por eso un atleta
+# atrasado dejaba el boton corriendo 30 min.
+MAX_DIAS_BACKFILL    = 5     # tope del BOTON: dias recientes nomas (el 3x/dia hace el resto)
 PAUSA_ENTRE_FECHAS_S = 3     # pausa entre cada dia, para no gatillar el rate-limit de Garmin
 
 
@@ -218,6 +223,14 @@ def procesar_pendientes(conn):
             else:
                 hubo_error = True
                 print(f'     [ERROR] {fecha_str}')
+            # Si Garmin empezo a rate-limitear (429), NO seguir martillando el
+            # resto de los dias: cortar aca. Lo que falte lo completa el sync
+            # pesado 3x/dia, que ya es a prueba de cortes.
+            _s = salida.lower()
+            if '429' in salida or 'too many' in _s or 'rate limit' in _s:
+                print(f'     [STOP] Garmin rate-limit en {fecha_str}: corto, '
+                      f'lo pendiente lo toma el sync pesado 3x/dia.')
+                break
             # Pausa entre dias (no hace falta pausar despues del ultimo)
             if i < len(fechas) - 1:
                 time.sleep(PAUSA_ENTRE_FECHAS_S)
