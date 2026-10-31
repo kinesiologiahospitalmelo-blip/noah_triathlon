@@ -190,6 +190,19 @@ def register_watch(app, deps):
         return ok({'mensaje': 'token de reloj revocado'})
 
     # ── helpers de datos ───────────────────────────────────────────────────
+    def _col_opcional(conn, col, atleta_id):
+        """Lee UNA columna de atletas que puede no existir en esta base. Si no existe devuelve None
+        (y deshace la transacción, para que Postgres no quede en estado 'abortado')."""
+        try:
+            r = conn.execute("SELECT " + col + " FROM atletas WHERE id=%s", (atleta_id,)).fetchone()
+            return r[0] if r else None
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return None
+
     def _pick(d, *names):
         """Busca la primera clave existente (también un nivel adentro) — defensivo
         porque noah_riesgo_lesion.py no estaba en el material recibido."""
@@ -332,11 +345,14 @@ def register_watch(app, deps):
         conn = get_conn()
         try:
             at = conn.execute(
-                "SELECT pace_umbral_run, lthr_run, peso_kg, css_100m, ftp_watts, w_prime, cadencia_optima "
+                "SELECT pace_umbral_run, lthr_run, css_100m, ftp_watts "
                 "FROM atletas WHERE id=%s", (atleta_id,)).fetchone()
             if not at:
                 return error('Atleta no encontrado', 404)
-            pace_umbral, lthr_run, peso, css, ftp, w_prime, cad_opt = at
+            pace_umbral, lthr_run, css, ftp = at
+            peso = _col_opcional(conn, 'peso_kg', atleta_id)
+            w_prime = _col_opcional(conn, 'w_prime', atleta_id)
+            cad_opt = _col_opcional(conn, 'cadencia_optima', atleta_id)
             peso = float(peso) if peso else 70.0
 
             cs = None
@@ -386,17 +402,10 @@ def register_watch(app, deps):
                 }
 
             # FC máx y LTHR de bici (columnas opcionales: si no existen, las clases estiman)
-            hr_max_at = lthr_bike_at = None
-            try:
-                r2 = conn.execute("SELECT hr_max, lthr_bike FROM atletas WHERE id=%s", (atleta_id,)).fetchone()
-                if r2:
-                    hr_max_at = float(r2[0]) if r2[0] else None
-                    lthr_bike_at = float(r2[1]) if r2[1] else None
-            except Exception:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
+            hr_max_at = _col_opcional(conn, 'hr_max', atleta_id)
+            lthr_bike_at = _col_opcional(conn, 'lthr_bike', atleta_id)
+            hr_max_at = float(hr_max_at) if hr_max_at else None
+            lthr_bike_at = float(lthr_bike_at) if lthr_bike_at else None
             zonas = zonas_para_reloj(
                 float(lthr_run) if lthr_run else None, hr_max_at,
                 float(pace_umbral) if pace_umbral else None,
