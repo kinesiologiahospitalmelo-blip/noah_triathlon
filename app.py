@@ -5988,6 +5988,19 @@ def get_tecnica(atleta_id):
         return ok({'error': str(e)})
 
 
+# ── Reloj Garmin (NOAH) ──
+try:
+    from noah_watch import register_watch
+    register_watch(app, dict(
+        get_conn=get_conn, ok=ok, error=error,
+        calcular_cs_dprime=_calcular_cs_dprime,
+        sesion_de_token=_sesion_de_token, token_de_request=_token_de_request,
+        limpiar_nan=_limpiar_nan,
+    ))
+except Exception as _e:
+    print('Reloj Garmin no activado:', _e)
+
+
 if __name__ == '__main__':
     print('=' * 50)
     print('  NOA API — Backend Flask')
