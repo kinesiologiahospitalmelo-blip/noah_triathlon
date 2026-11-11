@@ -103,6 +103,7 @@ function construirFilas(series) {
       lr: series.lr ? series.lr[i] : null,            // ya decodificado en el endpoint (% izq)
       torque: series.torque ? series.torque[i] : null,
       pedal: series.pedal ? series.pedal[i] : null,
+      kmh: sp != null ? r1(sp * 3.6) : null,
     })
   }
   return out
@@ -392,18 +393,22 @@ function genApoyo(filas) {
 }
 function genPotencia(filas) {
   const sP = stat(filas, 'power'), sC = stat(filas, 'cadence'), sH = stat(filas, 'hr')
-  if (!sP.n || !sC.n) return null
+  if (!sP.n) return null
   const T = thirds(filas, ['power', 'cadence', 'hr'])
-  const cPC = corr(filas, 'power', 'cadence')
+  const cPC = sC.n ? corr(filas, 'power', 'cadence') : null
+  const cPH = sH.n ? corr(filas, 'power', 'hr') : null
   const driftP = T.inicio.power ? r1((T.final.power - T.inicio.power) / T.inicio.power * 100) : 0
   const cae = driftP <= -8
+  // desacople Pw:HR (eficiencia aeróbica): sube la FC manteniendo potencia = fatiga
+  const driftHR = sH.n && T.inicio.hr ? r1((T.final.hr - T.inicio.hr) / T.inicio.hr * 100) : null
+  const desacople = driftHR != null && driftP > -5 && driftHR >= 5
   return {
-    observamos: `Potencia media ${sP.avg} W y cadencia ${sC.avg} rpm${sH.n ? `, FC media ${sH.avg} bpm` : ''}.`,
-    numeros: `Potencia entre ${sP.min} y ${sP.max} W; cadencia entre ${sC.min} y ${sC.max} rpm. Del inicio al final: potencia ${T.inicio.power}→${T.final.power} W (${driftP > 0 ? '+' : ''}${driftP}%)${sH.n ? `, FC ${T.inicio.hr}→${T.final.hr} bpm` : ''}.`,
-    relacion: cPC == null ? 'Relación potencia-cadencia poco concluyente en esta sesión.' : cPC > 0.2 ? `A más potencia, tendés a subir la cadencia (r≈${cPC}).` : cPC < -0.2 ? `A más potencia, tendés a bajar la cadencia y empujar más fuerte (r≈${cPC}).` : `Mantenés una cadencia bastante independiente de la potencia (r≈${cPC}).`,
-    significa: cae ? 'La potencia cae de forma marcada hacia el final: fatiga o dosificación alta al inicio.' : 'Sostenés la entrega de potencia a lo largo de la sesión.',
-    impacto: cae ? 'Perder potencia al final penaliza el rendimiento justo en la parte decisiva.' : 'Buena durabilidad de potencia: base para sostener el esfuerzo.',
-    trabajar: cae ? 'Dosificación (empezar algo más conservador) y resistencia específica a la potencia (sweet spot, umbral).' : null,
+    observamos: `Potencia media ${sP.avg} W${sC.n ? `, cadencia ${sC.avg} rpm` : ' (sin sensor de cadencia)'}${sH.n ? `, FC media ${sH.avg} bpm` : ''}.`,
+    numeros: `Potencia entre ${sP.min} y ${sP.max} W. Del inicio al final: potencia ${T.inicio.power}→${T.final.power} W (${driftP > 0 ? '+' : ''}${driftP}%)${sH.n ? `, FC ${T.inicio.hr}→${T.final.hr} bpm` : ''}.`,
+    relacion: cPH != null ? `Relación potencia–FC: ${cPH > 0.3 ? 'alta' : 'moderada'} (r≈${cPH}); así se ve cuánto te cuesta cada vatio.` : (cPC != null ? `Potencia y cadencia: r≈${cPC}.` : 'Serie de potencia en el tiempo.'),
+    significa: cae ? 'La potencia cae marcadamente hacia el final: fatiga o dosificación alta al inicio.' : desacople ? 'La potencia se sostiene pero la FC sube: aparece desacople (fatiga cardiovascular).' : 'Sostenés la entrega de potencia y la FC acompaña: buena eficiencia.',
+    impacto: cae || desacople ? 'Perder potencia o que suba la FC a igual potencia penaliza el final de la prueba.' : 'Buena durabilidad: base para sostener el esfuerzo.',
+    trabajar: cae || desacople ? 'Dosificación y resistencia específica (sweet spot / umbral) para sostener vatios con menos costo.' : null,
   }
 }
 function genPedaleo(filas) {
@@ -578,12 +583,16 @@ function relsDe(filas, sport) {
   const out = []
   const push = (lab, kx, ky) => { const { r, n } = corrN(filas, kx, ky); if (r != null && n >= 10) out.push({ lab, r, n }) }
   if (sport === 'running') {
+    push('Más velocidad ↔ más cadencia', 'speed_ms', 'cadence')
+    push('Más velocidad ↔ más FC (cuánto te cuesta correr rápido)', 'speed_ms', 'hr')
     push('Más cadencia ↔ menos oscilación', 'cadence', 'vo')
     push('Más velocidad ↔ más oscilación', 'speed_ms', 'vo')
     push('Más velocidad ↔ menos tiempo de contacto', 'speed_ms', 'gct')
   } else if (sport === 'cycling') {
     push('Más potencia ↔ más cadencia', 'power', 'cadence')
     push('Más potencia ↔ más FC (desacople aeróbico)', 'power', 'hr')
+    push('Más velocidad ↔ más cadencia', 'speed_ms', 'cadence')
+    push('Más velocidad ↔ más FC', 'speed_ms', 'hr')
     push('Más cadencia ↔ más torque efectivo', 'cadence', 'torque')
   }
   return out
@@ -760,6 +769,82 @@ function FlagCycling({ filas }) {
   </Glass>
 }
 
+// Mapa UNIVERSAL cadencia × velocidad (sirve para todo atleta: solo pulso/cadencia/GPS)
+function FlagMapaCV({ filas, sport }) {
+  const yKey = sport === 'cycling' ? 'kmh' : 'pace'
+  const base = filas.filter(r => r.cadence != null && r[yKey] != null && r.speed_ms != null)
+  if (base.length < 12) return null
+  const cad = base.map(s => s.cadence), ys = base.map(s => s[yKey]), spd = base.map(s => s.speed_ms)
+  const mCad = Math.round(median(cad)), mY = sport === 'cycling' ? r1(median(ys)) : Math.round(median(ys) * 100) / 100
+  const sMin = Math.min(...spd), sMax = Math.max(...spd)
+  const pts = base.map(s => ({ cadence: s.cadence, [yKey]: s[yKey], _c: hexLerp(C.sage, C.blue, sMax > sMin ? (s.speed_ms - sMin) / (sMax - sMin) : 0.5) }))
+  const xMin = Math.min(...cad), xMax = Math.max(...cad), yMin = Math.min(...ys), yMax = Math.max(...ys)
+  const rev = sport !== 'cycling'
+  const fy = rev ? [yMin, mY] : [mY, yMax], sy = rev ? [mY, yMax] : [yMin, mY]
+  const nombres = sport === 'cycling'
+    ? { fr: 'Ágil y rápido', fl: 'Fuerza / desarrollo', sr: 'Girar suave', sl: 'Suave' }
+    : { fr: 'Ágil y rápido', fl: 'Zancada larga', sr: 'Cadencia alta, suave', sl: 'Suave' }
+  const fast = (s) => sport === 'cycling' ? s[yKey] >= mY : s[yKey] <= mY
+  const pctAgil = Math.round(base.filter(s => s.cadence >= mCad && fast(s)).length / base.length * 100)
+  const yLbl = sport === 'cycling' ? 'Velocidad (km/h)' : 'Ritmo (/km)'
+  return <Glass>
+    <HeadG eyebrow={`${sport === 'cycling' ? 'Ciclismo' : 'Running'} · Mapa`} titulo={`Cadencia × ${sport === 'cycling' ? 'Velocidad' : 'Ritmo'}`} subtitulo="Cada punto es un instante real tuyo (color: verde = lento, azul = rápido). Las líneas son TU propia mediana." />
+    <ResponsiveContainer width="100%" height={372}>
+      <ScatterChart margin={{ top: 16, right: 34, left: 26, bottom: 30 }}>
+        <ReferenceArea x1={mCad} y1={fy[0]} x2={xMax + 3} y2={fy[1]} fill={C.sage} fillOpacity={0.14} label={{ value: nombres.fr, position: 'insideTopRight', fill: C.sage, fontSize: 13.5, fontWeight: 700 }} />
+        <ReferenceArea x1={xMin - 3} y1={fy[0]} x2={mCad} y2={fy[1]} fill={C.blue} fillOpacity={0.10} label={{ value: nombres.fl, position: 'insideTopLeft', fill: C.blue, fontSize: 13.5, fontWeight: 700 }} />
+        <ReferenceArea x1={mCad} y1={sy[0]} x2={xMax + 3} y2={sy[1]} fill={C.slate} fillOpacity={0.10} label={{ value: nombres.sr, position: 'insideBottomRight', fill: C.dim, fontSize: 13, fontWeight: 700 }} />
+        <ReferenceArea x1={xMin - 3} y1={sy[0]} x2={mCad} y2={sy[1]} fill={C.slate} fillOpacity={0.06} label={{ value: nombres.sl, position: 'insideBottomLeft', fill: C.dim, fontSize: 13, fontWeight: 700 }} />
+        <CartesianGrid stroke="rgba(255,255,255,0.05)" />
+        <XAxis type="number" dataKey="cadence" name="Cadencia" domain={[xMin - 3, xMax + 3]} tick={{ fill: C.dim, fontSize: 14 }} tickMargin={8} label={{ value: sport === 'cycling' ? 'Cadencia (rpm)' : 'Cadencia (spm)', position: 'bottom', fill: C.ink, fontSize: 15, offset: 8 }} />
+        <YAxis type="number" dataKey={yKey} name={yLbl} domain={[yMin, yMax]} reversed={rev} tick={{ fill: C.dim, fontSize: 14 }} width={52} tickFormatter={rev ? fmtPace : undefined} label={{ value: yLbl, angle: -90, position: 'left', fill: C.ink, fontSize: 15, dx: 10 }} />
+        <ZAxis range={[46, 46]} />
+        <ReferenceLine x={mCad} stroke={C.dim} strokeDasharray="5 5" /><ReferenceLine y={mY} stroke={C.dim} strokeDasharray="5 5" />
+        <Tooltip cursor={{ stroke: C.dim }} contentStyle={tip} formatter={(v, n) => [rev && n === yLbl ? fmtPace(v) : v, n]} />
+        <Scatter data={pts} isAnimationActive={false}>{pts.map((p, i) => <Cell key={i} fill={p._c} fillOpacity={0.6} />)}</Scatter>
+      </ScatterChart>
+    </ResponsiveContainer>
+    <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>Mediana de cadencia {mCad}{sport === 'cycling' ? ' rpm' : ' spm'} y de {sport === 'cycling' ? `velocidad ${mY} km/h` : `ritmo ${fmtPace(mY)}/km`}.</div>
+    <Conclusion
+      que={`Pasaste el ${pctAgil}% del tiempo "ágil y rápido" (cadencia ≥ ${mCad} con buena velocidad).`}
+      relacion="Sostener la velocidad con buena cadencia descarga las piernas; bajar la cadencia para ir rápido carga más el músculo."
+      mejorar={pctAgil >= 55 ? 'Buen registro: mantené la cadencia cuando apretás el ritmo.' : 'Buscá subir la cadencia en los tramos rápidos en vez de alargar/pisar más fuerte.'} />
+  </Glass>
+}
+
+// Ciclismo sin cadencia — Potencia × Velocidad (color por FC)
+function FlagPotVel({ filas }) {
+  const base = filas.filter(r => r.power != null && r.kmh != null)
+  if (base.length < 12) return null
+  const pw = base.map(s => s.power), vk = base.map(s => s.kmh), hrs = base.map(s => s.hr).filter(x => x != null)
+  const mP = Math.round(median(pw)), mV = r1(median(vk))
+  const hMin = hrs.length ? Math.min(...hrs) : 0, hMax = hrs.length ? Math.max(...hrs) : 1
+  const pts = base.map(s => ({ power: s.power, kmh: s.kmh, _c: s.hr != null && hMax > hMin ? hexLerp(C.sage, C.amber, (s.hr - hMin) / (hMax - hMin)) : C.blue }))
+  const xMin = Math.min(...pw), xMax = Math.max(...pw), yMin = Math.min(...vk), yMax = Math.max(...vk)
+  const pctEf = Math.round(base.filter(s => s.power <= mP && s.kmh >= mV).length / base.length * 100)
+  return <Glass>
+    <HeadG eyebrow="Ciclismo · Mapa" titulo="Potencia × Velocidad" subtitulo="Cada punto es un instante real (color: verde = FC baja, ámbar = FC alta). Arriba-izquierda = más velocidad con menos vatios = más eficiente/aero." />
+    <ResponsiveContainer width="100%" height={372}>
+      <ScatterChart margin={{ top: 16, right: 34, left: 26, bottom: 30 }}>
+        <ReferenceArea x1={xMin - 5} y1={mV} x2={mP} y2={yMax + 1} fill={C.sage} fillOpacity={0.14} label={{ value: 'Eficiente', position: 'insideTopLeft', fill: C.sage, fontSize: 13.5, fontWeight: 700 }} />
+        <ReferenceArea x1={mP} y1={yMin - 1} x2={xMax + 5} y2={mV} fill={C.amber} fillOpacity={0.10} label={{ value: 'Mucho vatio, poca velocidad', position: 'insideBottomRight', fill: C.amber, fontSize: 12.5, fontWeight: 700 }} />
+        <CartesianGrid stroke="rgba(255,255,255,0.05)" />
+        <XAxis type="number" dataKey="power" name="Potencia" domain={[xMin - 5, xMax + 5]} tick={{ fill: C.dim, fontSize: 14 }} tickMargin={8} label={{ value: 'Potencia (W)', position: 'bottom', fill: C.ink, fontSize: 15, offset: 8 }} />
+        <YAxis type="number" dataKey="kmh" name="Velocidad" domain={[yMin - 1, yMax + 1]} tick={{ fill: C.dim, fontSize: 14 }} width={48} label={{ value: 'Velocidad (km/h)', angle: -90, position: 'left', fill: C.ink, fontSize: 15, dx: 6 }} />
+        <ZAxis range={[46, 46]} />
+        <ReferenceLine x={mP} stroke={C.dim} strokeDasharray="5 5" /><ReferenceLine y={mV} stroke={C.dim} strokeDasharray="5 5" />
+        <Tooltip cursor={{ stroke: C.dim }} contentStyle={tip} />
+        <Scatter data={pts} isAnimationActive={false}>{pts.map((p, i) => <Cell key={i} fill={p._c} fillOpacity={0.6} />)}</Scatter>
+      </ScatterChart>
+    </ResponsiveContainer>
+    <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>Mediana de potencia {mP} W y de velocidad {mV} km/h.</div>
+    <Conclusion
+      que={`El ${pctEf}% del tiempo lograste velocidad alta con potencia baja (zona eficiente).`}
+      relacion="A igual potencia, ir más rápido = mejor posición/aero y rodada. El color muestra el costo cardíaco de cada punto."
+      mejorar={pctEf >= 50 ? 'Buena eficiencia: sostené la posición aero en los tramos rápidos.' : 'Hay margen aero: posición más baja y constante para ganar velocidad sin más vatios.'} />
+  </Glass>
+}
+
 // Natación — reparto de estilos: barra apilada COMPACTA (no una dona gigante)
 function SwimDistribucion({ estilos }) {
   const items = estilos.map(([n, e]) => ({ name: n, value: e.n_largos || 0 })).filter(x => x.value > 0).sort((a, b) => b.value - a.value)
@@ -924,26 +1009,29 @@ export default function SeccionTecnica({ atletaId }) {
   const aCambios = useMemo(() => (hayLab && !esNado) ? genCambios(filas, sport) : null, [filas, hayLab, sport, esNado])
   const semanal = Semanal({ spark: d.sparkline, sport, sel: evolSel, setSel: setEvolSel })
 
-  const panelsEconomia = [
-    { key: 'vo', label: 'Oscilación vertical', unit: 'cm', color: C.violet },
-    { key: 'pace', label: 'Ritmo', unit: '/km', color: C.cian, pace: true },
-    { key: 'hr', label: 'Frecuencia cardíaca', unit: 'bpm', color: C.vMut },
-  ].filter(p => p.key === 'pace' ? disp.speed_ms : disp[p.key])
   const panelsApoyo = [
     { key: 'gct', label: 'Tiempo de contacto', unit: 'ms', color: C.cian },
     { key: 'cadence', label: 'Cadencia', unit: 'spm', color: C.violet },
     { key: 'stride', label: 'Longitud de zancada', unit: 'm', color: C.cLit },
-  ].filter(p => disp[p.key])
-  const panelsPotencia = [
-    { key: 'power', label: 'Potencia', unit: 'W', color: C.violet },
-    { key: 'cadence', label: 'Cadencia', unit: 'rpm', color: C.cian },
-    { key: 'hr', label: 'Frecuencia cardíaca', unit: 'bpm', color: C.vMut },
   ].filter(p => disp[p.key])
   const panelsPedaleo = [
     { key: 'lr', label: 'Balance izquierda/derecha', unit: '% izq', color: C.cian, center50: true },
     { key: 'torque', label: 'Torque efectivo', unit: '%', color: C.violet },
     { key: 'pedal', label: 'Suavidad de pedaleo', unit: '%', color: C.cLit },
   ].filter(p => disp[p.key])
+  // paneles UNIVERSALES (funcionan con solo pulso/cadencia/GPS)
+  const panelsRunTS = [
+    disp.vo && { key: 'vo', label: 'Oscilación vertical', unit: 'cm', color: C.sage },
+    disp.speed_ms && { key: 'pace', label: 'Ritmo', unit: '/km', color: C.blue, pace: true },
+    disp.hr && { key: 'hr', label: 'Frecuencia cardíaca', unit: 'bpm', color: C.amber },
+    disp.cadence && { key: 'cadence', label: 'Cadencia', unit: 'spm', color: C.sage },
+  ].filter(Boolean)
+  const panelsBikeTS = [
+    disp.power && { key: 'power', label: 'Potencia', unit: 'W', color: C.blue },
+    disp.speed_ms && { key: 'kmh', label: 'Velocidad', unit: 'km/h', color: C.sage },
+    disp.hr && { key: 'hr', label: 'Frecuencia cardíaca', unit: 'bpm', color: C.amber },
+    disp.cadence && { key: 'cadence', label: 'Cadencia', unit: 'rpm', color: C.sage },
+  ].filter(Boolean)
 
   return (
     <div style={{ position: 'relative', maxWidth: 680, margin: '0 auto', width: '100%', overflowX: 'hidden', fontFamily: 'Inter, system-ui, sans-serif', color: C.ink }}>
@@ -1065,49 +1153,51 @@ export default function SeccionTecnica({ atletaId }) {
               </div>
             )}
 
-            {/* ANÁLISIS 1 */}
-            <div>
-              <TituloSeccion>{sport === 'cycling' ? 'Análisis 1 · Entrega de potencia' : 'Análisis 1 · Economía del movimiento'}</TituloSeccion>
-              <div style={{ marginTop: 10 }}>
-                {sport === 'running'
-                  ? (panelsEconomia.length >= 2 && aEconomia
-                    ? <Analisis eyebrow="Economía del movimiento" titulo="¿Mantenés la mecánica cuando cambia el ritmo?" subtitulo="Oscilación, ritmo y FC en el tiempo (misma sesión)." interp={aEconomia}><MultiSerie filas={filas} panels={panelsEconomia} /></Analisis>
-                    : <SensorFalta sensor="un sensor de Running Dynamics (oscilación vertical)" />)
-                  : (panelsPotencia.length >= 2 && aPotencia
-                    ? <Analisis eyebrow="Entrega de potencia" titulo="¿Cómo sostenés la potencia?" subtitulo="Potencia, cadencia y FC en el tiempo (misma sesión)." interp={aPotencia}><MultiSerie filas={filas} panels={panelsPotencia} /></Analisis>
-                    : <SensorFalta sensor="un medidor de potencia" />)}
+            {/* ANÁLISIS 1 — serie temporal (siempre, con lo que haya) */}
+            {hayLab && (sport === 'running' ? panelsRunTS.length >= 2 : panelsBikeTS.length >= 2) && (
+              <div>
+                <TituloSeccion>{sport === 'cycling' ? (disp.power ? 'Análisis · Entrega de potencia' : 'Análisis · Velocidad, FC y cadencia') : (disp.vo ? 'Análisis · Economía del movimiento' : 'Análisis · Ritmo, FC y cadencia')}</TituloSeccion>
+                <div style={{ marginTop: 10 }}>
+                  {sport === 'running'
+                    ? <Analisis eyebrow={disp.vo ? 'Economía del movimiento' : 'Cómo te movés'} titulo="¿Qué pasa cuando cambia el ritmo?" subtitulo="Ritmo, FC y cadencia en el tiempo (misma sesión)." interp={aEconomia}><MultiSerie filas={filas} panels={panelsRunTS} /></Analisis>
+                    : <Analisis eyebrow={disp.power ? 'Entrega de potencia' : 'Cómo rodás'} titulo="¿Cómo sostenés el esfuerzo?" subtitulo="Velocidad/potencia, FC y cadencia en el tiempo." interp={aPotencia}><MultiSerie filas={filas} panels={panelsBikeTS} /></Analisis>}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* ANÁLISIS 2 */}
-            <div>
-              <TituloSeccion>{sport === 'cycling' ? 'Análisis 2 · Simetría y pedaleo' : 'Análisis 2 · Mecánica del apoyo'}</TituloSeccion>
-              <div style={{ marginTop: 10 }}>
-                {sport === 'running'
-                  ? (panelsApoyo.length >= 2 && aApoyo
-                    ? <Analisis eyebrow="Mecánica del apoyo" titulo="¿Cómo organizás cada apoyo?" subtitulo="Contacto, cadencia y zancada en el tiempo." interp={aApoyo}><MultiSerie filas={filas} panels={panelsApoyo} /></Analisis>
-                    : <SensorFalta sensor="un sensor de Running Dynamics (tiempo de contacto)" />)
-                  : (panelsPedaleo.length >= 1 && aPedaleo
-                    ? <Analisis eyebrow="Simetría y pedaleo" titulo="¿Cómo pedaleás y qué tan parejo?" subtitulo="Balance izquierda/derecha (50/50 ideal) y torque efectivo en el tiempo." interp={aPedaleo}><MultiSerie filas={filas} panels={panelsPedaleo} /></Analisis>
-                    : <SensorFalta sensor="un medidor con Cycling Dynamics (balance L/R y torque)" />)}
+            {/* ANÁLISIS 2 — mecánica/pedaleo: SOLO si hay sensores de dinámica (sin cartel) */}
+            {sport === 'running' && panelsApoyo.length >= 2 && aApoyo && (
+              <div>
+                <TituloSeccion>Análisis · Mecánica del apoyo</TituloSeccion>
+                <div style={{ marginTop: 10 }}><Analisis eyebrow="Mecánica del apoyo" titulo="¿Cómo organizás cada apoyo?" subtitulo="Contacto, cadencia y zancada en el tiempo." interp={aApoyo}><MultiSerie filas={filas} panels={panelsApoyo} /></Analisis></div>
               </div>
-            </div>
-
-            {/* Círculo de pedaleo (ciclismo) */}
-            {sport === 'cycling' && hayLab && (
+            )}
+            {sport === 'cycling' && panelsPedaleo.length >= 1 && aPedaleo && (
+              <div>
+                <TituloSeccion>Análisis · Simetría y pedaleo</TituloSeccion>
+                <div style={{ marginTop: 10 }}><Analisis eyebrow="Simetría y pedaleo" titulo="¿Cómo pedaleás y qué tan parejo?" subtitulo="Balance izquierda/derecha (50/50 ideal) y torque efectivo en el tiempo." interp={aPedaleo}><MultiSerie filas={filas} panels={panelsPedaleo} /></Analisis></div>
+              </div>
+            )}
+            {sport === 'cycling' && hayLab && (disp.torque || disp.lr) && (
               <div>
                 <TituloSeccion>Pedaleo · modelo</TituloSeccion>
                 <div style={{ marginTop: 10 }}><PedalClock filas={filas} /></div>
               </div>
             )}
 
-            {/* ANÁLISIS 3 — mapa biomecánico insignia */}
-            <div>
-              <TituloSeccion>Análisis 3 · Mapa biomecánico</TituloSeccion>
-              <div style={{ marginTop: 10 }}>{!hayLab
-                ? <SensorFalta sensor="una sesión con datos muestra-a-muestra" />
-                : sport === 'running' ? <FlagRunning filas={filas} /> : <FlagCycling filas={filas} />}</div>
-            </div>
+            {/* ANÁLISIS 3 — mapa: biomecánico si hay sensores, universal si no (siempre se ve) */}
+            {hayLab && (
+              <div>
+                <TituloSeccion>Análisis · Mapa</TituloSeccion>
+                <div style={{ marginTop: 10 }}>
+                  {sport === 'running'
+                    ? (disp.stride ? <FlagRunning filas={filas} /> : <FlagMapaCV filas={filas} sport="running" />)
+                    : (disp.cadence && disp.power ? <FlagCycling filas={filas} />
+                      : disp.power && disp.speed_ms ? <FlagPotVel filas={filas} />
+                        : <FlagMapaCV filas={filas} sport="cycling" />)}
+                </div>
+              </div>
+            )}
 
             {/* ANÁLISIS 4 */}
             <div>
