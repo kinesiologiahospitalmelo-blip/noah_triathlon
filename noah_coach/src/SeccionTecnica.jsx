@@ -1,1103 +1,1142 @@
-// SeccionTecnica.jsx — Análisis biomecánico profesional
-// Spider chart, sparklines, drift multidimensional, sensor detection, recomendaciones priorizadas
-import { useState, useEffect } from 'react'
-import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
-         LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-         PieChart, Pie, Cell, CartesianGrid, ComposedChart,
-         ScatterChart, Scatter, ZAxis, Legend, ReferenceLine } from 'recharts'
+// SeccionTecnica.jsx — Técnica / Biomecánica NOAH
+// Rediseño premium (vidrio, violeta+cian) + análisis COMPLETO por deporte:
+//  · Running : economía, apoyo, mapa, cambios, evolución (muestra-a-muestra).
+//  · Ciclismo: entrega de potencia, simetría y pedaleo (L/R + torque), mapa,
+//              cambios, evolución. (La "postura" no la mide el sensor; lo medible
+//              es balance L/R, torque effectiveness y pedal smoothness.)
+//  · Natación: datos por LARGO (no muestra-a-muestra): tarjetas por estilo,
+//              evolución y consistencia. No se inventan curvas de segundo a segundo.
+// Datos: /tecnica (tarjetas, índice, evolución, comparación) + /tecnica_lab (series).
+// Base de conocimiento: tecnica_fuentes.json.
+import { useState, useEffect, useMemo } from 'react'
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  ScatterChart, Scatter, ZAxis, ReferenceLine, ReferenceArea, BarChart, Bar, Cell,
+} from 'recharts'
+import fuentes from './tecnica_fuentes.json'
 
-const API = window.location.hostname === 'localhost' ? 'http://localhost:5000/api' : '/api'
-
-function authFetch(url, options = {}) {
-  let token = null
-  try { token = JSON.parse(localStorage.getItem('noah_sesion'))?.token } catch {}
-  const headers = { ...(options.headers || {}) }
-  if (token) headers['Authorization'] = `Bearer ${token}`
-  return fetch(url, { ...options, headers })
+const esLocal = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+const API = esLocal ? `http://${window.location.hostname}:5000/api` : '/api'
+function authFetch(url, o = {}) {
+  let t = null
+  try { t = JSON.parse(localStorage.getItem('noah_sesion'))?.token } catch {}
+  return fetch(url, { ...o, headers: { ...(o.headers || {}), ...(t ? { Authorization: `Bearer ${t}` } : {}) } })
 }
 
+// ── Paleta oficial NOAH: verde salvia + azul eléctrico + blanco frío ──
+// (violet/cian se conservan como nombres internos pero mapean a azul/verde salvia,
+//  para no tocar cada uso; la identidad visible es solo estos 3 colores + gris.)
 const C = {
-  purple: '#A78BFA', green: '#10B981', blue: '#3B82F6', cyan: '#06B6D4',
-  red: '#EF4444', yellow: '#F59E0B', dim: 'rgba(255,255,255,0.4)',
-  bg: 'rgba(255,255,255,0.03)', border: 'rgba(255,255,255,0.06)',
+  bg: '#090D18', ink: '#EFF3ED', dim: '#AAB5C6', aux: '#AAB5C6',
+  border: 'rgba(255,255,255,0.08)',
+  // identidad + paleta semántica de datos (cada color = un significado)
+  sage: '#B9C995',   // PROTAGONISTA · favorable · eficiente · fresco
+  blue: '#2454F4',   // secundario · variable del atleta · objetivo
+  amber: '#E6B655',  // atención · fuerza/torque · fatiga
+  slate: '#6E7689',  // neutral · recuperación · zona muerta
+  ivory: '#EFF3ED',  // cards y textos
+  green: '#35C07A',  // semáforo OK (dentro de gráficos)
+  red: '#E2726E',    // semáforo alerta (dentro de gráficos)
+  white: '#EFF3ED',
+  violet: '#B9C995', cian: '#2454F4',           // protagonista=salvia · secundario=azul
+  v: '#B9C995', vMut: '#9FB488', c: '#2454F4', cLit: '#5B79E8', blend: '#8FA0C0',
+}
+const glass = {
+  background: 'linear-gradient(160deg, rgba(57,123,255,0.06), rgba(168,191,168,0.035) 58%, rgba(18,24,42,0) 100%), rgba(20,27,45,0.50)',
+  backdropFilter: 'blur(20px) saturate(145%)', WebkitBackdropFilter: 'blur(20px) saturate(145%)',
+  border: `1px solid ${C.border}`, borderRadius: 20,
+  boxShadow: '0 20px 50px -22px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.05)',
+}
+const num = { fontVariantNumeric: 'tabular-nums' }
+const tip = { background: 'rgba(16,22,38,0.94)', backdropFilter: 'blur(14px)', border: `1px solid ${C.border}`, borderRadius: 12, fontSize: 14, color: C.ink, boxShadow: '0 12px 30px -10px rgba(0,0,0,0.6)' }
+
+const r1 = (x) => Math.round(x * 10) / 10
+const median = (a) => { const s = [...a].filter(x => x != null && isFinite(x)).sort((x, y) => x - y); const n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : 0 }
+const hexLerp = (a, b, t) => { const pa = [parseInt(a.slice(1, 3), 16), parseInt(a.slice(3, 5), 16), parseInt(a.slice(5, 7), 16)], pb = [parseInt(b.slice(1, 3), 16), parseInt(b.slice(3, 5), 16), parseInt(b.slice(5, 7), 16)]; const c = pa.map((v, i) => Math.round(v + (pb[i] - v) * t)); return `rgb(${c[0]},${c[1]},${c[2]})` }
+const fmtPace = (p) => { if (p == null || !isFinite(p) || p <= 0) return '—'; const m = Math.floor(p); return `${m}:${String(Math.round((p - m) * 60)).padStart(2, '0')}` }
+const paceDe = (ms) => (ms && ms > 0.3 ? (1000 / ms) / 60 : null)
+function stat(rows, key) {
+  const v = rows.map(r => r[key]).filter(x => x != null && isFinite(x))
+  if (!v.length) return { n: 0 }
+  const n = v.length, t = Math.max(1, Math.floor(n / 3))
+  const mean = a => a.reduce((s, x) => s + x, 0) / a.length
+  return { n, avg: r1(mean(v)), p1: r1(mean(v.slice(0, t))), p3: r1(mean(v.slice(-t))), min: r1(Math.min(...v)), max: r1(Math.max(...v)) }
+}
+function corr(rows, kx, ky) {
+  const pts = rows.filter(r => r[kx] != null && r[ky] != null && isFinite(r[kx]) && isFinite(r[ky]))
+  if (pts.length < 8) return null
+  const n = pts.length, mx = pts.reduce((s, p) => s + p[kx], 0) / n, my = pts.reduce((s, p) => s + p[ky], 0) / n
+  let sxy = 0, sxx = 0, syy = 0
+  for (const p of pts) { const dx = p[kx] - mx, dy = p[ky] - my; sxy += dx * dy; sxx += dx * dx; syy += dy * dy }
+  if (sxx === 0 || syy === 0) return null
+  return Math.round((sxy / Math.sqrt(sxx * syy)) * 100) / 100
+}
+function thirds(rows, keys) {
+  const n = rows.length, t1 = Math.floor(n / 3), t2 = Math.floor(2 * n / 3)
+  const seg = (a) => { const o = {}; for (const k of keys) { const v = a.map(r => r[k]).filter(x => x != null && isFinite(x)); o[k] = v.length ? r1(v.reduce((s, x) => s + x, 0) / v.length) : null } return o }
+  return { inicio: seg(rows.slice(0, t1)), mitad: seg(rows.slice(t1, t2)), final: seg(rows.slice(t2)) }
+}
+function etiquetaEstado(e) {
+  const map = { elite: 'Nivel elite', bueno: 'Bien', avanzado: 'Avanzado', intermedio: 'Intermedio', promedio: 'Promedio', principiante: 'A mejorar', mejorar: 'A mejorar', optima: 'Óptima', 'óptima': 'Óptima', equilibrado: 'Equilibrado', leve: 'Leve', significativo: 'Marcado' }
+  const k = (e || '').toLowerCase()
+  return map[k] || (e ? e[0].toUpperCase() + e.slice(1) : '—')
+}
+function estadoInfo(e) {
+  const k = (e || '').toLowerCase()
+  if (['elite', 'bueno', 'óptima', 'optima', 'equilibrado', 'estable'].includes(k)) return { t: etiquetaEstado(e), c: C.sage }
+  if (['mejorar', 'principiante', 'alerta', 'significativo'].includes(k)) return { t: etiquetaEstado(e), c: C.amber }
+  return { t: etiquetaEstado(e), c: C.dim }
 }
 
-const PRIORIDAD_COLOR = { alta: C.red, media: C.yellow, baja: C.green }
-const PRIORIDAD_LABEL = { alta: '● ALTA', media: '● MEDIA', baja: '● BAJA' }
+function construirFilas(series) {
+  const ts = series.ts || []
+  const out = []
+  for (let i = 0; i < ts.length; i++) {
+    const sp = series.speed_ms ? series.speed_ms[i] : null
+    out.push({
+      t: ts[i], hr: series.hr ? series.hr[i] : null, cadence: series.cadence ? series.cadence[i] : null,
+      power: series.power ? series.power[i] : null, speed_ms: sp, pace: paceDe(sp),
+      vo: series.vo && series.vo[i] != null ? r1(series.vo[i] / 10) : null,
+      gct: series.gct ? series.gct[i] : null,
+      stride: series.stride && series.stride[i] != null ? (series.stride[i] > 10 ? r1(series.stride[i] / 100) : r1(series.stride[i])) : null,
+      vratio: series.vratio ? series.vratio[i] : null,
+      lr: series.lr ? series.lr[i] : null,            // ya decodificado en el endpoint (% izq)
+      torque: series.torque ? series.torque[i] : null,
+      pedal: series.pedal ? series.pedal[i] : null,
+    })
+  }
+  return out
+}
 
-// ═══════════════════════════════════════════════════════════════
-// COMPONENTES
-// ═══════════════════════════════════════════════════════════════
+// ── Base de conocimiento (JSON) ──
+const SECCION_JSON = { running: 'running', cycling: 'ciclismo', swimming: 'natacion' }
+const KEY_JSON = {
+  running: { cadencia: 'cadencia', gct: 'gct', vertical_osc: 'oscilacion_vertical', economia: 'vertical_ratio', stride_length: 'zancada' },
+  cycling: { cadencia: 'cadencia', lr_balance: 'balance_lr', torque_effectiveness: 'torque_effectiveness' },
+  swimming: {},
+}
+function fuenteDe(sport, k) { try { return fuentes[SECCION_JSON[sport]][KEY_JSON[sport][k]] || null } catch { return null } }
+function umbralTexto(u) {
+  if (!u) return null
+  const uni = u.unidad && typeof u.unidad === 'string' ? u.unidad : ''
+  const orden = ['elite', 'bueno', 'avanzado', 'intermedio', 'promedio', 'principiante', 'mejorar']
+  const parts = orden.filter(x => u[x] != null).map(x => `${x} ${u[x]}${typeof u[x] === 'number' ? uni : ''}`)
+  return parts.length ? parts.join(' · ') : null
+}
 
-function MetricaOverlay({ label, valor, unidad, estado, x, y }) {
-  const color = estado === 'óptima' || estado === 'bueno' || estado === 'equilibrado' || estado === 'elite' ? C.green
-    : estado === 'mejorar' || estado === 'significativo' ? C.red
-    : estado === 'baja' || estado === 'leve' || estado === 'alta' ? C.yellow : C.purple
-  return (
-    <div style={{
-      position: 'absolute', left: `${x}%`, top: `${y}%`, transform: 'translate(-50%,-50%)',
-      textAlign: 'center', zIndex: 2,
-    }}>
-      <div style={{
-        background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
-        borderRadius: 12, padding: '8px 14px', border: `1px solid ${color}40`,
-      }}>
-        <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, letterSpacing: 1 }}>{label}</div>
-        <div style={{ fontSize: 22, fontWeight: 800, color }}>{valor}<span style={{ fontSize: 11, color: C.dim }}> {unidad}</span></div>
-        <div style={{ fontSize: 8, color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>{estado}</div>
-      </div>
+// ── Primitivos ──
+function Glass({ children, style }) { return <div style={{ ...glass, padding: 18, ...style }}>{children}</div> }
+function TituloSeccion({ children }) {
+  return <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '6px 2px 2px' }}>
+    <span style={{ width: 3, height: 15, borderRadius: 3, background: `linear-gradient(${C.violet}, ${C.cian})` }} />
+    <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.8, color: C.dim, textTransform: 'uppercase' }}>{children}</span>
+  </div>
+}
+function Expander({ label, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return <div>
+    <button onClick={() => setOpen(o => !o)} className="noah-exp" style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 0', color: open ? C.ink : C.dim }}>
+      <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}>{label}</span>
+      <span style={{ fontSize: 13, transform: open ? 'rotate(180deg)' : 'none', color: C.violet }}>⌄</span>
+    </button>
+    {open && <div style={{ marginTop: 10 }}>{children}</div>}
+  </div>
+}
+function SensorFalta({ sensor }) {
+  return <Glass style={{ border: `1px dashed ${C.border}`, background: 'rgba(22,29,46,0.30)' }}>
+    <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, textAlign: 'center' }}>Para este análisis necesitás <span style={{ color: C.ink }}>{sensor}</span>.<br />No lo mostramos con datos estimados.</div>
+  </Glass>
+}
+function Interp({ x }) {
+  if (!x) return null
+  const Row = ({ k, v, c }) => v ? <div style={{ marginBottom: 11 }}>
+    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, color: c, marginBottom: 3, textTransform: 'uppercase' }}>{k}</div>
+    <div style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.55, opacity: 0.94 }}>{v}</div>
+  </div> : null
+  return <div>
+    <Row k="Qué observamos" v={x.observamos} c={C.violet} />
+    <Row k="Los números" v={x.numeros} c={C.cian} />
+    <Row k="Cuándo sucede" v={x.cuando} c={C.cian} />
+    <Row k="Cómo se relacionan" v={x.relacion} c={C.violet} />
+    <Row k="Qué significa · interpretación" v={x.significa} c={C.violet} />
+    <Row k="Hipótesis a confirmar" v={x.hipotesis} c={C.dim} />
+    <Row k="Impacto en el rendimiento" v={x.impacto} c={C.cian} />
+    <Row k="Qué trabajar" v={x.trabajar} c={C.violet} />
+  </div>
+}
+function Analisis({ eyebrow, titulo, subtitulo, children, interp }) {
+  return <Glass style={{ position: 'relative', overflow: 'hidden' }}>
+    <div style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: '50%', background: `radial-gradient(circle, ${C.violet}18, transparent 70%)`, pointerEvents: 'none' }} />
+    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.7, color: C.cian, textTransform: 'uppercase', marginBottom: 4 }}>{eyebrow}</div>
+    <div style={{ fontSize: 18, fontWeight: 700, color: C.ink, lineHeight: 1.25 }}>{titulo}</div>
+    {subtitulo && <div style={{ fontSize: 12.5, color: C.dim, margin: '4px 0 14px', lineHeight: 1.5 }}>{subtitulo}</div>}
+    {children}
+    {interp && interp.significa && <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 14, background: `${C.sage}14`, border: `1px solid ${C.sage}3A`, borderRadius: 12, padding: '10px 13px' }}>
+      <span style={{ color: C.sage, fontSize: 15, fontWeight: 800, lineHeight: 1.4 }}>✓</span>
+      <span style={{ fontSize: 14, color: C.ink, lineHeight: 1.5 }}>{interp.significa}</span>
+    </div>}
+    {interp && <div style={{ marginTop: 10 }}>
+      <Expander label="Ver análisis biomecánico completo"><Interp x={interp} /></Expander>
+    </div>}
+  </Glass>
+}
+
+// ── Serie temporal ──
+function Serie({ filas, p, ultimo }) {
+  return <div style={{ marginBottom: 8 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: C.ink, marginBottom: 2, fontWeight: 600 }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}><span style={{ width: 9, height: 9, borderRadius: 9, background: p.color }} />{p.label}</span>
+      <span style={{ color: C.aux, fontSize: 11.5 }}>{p.unit}</span>
     </div>
-  )
+    <ResponsiveContainer width="100%" height={108}>
+      <LineChart data={filas} syncId="bio" margin={{ top: 4, right: 10, left: -6, bottom: ultimo ? 2 : 0 }}>
+        <CartesianGrid stroke="rgba(255,255,255,0.035)" vertical={false} />
+        <XAxis dataKey="t" tick={ultimo ? { fill: C.aux, fontSize: 11 } : false} tickFormatter={s => `${Math.floor(s / 60)}′`} height={ultimo ? 18 : 1} stroke="rgba(255,255,255,0.08)" />
+        <YAxis domain={p.center50 ? [40, 60] : ['auto', 'auto']} reversed={!!p.pace} tick={{ fill: C.aux, fontSize: 11 }} width={40} tickFormatter={p.pace ? fmtPace : undefined} stroke="rgba(255,255,255,0.08)" />
+        {p.center50 && <ReferenceLine y={50} stroke={C.aux} strokeDasharray="4 4" label={{ value: '50/50', fill: C.aux, fontSize: 10, position: 'right' }} />}
+        <Tooltip contentStyle={tip} labelFormatter={s => `min ${Math.floor(s / 60)}`} formatter={v => [p.pace ? fmtPace(v) : v, p.label]} />
+        <Line type="monotone" dataKey={p.key} name={p.label} stroke={p.color} strokeWidth={2.6} dot={false} connectNulls isAnimationActive={false} />
+      </LineChart>
+    </ResponsiveContainer>
+  </div>
 }
+function MultiSerie({ filas, panels }) { return <div>{panels.map((p, i) => <Serie key={p.key} filas={filas} p={p} ultimo={i === panels.length - 1} />)}</div> }
 
-// ── Interpretación de cada métrica: qué es (en criollo) + cómo usarla ────────
-// Para que el atleta no vea solo un número suelto, sino que entienda y actúe.
-const METRICA_INFO = {
-  cadencia_run: { que: 'Pasos por minuto: cuántas veces tus pies tocan el suelo.',
-                  uso: 'Apuntá a 170–180. Más cadencia = menos impacto por pisada y menor riesgo de lesión.' },
-  cadencia_bike:{ que: 'Pedaladas por minuto.',
-                  uso: '80–95 rpm reparte el esfuerzo entre corazón y piernas. Muy baja sobrecarga el músculo.' },
-  inicio_run:   { que: 'Tu cadencia al arrancar la salida.',
-                  uso: 'Es la referencia para ver cuánto se te cae cuando aparece el cansancio.' },
-  final_run:    { que: 'Tu cadencia al terminar.',
-                  uso: 'Si bajó mucho respecto al inicio, la técnica se te desarma con la fatiga.' },
-  drift:        { que: 'Cuánto cambió la cadencia del inicio al final (fatiga).',
-                  uso: 'Menos de 3% es estable. Más alto = perdés técnica al cansarte; sumá fuerza y rodajes largos.' },
-  gct:          { que: 'Tiempo de contacto con el suelo en cada pisada (ms).',
-                  uso: 'Menos contacto = carrera más elástica. Por debajo de 250 ms es bueno; bajarlo mejora la economía.' },
-  oscilacion:   { que: 'Cuánto sube y baja tu cuerpo en cada paso (cm).',
-                  uso: 'Menos rebote vertical = menos energía desperdiciada. Apuntá a menos de 9 cm.' },
-  economia:     { que: 'Ratio vertical: el rebote en relación a lo que avanzás.',
-                  uso: 'Cuanto más bajo, más eficiente corrés. Técnica y fuerza lo mejoran.' },
-  lr_balance:   { que: 'Balance de potencia entre pierna izquierda y derecha.',
-                  uso: 'Cerca de 50/50 es lo ideal. Mucha asimetría puede marcar una debilidad o una molestia.' },
-  torque:       { que: 'Efectividad del torque: cuánto de tu pedaleo realmente empuja la bici.',
-                  uso: 'Más alto = pedaleo más redondo y eficiente, menos energía malgastada.' },
-  inicio_bike:  { que: 'Tu cadencia de pedaleo al arrancar.',
-                  uso: 'Referencia para comparar contra el final y detectar fatiga.' },
-  final_bike:   { que: 'Tu cadencia de pedaleo al terminar.',
-                  uso: 'Si se cae mucho, estás perdiendo soltura por cansancio.' },
-  swolf:        { que: 'SWOLF: segundos del largo + brazadas. Eficiencia de tu nado.',
-                  uso: 'Cuanto más bajo, mejor deslizás. Bajalo nadando más largo por brazada, no más fuerte.' },
-  brazadas:     { que: 'Cuántas brazadas das por cada 25 m.',
-                  uso: 'Menos brazadas con el mismo ritmo = mejor técnica y agarre del agua.' },
-  dps:          { que: 'Distancia por brazada: cuánto avanzás con cada una.',
-                  uso: 'Más distancia por brazada = nado más eficiente. Trabajá técnica y deslizamiento.' },
-  ritmo_swim:   { que: 'Tu ritmo cada 100 m.',
-                  uso: 'Es tu referencia de velocidad sostenida en el agua.' },
-}
-
-// Color del estado (misma lógica que los overlays viejos, centralizada)
-function _estadoColor(estado) {
-  if (['óptima', 'bueno', 'equilibrado', 'elite'].includes(estado)) return C.green
-  if (['mejorar', 'significativo'].includes(estado)) return C.red
-  if (['baja', 'leve', 'alta'].includes(estado)) return C.yellow
-  return C.purple
-}
-
-// Tarjeta legible de una métrica: valor grande + qué es + cómo usarla.
-// Reemplaza a los números encimados sobre la foto (que se superponían en mobile).
-function MetricaCard({ label, valor, unidad, estado, info }) {
-  if (valor == null || valor === '' || (typeof valor === 'number' && isNaN(valor))) return null
-  const color = _estadoColor(estado)
-  return (
-    <div style={{
-      background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14,
-      padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ fontSize: 9.5, color: C.dim, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</span>
-        {estado && <span style={{ fontSize: 8, fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: 0.8 }}>{estado}</span>}
+// ── Cambios por tercio ──
+function Cambios({ T, metricas }) {
+  const cols = [C.sage, C.blend, C.amber]  // fresco → transición → fatiga
+  return <div className="noah-grid">
+    {metricas.map(m => {
+      const data = [{ x: 'Inicio', v: T.inicio[m.key] }, { x: 'Mitad', v: T.mitad[m.key] }, { x: 'Final', v: T.final[m.key] }].filter(d => d.v != null)
+      if (data.length < 2) return null
+      return <div key={m.key}>
+        <div style={{ fontSize: 12.5, color: C.ink, fontWeight: 600, marginBottom: 4 }}>{m.label} <span style={{ color: C.aux, fontSize: 11 }}>({m.unit})</span></div>
+        <ResponsiveContainer width="100%" height={148}>
+          <BarChart data={data} margin={{ top: 6, right: 6, left: -14, bottom: 0 }}>
+            <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+            <XAxis dataKey="x" tick={{ fill: C.aux, fontSize: 11 }} stroke="rgba(255,255,255,0.08)" />
+            <YAxis domain={['auto', 'auto']} tick={{ fill: C.aux, fontSize: 11 }} width={38} stroke="rgba(255,255,255,0.08)" />
+            <Tooltip cursor={{ fill: 'rgba(255,255,255,0.04)' }} contentStyle={tip} />
+            <Bar dataKey="v" name={m.label} radius={[5, 5, 0, 0]}>{data.map((d, i) => <Cell key={i} fill={cols[i]} />)}</Bar>
+          </BarChart>
+        </ResponsiveContainer>
       </div>
-      <div style={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1 }}>
-        {valor}<span style={{ fontSize: 11, color: C.dim, fontWeight: 600 }}> {unidad}</span>
-      </div>
-      {info && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>
-          <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.62)', lineHeight: 1.45 }}>{info.que}</div>
-          <div style={{ fontSize: 10.5, color: C.cyan, lineHeight: 1.45 }}>→ {info.uso}</div>
-        </div>
-      )}
+    })}
+  </div>
+}
+
+// ── Evolución semanal (claves por deporte) ──
+const EVOL_METRICAS = {
+  running: [{ key: 'cadencia', nombre: 'Cadencia', unidad: 'spm', mejorAlto: true }, { key: 'gct', nombre: 'Tiempo de contacto', unidad: 'ms', mejorAlto: false }, { key: 'vo', nombre: 'Oscilación', unidad: 'cm', mejorAlto: false }],
+  cycling: [{ key: 'cadencia', nombre: 'Cadencia', unidad: 'rpm', mejorAlto: null }, { key: 'torque_effectiveness', nombre: 'Torque efectivo', unidad: '%', mejorAlto: true }],
+  swimming: [{ key: 'swolf', nombre: 'SWOLF', unidad: '', mejorAlto: false }, { key: 'cadencia', nombre: 'Brazadas/largo', unidad: '', mejorAlto: false }],
+}
+// agrupa el sparkline (semanal) en puntos MENSUALES usando toda la historia
+function aggMensual(spark, keys) {
+  const buckets = {}
+  for (const d of spark || []) { const m = String(d.semana || '').slice(0, 7); if (m.length < 7) continue; (buckets[m] = buckets[m] || []).push(d) }
+  return Object.keys(buckets).sort().map(m => {
+    const arr = buckets[m], o = { mes: m }
+    for (const k of keys) { const v = arr.map(x => x[k]).filter(x => x != null && isFinite(x)); if (v.length) o[k] = r1(v.reduce((a, b) => a + b, 0) / v.length) }
+    return o
+  })
+}
+const mesLbl = (m) => { const M = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']; const p = String(m).split('-'); return p.length >= 2 ? `${M[(+p[1] || 1) - 1]} ${String(p[0]).slice(2)}` : m }
+function Semanal({ spark, sport, sel, setSel }) {
+  const metricas = (EVOL_METRICAS[sport] || []).filter(x => (spark || []).some(d => d[x.key] != null))
+  if (!spark || !metricas.length) return { node: null, interp: null }
+  const mensual = aggMensual(spark, metricas.map(m => m.key))
+  const cfg = metricas[Math.min(sel, metricas.length - 1)]
+  const serie = mensual.filter(d => d[cfg.key] != null).map(d => ({ semana: d.mes, v: d[cfg.key] }))
+  if (serie.length < 2) return { node: null, interp: null, pocos: true }
+  const prim = serie[0].v, ult = serie[serie.length - 1].v, dif = r1(ult - prim)
+  const mejoro = cfg.mejorAlto == null ? null : cfg.mejorAlto ? dif > 0 : dif < 0
+  const node = <div>
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+      {metricas.map((x, i) => { const on = i === Math.min(sel, metricas.length - 1); return <button key={x.key} onClick={() => setSel(i)} style={{ padding: '8px 14px', borderRadius: 999, cursor: 'pointer', fontSize: 12.5, fontWeight: 700, border: `1px solid ${on ? C.cian : C.border}`, background: on ? `${C.cian}1F` : 'transparent', color: on ? C.cian : C.dim }}>{x.nombre}</button> })}
     </div>
-  )
+    <ResponsiveContainer width="100%" height={200}>
+      <LineChart data={serie} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
+        <defs><linearGradient id="gEvo" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor={C.violet} /><stop offset="100%" stopColor={C.cian} /></linearGradient></defs>
+        <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
+        <XAxis dataKey="semana" tick={{ fill: C.aux, fontSize: 12 }} tickMargin={8} stroke="rgba(255,255,255,0.08)" tickFormatter={mesLbl} />
+        <YAxis domain={['auto', 'auto']} tick={{ fill: C.aux, fontSize: 12 }} width={38} stroke="rgba(255,255,255,0.08)" />
+        <Tooltip contentStyle={tip} formatter={v => [`${v} ${cfg.unidad}`.trim(), cfg.nombre]} />
+        <Line type="monotone" dataKey="v" name={cfg.nombre} stroke="url(#gEvo)" strokeWidth={3.2} dot={{ r: 4, fill: C.cian }} activeDot={{ r: 6 }} />
+      </LineChart>
+    </ResponsiveContainer>
+  </div>
+  const interp = {
+    observamos: `Seguimiento de tu ${cfg.nombre.toLowerCase()} mes a mes (${serie.length} meses con datos).`,
+    numeros: Math.abs(dif) < 0.1 ? `Se mantuvo en torno a ${ult} ${cfg.unidad}`.trim() + '.' : `Pasó de ${prim} a ${ult} ${cfg.unidad} (${dif > 0 ? '+' : ''}${dif})`.replace('  ', ' ') + '.',
+    significa: mejoro == null ? 'Es una métrica de contexto: se lee junto a tu nivel y tus objetivos.' : Math.abs(dif) < 0.1 ? 'Tu técnica está estable entre sesiones.' : mejoro ? 'La tendencia va en la dirección correcta.' : 'La tendencia conviene vigilarla y reforzar el trabajo técnico.',
+  }
+  return { node, interp }
 }
 
-// Grilla responsive de tarjetas — 2 columnas en mobile, 3 en desktop, sin
-// superposiciones (cada métrica tiene su espacio y su explicación).
-function TecnicaGrid({ cards }) {
-  const items = (cards || []).filter(Boolean)
+// ── Comparativa vs período anterior (unifica ambos formatos del backend) ──
+function comparativaUnificada(d) {
+  const lista = d.analisis_fatiga && d.analisis_fatiga.comparativa
+  if (Array.isArray(lista) && lista.length) return lista.map(r => ({ metrica: r.metrica, de: r.mejor_periodo, a: r.actual, diff: r.diff_pct, mejor: r.mejora }))
+  const obj = d.comparacion
+  if (obj && typeof obj === 'object' && Object.keys(obj).length) {
+    const labels = { cadencia: 'Cadencia', torque_effectiveness: 'Torque efectivo', swolf: 'SWOLF', paladas: 'Brazadas/largo', pace: 'Ritmo' }
+    const bajarMejor = { swolf: true, paladas: true, pace: true }
+    return Object.entries(obj).map(([k, v]) => ({
+      metrica: labels[k] || k, de: v.anterior, a: v.actual, diff: v.diff,
+      mejor: v.direccion ? (bajarMejor[k] ? v.direccion === 'down' : v.direccion === 'up') : null,
+    }))
+  }
+  return []
+}
+function ComparativaBox({ d }) {
+  const rows = comparativaUnificada(d)
+  if (!rows.length) return null
+  return <Glass style={{ marginTop: 12 }}>
+    <div style={{ fontSize: 12, color: C.dim, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 8 }}>Comparado con tu período anterior</div>
+    {rows.map((r, i) => { const c = r.mejor === true ? C.cian : r.mejor === false ? C.violet : C.dim; return <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderTop: i ? `1px solid ${C.border}` : 'none' }}><span style={{ fontSize: 13.5, color: C.ink }}>{r.metrica}</span><span style={{ fontSize: 13, color: C.dim, ...num }}>{r.de} → <strong style={{ color: C.ink }}>{r.a}</strong>{r.diff != null && <span style={{ color: c, fontWeight: 700 }}> ({r.diff > 0 ? '+' : ''}{r.diff}{String(r.metrica).includes('%') ? '' : r.mejor != null ? '%' : ''})</span>}</span></div> })}
+  </Glass>
+}
+
+// ── Tarjetas de métricas (running + cycling) ──
+const META = {
+  cadencia: { label: 'Cadencia', unit: 'spm', val: m => m.promedio, que: 'Pasos/pedaladas por minuto.', hacer: 'Ajustá la frecuencia con metrónomo.' },
+  gct: { label: 'Tiempo de contacto', unit: 'ms', val: m => m.promedio_ms, que: 'Cuánto tiempo pasás apoyado en el suelo en cada paso.', hacer: 'Tobillo y gemelo reactivos: skipping y saltos cortos 2×/sem.' },
+  vertical_osc: { label: 'Oscilación vertical', unit: 'cm', val: m => m.promedio_cm, que: 'Cuánto subís y bajás en cada paso.', hacer: 'Correr "hacia adelante", core y cadencia alta.' },
+  stride_length: { label: 'Longitud de zancada', unit: 'm', val: m => m.promedio_m, que: 'El largo de cada paso; se lee junto a la cadencia.', hacer: 'Si se acorta al final, es fatiga: fuerza específica.' },
+  economia: { label: 'Economía (vertical ratio)', unit: '%', val: m => m.vertical_ratio, que: 'Relación entre tu rebote y tu avance.', hacer: 'Mejora al bajar la oscilación y subir la cadencia.' },
+  lr_balance: { label: 'Balance izq/der', unit: '%', val: m => m.promedio_pct, que: 'Reparto de potencia entre las dos piernas (ideal ~50/50).', hacer: 'Asimetría sostenida: fit de bici y fuerza de una pierna.' },
+  torque_effectiveness: { label: 'Torque efectivo', unit: '%', val: m => m.promedio_pct, que: 'Qué parte de cada pedalada produce fuerza útil.', hacer: 'Drills de pedaleo redondo (una pierna, cadencia alta).' },
+}
+const METRICAS_SPORT = { running: ['cadencia', 'gct', 'vertical_osc', 'economia', 'stride_length'], cycling: ['cadencia', 'lr_balance', 'torque_effectiveness'], swimming: [] }
+function TarjetaMetrica({ k, m, sport }) {
+  const meta = META[k]; if (!meta) return null
+  const v = meta.val(m); if (v == null) return null
+  const f = fuenteDe(sport, k)
+  const queMide = (f && f.que_mide) || meta.que
+  const porQue = f && f.por_que_importa
+  const umbral = umbralTexto(f && f.umbrales_noah)
+  const est = estadoInfo(m.estado), drift = m.drift_pct, estable = drift == null || Math.abs(drift) < 4
+  const extra = k === 'lr_balance' && m.pierna_dominante ? `Dominante: ${m.pierna_dominante} · desbalance ${m.desbalance}%` : null
+  return <div style={{ ...glass, padding: 16 }}>
+    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, color: C.dim, textTransform: 'uppercase' }}>{meta.label}</div>
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, margin: '6px 0 4px' }}>
+      <span style={{ fontSize: 33, fontWeight: 800, color: C.ink, ...num, lineHeight: 1 }}>{v}</span>
+      <span style={{ fontSize: 13, color: C.aux }}>{meta.unit}</span>
+    </div>
+    {m.estado && <div style={{ fontSize: 12, fontWeight: 700, color: est.c, letterSpacing: 0.2 }}>{est.t}</div>}
+    {extra && <div style={{ fontSize: 11.5, color: C.dim, marginTop: 4 }}>{extra}</div>}
+    <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginTop: 8 }}>{queMide}</div>
+    {drift != null && <div style={{ fontSize: 12, marginTop: 8, color: estable ? C.cian : C.violet }}>{estable ? 'Estable toda la sesión' : `Cambia ${drift > 0 ? '+' : ''}${drift}% hacia el final`}</div>}
+    {(porQue || umbral || (m.estado || '').toLowerCase() === 'mejorar') && (
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+        <Expander label="Detalle">
+          {porQue && <div style={{ fontSize: 12.5, color: C.ink, lineHeight: 1.5, marginBottom: 8, opacity: 0.9 }}><span style={{ color: C.cian, fontWeight: 700 }}>Por qué importa. </span>{porQue}</div>}
+          {umbral && <div style={{ fontSize: 11.5, color: C.aux, ...num, marginBottom: 8 }}><span style={{ color: C.dim, fontWeight: 700 }}>Referencia NOAH: </span>{umbral}</div>}
+          {(m.estado || '').toLowerCase() === 'mejorar' && <div style={{ fontSize: 12.5, color: C.ink, lineHeight: 1.5 }}><span style={{ color: C.violet, fontWeight: 700 }}>Qué hacer. </span>{meta.hacer}</div>}
+        </Expander>
+      </div>
+    )}
+  </div>
+}
+
+// ── Natación: tarjeta por estilo ──
+function TarjetaEstilo({ nombre, e }) {
+  const item = (lbl, v, u) => v == null ? null : <div><div style={{ fontSize: 10.5, color: C.aux, textTransform: 'uppercase', letterSpacing: 0.4 }}>{lbl}</div><div style={{ fontSize: 18, fontWeight: 800, color: C.ink, ...num }}>{v}<span style={{ fontSize: 11, color: C.aux, marginLeft: 2 }}>{u}</span></div></div>
+  return <div style={{ ...glass, padding: 16 }}>
+    <div style={{ fontSize: 13.5, fontWeight: 700, color: C.violet, marginBottom: 10 }}>{nombre} <span style={{ color: C.aux, fontSize: 11, fontWeight: 500 }}>· {e.n_largos} largos</span></div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      {item('SWOLF', e.swolf, '')}
+      {item('Dist/brazada', e.dps, 'm')}
+      {item('Brazadas/25m', e.brazadas_25m, '')}
+      {item('Ritmo/100m', e.pace_100m != null ? fmtPace(e.pace_100m) : null, '')}
+    </div>
+  </div>
+}
+
+// ── generadores de interpretación (texto real) ──
+function genEconomia(filas) {
+  const sV = stat(filas, 'vo'), sS = stat(filas, 'speed_ms'), sH = stat(filas, 'hr')
+  if (!sV.n || !sS.n) return null
+  const T = thirds(filas, ['vo', 'speed_ms', 'hr'])
+  const cVS = corr(filas, 'vo', 'speed_ms')
+  const paceAvg = paceDe(sS.avg)
+  const sube = cVS != null && cVS > 0.25 && sV.avg >= 9
+  return {
+    observamos: `Tu oscilación vertical promedió ${sV.avg} cm, con un ritmo medio de ${fmtPace(paceAvg)}/km${sH.n ? ` y FC media de ${sH.avg} bpm` : ''}.`,
+    numeros: `La relación entre velocidad y oscilación fue ${cVS == null ? 'poco concluyente' : cVS > 0.25 ? `positiva (r≈${cVS}): a más velocidad, más rebote` : cVS < -0.25 ? `negativa (r≈${cVS}): el rebote no crece al acelerar` : `baja (r≈${cVS}): el rebote es bastante independiente del ritmo`}.`,
+    cuando: `Del primer al último tercio: oscilación ${T.inicio.vo}→${T.final.vo} cm` + (T.inicio.speed_ms && T.final.speed_ms ? `, ritmo ${fmtPace(paceDe(T.inicio.speed_ms))}→${fmtPace(paceDe(T.final.speed_ms))}/km` : '') + (sH.n ? `, FC ${T.inicio.hr}→${T.final.hr} bpm` : '') + '.',
+    relacion: 'Que la FC suba con la intensidad es esperable; no alcanza para hablar de pérdida de economía. Miramos si la oscilación se dispara más de lo que justifica el cambio de ritmo.',
+    significa: sube ? 'Al acelerar tendés a rebotar más: tu mecánica pierde algo de eficiencia a ritmos altos.' : 'Mantenés una oscilación contenida aunque cambie el ritmo: buena eficiencia mecánica.',
+    impacto: sube ? 'Más rebote a ritmo de carrera significa más costo energético por kilómetro.' : 'Una mecánica estable te deja sostener el ritmo con menor costo.',
+    trabajar: sube ? 'Cadencia alta, core y drills de técnica "hacia adelante".' : null,
+  }
+}
+function genApoyo(filas) {
+  const sG = stat(filas, 'gct'), sC = stat(filas, 'cadence'), sStr = stat(filas, 'stride')
+  if (!sG.n || !sC.n) return null
+  const T = thirds(filas, ['gct', 'cadence', 'stride'])
+  const cGC = corr(filas, 'gct', 'cadence'), cSC = corr(filas, 'stride', 'cadence')
+  const fatiga = T.final.gct != null && T.inicio.gct != null && T.final.gct > T.inicio.gct + 8 && T.final.cadence < T.inicio.cadence - 2
+  const overstride = sStr.n && sStr.avg >= 1.3 && sC.avg <= 170
+  return {
+    observamos: `Contacto con el suelo ${sG.avg} ms y cadencia ${sC.avg} spm${sStr.n ? `, con zancada media de ${sStr.avg} m` : ''}.`,
+    numeros: `GCT del inicio al final ${T.inicio.gct}→${T.final.gct} ms; cadencia ${T.inicio.cadence}→${T.final.cadence} spm${sStr.n && T.inicio.stride != null ? `; zancada ${T.inicio.stride}→${T.final.stride} m` : ''}.`,
+    cuando: fatiga ? 'El cambio se concentra en el último tercio.' : 'Las variaciones entre tramos son chicas.',
+    relacion: `GCT y cadencia suelen moverse en sentido opuesto${cGC != null ? ` (r≈${cGC})` : ''}. ${cSC != null && cSC < -0.2 ? 'Tu zancada se alarga cuando baja la cadencia' : 'Zancada y cadencia se mantienen acopladas'}.`,
+    significa: fatiga ? 'Hacia el final el apoyo se hace más largo y la cadencia cae: patrón consistente con fatiga del tren inferior.' : 'Organizás el apoyo de forma estable durante toda la sesión.',
+    hipotesis: overstride ? 'Zancada larga para tu cadencia: posible sobrepaso. A confirmar con el patrón de apoyo.' : null,
+    impacto: fatiga ? 'Un apoyo más largo aumenta el frenado y el costo al final de la carrera.' : 'Un apoyo estable protege de lesión y sostiene el ritmo.',
+    trabajar: fatiga || overstride ? 'Fuerza específica y recordatorios de cadencia en el tramo final.' : null,
+  }
+}
+function genPotencia(filas) {
+  const sP = stat(filas, 'power'), sC = stat(filas, 'cadence'), sH = stat(filas, 'hr')
+  if (!sP.n || !sC.n) return null
+  const T = thirds(filas, ['power', 'cadence', 'hr'])
+  const cPC = corr(filas, 'power', 'cadence')
+  const driftP = T.inicio.power ? r1((T.final.power - T.inicio.power) / T.inicio.power * 100) : 0
+  const cae = driftP <= -8
+  return {
+    observamos: `Potencia media ${sP.avg} W y cadencia ${sC.avg} rpm${sH.n ? `, FC media ${sH.avg} bpm` : ''}.`,
+    numeros: `Potencia entre ${sP.min} y ${sP.max} W; cadencia entre ${sC.min} y ${sC.max} rpm. Del inicio al final: potencia ${T.inicio.power}→${T.final.power} W (${driftP > 0 ? '+' : ''}${driftP}%)${sH.n ? `, FC ${T.inicio.hr}→${T.final.hr} bpm` : ''}.`,
+    relacion: cPC == null ? 'Relación potencia-cadencia poco concluyente en esta sesión.' : cPC > 0.2 ? `A más potencia, tendés a subir la cadencia (r≈${cPC}).` : cPC < -0.2 ? `A más potencia, tendés a bajar la cadencia y empujar más fuerte (r≈${cPC}).` : `Mantenés una cadencia bastante independiente de la potencia (r≈${cPC}).`,
+    significa: cae ? 'La potencia cae de forma marcada hacia el final: fatiga o dosificación alta al inicio.' : 'Sostenés la entrega de potencia a lo largo de la sesión.',
+    impacto: cae ? 'Perder potencia al final penaliza el rendimiento justo en la parte decisiva.' : 'Buena durabilidad de potencia: base para sostener el esfuerzo.',
+    trabajar: cae ? 'Dosificación (empezar algo más conservador) y resistencia específica a la potencia (sweet spot, umbral).' : null,
+  }
+}
+function genPedaleo(filas) {
+  const sLR = stat(filas, 'lr'), sT = stat(filas, 'torque')
+  if (!sLR.n && !sT.n) return null
+  const T = thirds(filas, ['lr', 'torque'])
+  const out = {}
+  if (sLR.n) {
+    const desb = r1(Math.abs(sLR.avg - 50))
+    const dom = sLR.avg > 50 ? 'izquierda' : 'derecha'
+    const desbFinal = T.final.lr != null ? r1(Math.abs(T.final.lr - 50)) : null
+    const crece = desbFinal != null && desbFinal > desb + 1.5
+    out.observamos = `Balance izquierda/derecha ${sLR.avg}% / ${r1(100 - sLR.avg)}% (dominante: ${dom}).`
+    out.numeros = `Desbalance medio ${desb}% respecto del 50/50.` + (desbFinal != null ? ` Al final: ${desbFinal}%.` : '')
+    out.cuando = crece ? 'La asimetría se acentúa hacia el final de la sesión.' : 'La asimetría se mantiene pareja durante la sesión.'
+    out.significa = desb >= 4 ? `Desbalance marcado hacia la pierna ${dom}: puede reflejar bike fitting, dominancia o fatiga de un lado.` : 'Balance dentro de lo normal (diferencias chicas son habituales).'
+    out.trabajar = desb >= 4 ? 'Revisar el fit de la bici y sumar fuerza unilateral (sentadilla a una pierna, prensa unilateral).' : null
+  }
+  if (sT.n) {
+    const driftT = T.inicio.torque ? r1((T.final.torque - T.inicio.torque) / T.inicio.torque * 100) : 0
+    const caeT = driftT <= -5
+    out.numeros = (out.numeros ? out.numeros + ' ' : '') + `Torque efectivo medio ${sT.avg}% (inicio→final ${T.inicio.torque}→${T.final.torque}%, ${driftT > 0 ? '+' : ''}${driftT}%).`
+    if (!out.significa) out.significa = caeT ? 'La efectividad del pedaleo cae hacia el final: la técnica se desarma con la fatiga.' : 'Tu pedaleo mantiene la efectividad durante la sesión.'
+    out.impacto = caeT ? 'Perder torque efectivo al final = más fuerza "desperdiciada" en la fase no propulsiva.' : 'Un pedaleo efectivo y estable ahorra energía.'
+    if (!out.trabajar && caeT) out.trabajar = 'Drills de pedaleo redondo (una pierna, cadencia alta) y fuerza para sostener la técnica cansado.'
+  }
+  out.relacion = 'El balance L/R y el torque son métricas del medidor de potencia (Garmin Cycling Dynamics); se leen como tendencia, no como diagnóstico.'
+  return out
+}
+function genCambios(filas, sport) {
+  const keys = sport === 'cycling' ? ['power', 'cadence', 'torque'] : ['cadence', 'gct', 'vo']
+  const presentes = keys.filter(k => stat(filas, k).n > 0)
+  const T = thirds(filas, presentes)
+  const etiquetas = { cadence: ['cadencia', 'spm'], gct: ['tiempo de contacto', 'ms'], vo: ['oscilación', 'cm'], power: ['potencia', 'W'], torque: ['torque efectivo', '%'] }
+  let mayor = null
+  for (const k of presentes) {
+    const a = T.inicio[k], b = T.final[k]
+    if (a == null || b == null || a === 0) continue
+    const d = (b - a) / a * 100
+    if (!mayor || Math.abs(d) > Math.abs(mayor.d)) mayor = { k, d: r1(d), a, b }
+  }
+  if (!mayor) return { T, interp: null, metricas: [] }
+  const [nom, uni] = etiquetas[mayor.k]
+  const relevante = Math.abs(mayor.d) >= 4
+  const metricas = presentes.map(k => ({ key: k, label: etiquetas[k][0][0].toUpperCase() + etiquetas[k][0].slice(1), unit: etiquetas[k][1] }))
+  return {
+    T, metricas,
+    interp: {
+      observamos: `Comparamos inicio, mitad y final de la sesión en ${presentes.map(k => etiquetas[k][0]).join(', ')}.`,
+      numeros: `El cambio más grande fue en ${nom}: ${mayor.a}→${mayor.b} ${uni} (${mayor.d > 0 ? '+' : ''}${mayor.d}%).`,
+      cuando: 'La comparación es por tercios de la misma sesión, momentos compatibles entre sí.',
+      relacion: relevante ? 'El cambio se sostiene a lo largo del tramo, no es un pico aislado.' : 'Las diferencias entre tercios son pequeñas.',
+      significa: relevante ? `Hay un cambio técnico real hacia el final: tu ${nom} se desplaza de forma consistente.` : 'No hay deterioro técnico relevante: es variación normal dentro de la sesión.',
+      impacto: relevante ? 'Un desplazamiento sostenido al final marca dónde empieza a pesar la fatiga.' : 'Buena durabilidad técnica dentro de la sesión.',
+      trabajar: relevante ? 'Entrenar la técnica en estado de fatiga y fuerza para sostener el gesto.' : null,
+    },
+  }
+}
+
+// ════════ SEÑALES VISUALES (reemplazan el texto de "Qué vemos") ════════
+function Mini({ serie, color }) {
+  const data = (serie || []).map((v, i) => ({ i, v }))
+  if (data.length < 2) return null
+  return <ResponsiveContainer width="100%" height={42}><LineChart data={data} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
+    <Line dataKey="v" stroke={color} strokeWidth={2.2} dot={false} isAnimationActive={false} /></LineChart></ResponsiveContainer>
+}
+function driftTxt(dr, upLabel, downLabel) {
+  if (dr == null) return null
+  if (Math.abs(dr) < 3) return '■ estable toda la sesión'
+  const up = dr > 0
+  return `${up ? '▲' : '▼'} ${Math.abs(dr)}% ${up ? upLabel : downLabel} hacia el final`
+}
+function Chip({ label, value, unit, serie, good, drift }) {
+  const col = good === false ? C.amber : good === true ? C.sage : C.dim
+  return <div style={{ flex: '1 1 150px', minWidth: 150, ...glass, padding: 14 }}>
+    <div style={{ fontSize: 11.5, color: C.dim, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, margin: '2px 0 4px' }}>
+      <span style={{ fontSize: 28, fontWeight: 800, color: C.ink, ...num, lineHeight: 1 }}>{value}</span>
+      <span style={{ fontSize: 12, color: C.dim }}>{unit}</span>
+    </div>
+    <Mini serie={serie} color={C.blue} />
+    {drift && <div style={{ fontSize: 12, color: col, fontWeight: 700, marginTop: 2 }}>{drift}</div>}
+  </div>
+}
+function SignalStrip({ sport, filas, d }) {
+  const chips = []
+  const mini = (key) => { const v = filas.map(r => r[key]).filter(x => x != null && isFinite(x)); const st = Math.max(1, Math.floor(v.length / 40)); return v.filter((_, i) => i % st === 0) }
+  const drift = (key) => { const s = stat(filas, key); return s.n && s.p1 ? r1((s.p3 - s.p1) / s.p1 * 100) : null }
+  if (sport === 'running') {
+    const sc = stat(filas, 'cadence'); if (sc.n) { const dr = drift('cadence'); chips.push({ label: 'Cadencia', value: sc.avg, unit: 'spm', serie: mini('cadence'), good: dr == null || Math.abs(dr) < 4, drift: driftTxt(dr, 'sube', 'cae') }) }
+    const sv = stat(filas, 'vo'); if (sv.n) { const dr = drift('vo'); chips.push({ label: 'Oscilación', value: sv.avg, unit: 'cm', serie: mini('vo'), good: dr == null || dr <= 4, drift: driftTxt(dr, 'más rebote', 'menos rebote') }) }
+    else { const sh = stat(filas, 'hr'); if (sh.n) chips.push({ label: 'FC media', value: sh.avg, unit: 'bpm', serie: mini('hr'), good: null, drift: null }) }
+  } else if (sport === 'cycling') {
+    const sp = stat(filas, 'power'); if (sp.n) { const dr = drift('power'); chips.push({ label: 'Potencia', value: sp.avg, unit: 'W', serie: mini('power'), good: dr == null || dr >= -8, drift: driftTxt(dr, 'sube', 'cae') }) }
+    const sc = stat(filas, 'cadence'); if (sc.n) { const dr = drift('cadence'); chips.push({ label: 'Cadencia', value: sc.avg, unit: 'rpm', serie: mini('cadence'), good: dr == null || Math.abs(dr) < 5, drift: driftTxt(dr, 'sube', 'cae') }) }
+    const st = stat(filas, 'torque'); if (st.n) { const dr = drift('torque'); chips.push({ label: 'Torque efectivo', value: st.avg, unit: '%', serie: mini('torque'), good: dr == null || dr >= -5, drift: driftTxt(dr, 'sube', 'cae') }) }
+  } else if (sport === 'swimming') {
+    const largos = (d.curva_sesion && d.curva_sesion.largos) || []
+    const brz = largos.map(l => l.paladas).filter(x => x != null)
+    if (brz.length >= 3) { const dr = brz[0] ? r1((brz[brz.length - 1] - brz[0]) / brz[0] * 100) : null; const sub = Math.max(1, Math.floor(brz.length / 40)); chips.push({ label: 'Brazadas/largo', value: Math.round(brz.reduce((a, b) => a + b, 0) / brz.length), unit: '', serie: brz.filter((_, i) => i % sub === 0), good: dr == null || dr <= 5, drift: driftTxt(dr, 'sube (fatiga)', 'baja') }) }
+    const met = d.metricas || {}
+    if (met.swolf_avg != null) chips.push({ label: 'SWOLF', value: met.swolf_avg, unit: '', serie: largos.map(l => l.swolf).filter(x => x != null), good: null, drift: null })
+    if (met.dps_avg != null) chips.push({ label: 'Dist/brazada', value: met.dps_avg, unit: 'm', serie: largos.map(l => l.dps).filter(x => x != null), good: null, drift: null })
+  }
+  if (!chips.length) return null
+  return <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{chips.map((c, i) => <Chip key={i} {...c} />)}</div>
+}
+
+// ════════ SEMÁFORO (estado de un vistazo) ════════
+function semLevel(estado) {
+  const k = (estado || '').toLowerCase()
+  if (['elite', 'bueno', 'óptima', 'optima', 'equilibrado', 'estable'].includes(k)) return 'ok'
+  if (['avanzado', 'promedio', 'intermedio', 'leve'].includes(k)) return 'warn'
+  if (['mejorar', 'principiante', 'alerta', 'significativo'].includes(k)) return 'bad'
+  return 'na'
+}
+function Semaforo({ label, value, unit, level }) {
+  const colOf = { ok: C.green, warn: C.amber, bad: C.red, na: C.slate }
+  const on = colOf[level] || C.slate
+  const word = { ok: 'Óptimo', warn: 'Atención', bad: 'A mejorar', na: '—' }[level] || '—'
+  const dot = (c, active) => <span style={{ width: 9, height: 9, borderRadius: 9, background: c, opacity: active ? 1 : 0.16, boxShadow: active ? `0 0 7px ${c}` : 'none' }} />
+  return <div style={{ ...glass, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, flex: '1 1 150px', minWidth: 150 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: '6px 5px', background: 'rgba(0,0,0,0.28)', borderRadius: 8 }}>
+      {dot(C.red, level === 'bad')}{dot(C.amber, level === 'warn')}{dot(C.green, level === 'ok')}
+    </div>
+    <div>
+      <div style={{ fontSize: 11.5, color: C.dim, textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: C.ink, ...num, lineHeight: 1.1 }}>{value}<span style={{ fontSize: 11, color: C.dim, marginLeft: 2 }}>{unit}</span></div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: on }}>{word}</div>
+    </div>
+  </div>
+}
+function SemaforoRow({ sport, metricas, filas }) {
+  const items = []
+  const add = (k, label) => { const m = metricas[k]; if (!m || !META[k]) return; const v = META[k].val(m); if (v == null) return; items.push({ label, value: v, unit: META[k].unit, level: semLevel(m.estado) }) }
+  if (sport === 'running') { add('cadencia', 'Cadencia'); add('gct', 'Contacto'); add('vertical_osc', 'Oscilación'); add('economia', 'Economía') }
+  else if (sport === 'cycling') { add('cadencia', 'Cadencia'); add('torque_effectiveness', 'Torque'); const lr = metricas.lr_balance; if (lr && lr.promedio_pct != null) items.push({ label: 'Simetría L/D', value: lr.promedio_pct, unit: '%', level: lr.desbalance >= 8 ? 'bad' : lr.desbalance >= 4 ? 'warn' : 'ok' }) }
+  // durabilidad bajo fatiga (de las muestras)
+  if (filas && filas.length > 6) {
+    const key = sport === 'cycling' ? 'power' : 'cadence'
+    const s = stat(filas, key)
+    if (s.n && s.p1) { const dr = Math.abs((s.p3 - s.p1) / s.p1 * 100); items.push({ label: 'Durabilidad', value: `${dr < 1 ? '' : (s.p3 - s.p1 > 0 ? '+' : '−')}${Math.round(Math.abs((s.p3 - s.p1) / s.p1 * 100))}`, unit: '%', level: dr < 4 ? 'ok' : dr < 8 ? 'warn' : 'bad' }) }
+  }
   if (!items.length) return null
-  return (
-    <div style={{
-      display: 'grid', gap: 10, marginBottom: 4,
-      gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-    }}>
-      {items.map((c, i) => <MetricaCard key={i} {...c} />)}
-    </div>
-  )
+  return <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{items.map((x, i) => <Semaforo key={i} {...x} />)}</div>
 }
 
-function SpiderChart({ data }) {
-  if (!data || Object.keys(data).length === 0) return null
-  const labels = {
-    cadencia: 'Cadencia', gct: 'GCT', oscilacion: 'Oscilación',
-    economia: 'Economía', estabilidad: 'Estabilidad',
-    balance: 'Balance', pedaleo: 'Pedaleo',
-  }
-  const chartData = Object.entries(data)
-    .filter(([_, v]) => v !== null)
-    .map(([key, val]) => ({ metric: labels[key] || key, value: val, fullMark: 100 }))
-
-  if (chartData.length < 2) return null
-
-  return (
-    <div style={{ margin: '16px auto', textAlign: 'center' }}>
-      <div style={{ fontSize: 10, color: C.cyan, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>
-        PERFIL BIOMECÁNICO
-      </div>
-      <ResponsiveContainer width="100%" height={220}>
-        <RadarChart data={chartData} cx="50%" cy="50%" outerRadius={80}>
-          <PolarGrid stroke="rgba(255,255,255,0.08)" />
-          <PolarAngleAxis dataKey="metric" tick={{ fill: C.dim, fontSize: 9 }} />
-          <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-          <Radar dataKey="value" stroke={C.cyan} fill={C.cyan} fillOpacity={0.15} strokeWidth={2} />
-        </RadarChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
-function DriftCard({ drift }) {
-  if (!drift || Object.keys(drift).length === 0) return null
-  const labels = {
-    cadencia: 'Cadencia', gct: 'GCT', vertical_osc: 'Osc. Vert.', stride: 'Stride',
-    torque_effectiveness: 'Torque Eff.',
-  }
-  const entries = Object.entries(drift).filter(([_, v]) => v !== undefined && v !== null)
-  if (entries.length === 0) return null
-
-  return (
-    <div style={{ marginTop: 16 }}>
-      <div style={{ fontSize: 10, color: C.purple, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>
-        DRIFT POR FATIGA (inicio → final)
-      </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {entries.map(([key, val]) => {
-          const abs_val = Math.abs(val)
-          const color = abs_val < 3 ? C.green : abs_val < 5 ? C.yellow : C.red
-          const arrow = val > 0.5 ? '↑' : val < -0.5 ? '↓' : '→'
-          return (
-            <div key={key} style={{
-              flex: '1 1 45%', padding: '10px 12px', borderRadius: 10,
-              background: C.bg, border: `1px solid ${C.border}`,
-            }}>
-              <div style={{ fontSize: 9, color: C.dim, fontWeight: 600, marginBottom: 2 }}>
-                {labels[key] || key}
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 800, color }}>
-                {arrow} {val > 0 ? '+' : ''}{val}%
-              </div>
-              <div style={{ fontSize: 8, color: C.dim }}>
-                {abs_val < 3 ? 'Estable' : abs_val < 5 ? 'Leve fatiga' : 'Fatiga significativa'}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function Sparklines({ data, cadUnidad = 'spm', linea2Key = 'gct', linea2Nombre = 'GCT (ms)' }) {
-  if (!data || data.length < 1) return null
-  return (
-    <div style={{ marginTop: 16 }}>
-      <div style={{ fontSize: 10, color: C.blue, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>
-        EVOLUCIÓN ÚLTIMAS SEMANAS
-      </div>
-      <ResponsiveContainer width="100%" height={100}>
-        <LineChart data={data}>
-          <XAxis dataKey="semana" tick={{ fill: C.dim, fontSize: 8 }}
-                 tickFormatter={v => v ? v.slice(5) : ''} />
-          <YAxis hide domain={['auto', 'auto']} />
-          <Tooltip contentStyle={{ background: '#1a1a2e', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 10 }}
-                   labelStyle={{ color: C.dim }} />
-          <Line type="monotone" dataKey="cadencia" stroke={C.purple} strokeWidth={2}
-                dot={false} name={`Cadencia (${cadUnidad})`} />
-          {data.some(d => d[linea2Key]) && (
-            <Line type="monotone" dataKey={linea2Key} stroke={C.cyan} strokeWidth={2}
-                  dot={false} name={linea2Nombre} />
-          )}
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
-function SensorNotice({ sensores, metricas }) {
-  if (!sensores || !sensores.faltantes || sensores.faltantes.length === 0) return null
-  // FIX: no declarar "no disponible" una métrica que SÍ llegó en los datos.
-  // Antes listaba GCT / Oscilación aunque estuvieran presentes (se veían en la
-  // pantalla) — se filtran contra lo que realmente trae `metricas`.
-  const m = metricas || {}
-  const presente = (txt) => {
-    const t = String(txt).toLowerCase()
-    if ((t.includes('gct') || t.includes('contacto')) && m.gct) return true
-    if ((t.includes('oscila') || t.includes('vertical osc')) && m.vertical_osc) return true
-    if ((t.includes('ratio') || t.includes('econom')) && m.economia) return true
-    if ((t.includes('stride') || t.includes('zancada')) && (m.stride || m.economia)) return true
-    return false
-  }
-  const faltantesReales = sensores.faltantes.filter(f => !presente(f))
-  if (faltantesReales.length === 0) return null
-  sensores = { ...sensores, faltantes: faltantesReales }
-  return (
-    <div style={{
-      padding: '12px 16px', borderRadius: 12, marginTop: 16,
-      background: 'rgba(59,130,246,0.06)', border: `1px solid rgba(59,130,246,0.15)`,
-    }}>
-      <div style={{ fontSize: 10, color: C.blue, fontWeight: 700, marginBottom: 6, letterSpacing: 1 }}>
-        ⓘ MÉTRICAS NO DISPONIBLES
-      </div>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
-        <strong>{sensores.faltantes.join(', ')}</strong> requieren{' '}
-        <span style={{ color: C.blue, fontWeight: 600 }}>{sensores.sensor_recomendado || 'sensor compatible'}</span>.
-        Con estos datos se completa el perfil biomecánico, el índice de economía y el drift multidimensional.
-      </div>
-      {sensores.sensores.length > 0 && (
-        <div style={{ fontSize: 9, color: C.dim, marginTop: 6 }}>
-          Sensores activos: {sensores.sensores.join(', ')}
+// ════════ CORRELACIONES (barras −1..+1) ════════
+function CorrBars({ rels }) {
+  if (!rels || !rels.length) return null
+  const fuerza = (a) => a >= 0.3 ? 'fuerte' : a >= 0.15 ? 'moderada' : 'débil'
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 6 }}>
+    {rels.map((x, i) => {
+      const a = Math.abs(x.r), col = a >= 0.3 ? C.blue : a >= 0.15 ? C.sage : C.slate, w = Math.min(50, a * 50)
+      return <div key={i}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13.5, color: C.ink, marginBottom: 5 }}>
+          <span style={{ lineHeight: 1.4 }}>{x.lab}</span>
+          <span style={{ color: col, fontWeight: 800, whiteSpace: 'nowrap', ...num }}>r={x.r}</span>
         </div>
-      )}
-    </div>
-  )
+        <div style={{ position: 'relative', height: 14, background: 'rgba(255,255,255,0.05)', borderRadius: 7 }}>
+          <div style={{ position: 'absolute', left: '50%', top: -2, bottom: -2, width: 2, background: C.dim, opacity: 0.6 }} />
+          <div style={{ position: 'absolute', top: 0, bottom: 0, borderRadius: 7, background: col, left: x.r >= 0 ? '50%' : `${50 - w}%`, width: `${w}%` }} />
+        </div>
+        <div style={{ fontSize: 12, color: C.dim, marginTop: 3 }}>relación {fuerza(a)}{x.n ? ` · ${x.n} muestras` : ''}</div>
+      </div>
+    })}
+    <div style={{ fontSize: 12, color: C.dim }}>r va de −1 a +1. A la derecha suben juntas; a la izquierda una sube y la otra baja; cerca de 0 casi no se relacionan.</div>
+  </div>
+}
+function corrN(filas, kx, ky) { const pts = filas.filter(r => r[kx] != null && r[ky] != null && isFinite(r[kx]) && isFinite(r[ky])); return { r: corr(filas, kx, ky), n: pts.length } }
+function relsDe(filas, sport) {
+  const out = []
+  const push = (lab, kx, ky) => { const { r, n } = corrN(filas, kx, ky); if (r != null && n >= 10) out.push({ lab, r, n }) }
+  if (sport === 'running') {
+    push('Más cadencia ↔ menos oscilación', 'cadence', 'vo')
+    push('Más velocidad ↔ más oscilación', 'speed_ms', 'vo')
+    push('Más velocidad ↔ menos tiempo de contacto', 'speed_ms', 'gct')
+  } else if (sport === 'cycling') {
+    push('Más potencia ↔ más cadencia', 'power', 'cadence')
+    push('Más potencia ↔ más FC (desacople aeróbico)', 'power', 'hr')
+    push('Más cadencia ↔ más torque efectivo', 'cadence', 'torque')
+  }
+  return out
 }
 
-function Comparacion({ data }) {
-  if (!data || Object.keys(data).length === 0) return null
-  const labels = { cadencia: 'Cadencia', gct: 'GCT', vo: 'Osc. Vert.', torque_effectiveness: 'Torque Eff.' }
-  return (
-    <div style={{ marginTop: 16 }}>
-      <div style={{ fontSize: 10, color: C.green, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>
-        VS PERÍODO ANTERIOR
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        {Object.entries(data).map(([key, val]) => {
-          const mejor = (key === 'cadencia' && val.direccion === 'up') || (key === 'gct' && val.direccion === 'down') ||
-            (key === 'torque_effectiveness' && val.direccion === 'up')
-          const color = mejor ? C.green : val.direccion === 'equal' ? C.dim : C.yellow
-          const arrow = val.direccion === 'up' ? '↑' : val.direccion === 'down' ? '↓' : '→'
-          return (
-            <div key={key} style={{
-              flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 10,
-              background: C.bg, border: `1px solid ${C.border}`,
-            }}>
-              <div style={{ fontSize: 9, color: C.dim, fontWeight: 600 }}>{labels[key] || key}</div>
-              <div style={{ fontSize: 16, fontWeight: 800, color }}>
-                {arrow} {val.diff > 0 ? '+' : ''}{val.diff}
-              </div>
-              <div style={{ fontSize: 8, color: C.dim }}>{val.anterior} → {val.actual}</div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
+// ════════ GRÁFICOS INSIGNIA (uno por disciplina, calidad profesional) ════════
+function HeadG({ eyebrow, titulo, subtitulo }) {
+  return <>
+    <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: 0.7, color: C.sage, textTransform: 'uppercase', marginBottom: 5 }}>{eyebrow}</div>
+    <div style={{ fontSize: 20, fontWeight: 700, color: C.ink, lineHeight: 1.2 }}>{titulo}</div>
+    {subtitulo && <div style={{ fontSize: 15, color: C.dim, margin: '5px 0 14px', lineHeight: 1.5 }}>{subtitulo}</div>}
+  </>
+}
+function Conclusion({ que, relacion, mejorar }) {
+  const Row = ({ k, v }) => <div style={{ marginBottom: 9 }}><div style={{ fontSize: 12.5, fontWeight: 700, color: C.blue, marginBottom: 2 }}>{k}</div><div style={{ fontSize: 14.5, color: C.ink, lineHeight: 1.55, opacity: 0.95 }}>{v}</div></div>
+  return <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+    <Row k="¿Qué está pasando?" v={que} /><Row k="¿Qué relación hay?" v={relacion} /><Row k="¿Qué mejorar y por qué?" v={mejorar} />
+  </div>
+}
+function LeyendaCuad({ items }) {
+  return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, marginTop: 12 }}>
+    {items.map((q, i) => <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+      <span style={{ width: 12, height: 12, borderRadius: 4, background: q.col, flex: '0 0 auto', marginTop: 3, border: `1px solid ${C.border}` }} />
+      <div><div style={{ fontSize: 13.5, fontWeight: 700, color: C.ink }}>{q.nombre}</div><div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.4 }}>{q.desc}</div></div>
+    </div>)}
+  </div>
 }
 
-function CadenciaZonas({ data, tipo }) {
-  if (!data || Object.keys(data).length === 0) return null
-  const label = tipo === 'cycling' ? 'CADENCIA POR ZONA DE POTENCIA' : 'CADENCIA POR ZONA DE INTENSIDAD'
-  const sorted = Object.entries(data).sort((a, b) => a[0].localeCompare(b[0]))
-  return (
-    <div style={{ marginTop: 16 }}>
-      <div style={{ fontSize: 10, color: C.dim, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>{label}</div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        {sorted.map(([z, v]) => (
-          <div key={z} style={{
-            flex: 1, textAlign: 'center', padding: '10px 0', borderRadius: 10,
-            background: C.bg, border: `1px solid ${C.border}`,
-          }}>
-            <div style={{ fontSize: 10, color: C.blue, fontWeight: 700 }}>{z}</div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: C.purple }}>{v}</div>
-            <div style={{ fontSize: 8, color: C.dim }}>{tipo === 'cycling' ? 'rpm' : 'spm'}</div>
+// Running — cadencia × zancada × velocidad
+function FlagRunning({ filas }) {
+  const base = filas.filter(r => r.cadence != null && r.stride != null && r.speed_ms != null)
+  if (base.length < 12) return <SensorFalta sensor="un sensor de Running Dynamics (zancada) con datos muestra-a-muestra" />
+  const cad = base.map(s => s.cadence), str = base.map(s => s.stride), spd = base.map(s => s.speed_ms)
+  const mCad = Math.round(median(cad)), mStr = r1(median(str) * 100) / 100 || r1(median(str))
+  const mStr2 = Math.round(median(str) * 100) / 100
+  const sMin = Math.min(...spd), sMax = Math.max(...spd)
+  const pts = base.map(s => ({ cadence: s.cadence, stride: s.stride, _c: hexLerp(C.sage, C.blue, sMax > sMin ? (s.speed_ms - sMin) / (sMax - sMin) : 0.5) }))
+  const xMin = Math.min(...cad), xMax = Math.max(...cad), yMin = Math.min(...str), yMax = Math.max(...str)
+  const pctAgil = Math.round(base.filter(r => r.cadence >= mCad && r.stride <= mStr2).length / base.length * 100)
+  return <Glass>
+    <HeadG eyebrow="Running · Mapa biomecánico" titulo="Cadencia × Zancada × Velocidad" subtitulo="Cada punto es un instante real tuyo. Color: verde = lento, azul = rápido. Las líneas son TU propia mediana, no un valor universal." />
+    <ResponsiveContainer width="100%" height={372}>
+      <ScatterChart margin={{ top: 16, right: 34, left: 22, bottom: 30 }}>
+        <ReferenceArea x1={mCad} y1={mStr2} x2={xMax + 4} y2={yMax + 0.05} fill={C.blue} fillOpacity={0.10} label={{ value: 'Zancada potente', position: 'insideTopRight', fill: C.blue, fontSize: 13.5, fontWeight: 700 }} />
+        <ReferenceArea x1={mCad} y1={yMin - 0.05} x2={xMax + 4} y2={mStr2} fill={C.sage} fillOpacity={0.14} label={{ value: 'Paso corto y ágil', position: 'insideBottomRight', fill: C.sage, fontSize: 13.5, fontWeight: 700 }} />
+        <ReferenceArea x1={xMin - 3} y1={mStr2} x2={mCad} y2={yMax + 0.05} fill={C.amber} fillOpacity={0.10} label={{ value: 'Sobrepaso', position: 'insideTopLeft', fill: C.amber, fontSize: 13.5, fontWeight: 700 }} />
+        <ReferenceArea x1={xMin - 3} y1={yMin - 0.05} x2={mCad} y2={mStr2} fill={C.slate} fillOpacity={0.12} label={{ value: 'Lento y corto', position: 'insideBottomLeft', fill: C.dim, fontSize: 13.5, fontWeight: 700 }} />
+        <CartesianGrid stroke="rgba(255,255,255,0.05)" />
+        <XAxis type="number" dataKey="cadence" name="Cadencia" domain={[xMin - 3, xMax + 3]} tick={{ fill: C.dim, fontSize: 14 }} tickMargin={8} label={{ value: 'Cadencia (spm)', position: 'bottom', fill: C.ink, fontSize: 15, offset: 8 }} />
+        <YAxis type="number" dataKey="stride" name="Zancada" domain={[yMin - 0.05, yMax + 0.05]} tick={{ fill: C.dim, fontSize: 14 }} width={46} tickFormatter={v => v.toFixed(2)} label={{ value: 'Zancada (m)', angle: -90, position: 'left', fill: C.ink, fontSize: 15, dx: 6 }} />
+        <ZAxis range={[46, 46]} />
+        <ReferenceLine x={mCad} stroke={C.dim} strokeDasharray="5 5" /><ReferenceLine y={mStr2} stroke={C.dim} strokeDasharray="5 5" />
+        <Tooltip cursor={{ stroke: C.dim }} contentStyle={tip} />
+        <Scatter data={pts} isAnimationActive={false}>{pts.map((p, i) => <Cell key={i} fill={p._c} fillOpacity={0.6} />)}</Scatter>
+      </ScatterChart>
+    </ResponsiveContainer>
+    <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>Líneas punteadas = tu mediana de cadencia ({mCad} spm) y de zancada ({mStr2} m).</div>
+    <LeyendaCuad items={[
+      { nombre: 'Paso corto y ágil', desc: 'Cadencia alta, zancada contenida: suele ser lo más económico.', col: C.sage },
+      { nombre: 'Zancada potente', desc: 'Cadencia y zancada altas: tramos rápidos.', col: C.blue },
+      { nombre: 'Sobrepaso / freno', desc: 'Zancada larga con cadencia baja: pisás por delante y frenás.', col: C.amber },
+      { nombre: 'Lento y corto', desc: 'Cadencia y zancada bajas: rodaje suave o subida.', col: C.slate },
+    ]} />
+    <Conclusion
+      que={`Pasaste el ${pctAgil}% del tiempo en "paso corto y ágil" (cadencia ≥ ${mCad} spm con zancada ≤ ${mStr2} m).`}
+      relacion="A más velocidad (puntos azules) la zancada se alarga; lo clave es que no caiga la cadencia, porque ahí aparece el sobrepaso."
+      mejorar={pctAgil >= 55 ? 'Tu patrón dominante ya es económico: mantené la cadencia en los tramos rápidos.' : 'Buscá subir la cadencia en los tramos rápidos para no irte al cuadrante de sobrepaso (freno y mayor impacto).'} />
+  </Glass>
+}
+
+// Ciclismo — círculo de pedaleo (modelo) alimentado por datos reales
+const _pol = (cx, cy, r, deg) => { const a = (deg - 90) * Math.PI / 180; return [cx + r * Math.cos(a), cy + r * Math.sin(a)] }
+const _arc = (cx, cy, r, d0, d1) => { const [x0, y0] = _pol(cx, cy, r, d0), [x1, y1] = _pol(cx, cy, r, d1); const large = (((d1 - d0) % 360) + 360) % 360 > 180 ? 1 : 0; return `M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1}` }
+function PedalClock({ filas }) {
+  const sT = stat(filas, 'torque'), sP = stat(filas, 'pedal'), sLR = stat(filas, 'lr')
+  if (!sT.n && !sLR.n) return <SensorFalta sensor="un medidor con Cycling Dynamics (torque y balance L/D)" />
+  const te = sT.n ? Math.round(sT.avg) : null
+  const ps = sP.n ? Math.round(sP.avg) : null
+  const lrL = sLR.n ? r1(sLR.avg) : null, lrR = lrL != null ? r1(100 - lrL) : null
+  const desb = lrL != null ? r1(Math.abs(lrL - 50)) : null
+  const dom = lrL != null ? (lrL > 50 ? 'izquierda' : 'derecha') : null
+  const teDeg = te != null ? te * 3.6 : 0
+  return <Glass>
+    <HeadG eyebrow="Ciclismo · Pedaleo" titulo="¿Cómo pedaleás?" subtitulo="Modelo del ciclo de pedalada. El relleno y el balance salen de datos REALES del medidor; la trayectoria del pie es un esquema, no una medición." />
+    <div style={{ background: 'rgba(230,181,85,0.08)', border: `1px solid ${C.border}`, borderRadius: 12, padding: '9px 13px', fontSize: 12.5, color: C.dim, marginBottom: 14, lineHeight: 1.45 }}>
+      ⓘ El sensor mide <b style={{ color: C.ink }}>efectividad</b> y <b style={{ color: C.ink }}>balance izq/der</b>, no la posición del pie en cada punto del giro.
+    </div>
+    <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', justifyContent: 'center' }}>
+      {/* Gauge de efectividad (fuerza útil) */}
+      {te != null && <div style={{ textAlign: 'center' }}>
+        <svg viewBox="0 0 160 160" width="160" height="160">
+          <circle cx="80" cy="80" r="62" fill="none" stroke={C.slate} strokeOpacity="0.35" strokeWidth="14" />
+          <path d={_arc(80, 80, 62, 0.01, Math.max(1, teDeg))} fill="none" stroke={C.sage} strokeWidth="14" strokeLinecap="round" />
+          <text x="80" y="74" fill={C.ink} fontSize="34" fontWeight="800" textAnchor="middle" fontFamily="Inter" style={num}>{te}<tspan fontSize="16" fill={C.dim}>%</tspan></text>
+          <text x="80" y="98" fill={C.dim} fontSize="12.5" textAnchor="middle" fontFamily="Inter">fuerza útil</text>
+        </svg>
+        <div style={{ fontSize: 12.5, color: C.dim, maxWidth: 170 }}>Torque efectivo: parte de la pedalada que empuja.</div>
+      </div>}
+      {/* Reloj de pedaleo (modelo conceptual) */}
+      <div style={{ textAlign: 'center' }}>
+        <svg viewBox="0 0 160 160" width="160" height="160">
+          <circle cx="80" cy="80" r="60" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="2" />
+          <path d={_arc(80, 80, 60, 25, 155)} fill="none" stroke={C.sage} strokeWidth="12" strokeLinecap="round" opacity="0.92" />
+          <path d={_arc(80, 80, 60, 205, 335)} fill="none" stroke={C.slate} strokeWidth="7" strokeLinecap="round" opacity="0.8" />
+          {[0, 180].map((d, i) => { const [x, y] = _pol(80, 80, 60, d); return <circle key={i} cx={x} cy={y} r="5" fill={C.amber} /> })}
+          <text x="128" y="84" fill={C.sage} fontSize="12.5" fontWeight="700" textAnchor="middle" fontFamily="Inter">empuje</text>
+          <text x="34" y="84" fill={C.dim} fontSize="12" textAnchor="middle" fontFamily="Inter">recobro</text>
+          <text x="80" y="14" fill={C.amber} fontSize="11" textAnchor="middle" fontFamily="Inter">punto muerto</text>
+          <text x="80" y="154" fill={C.amber} fontSize="11" textAnchor="middle" fontFamily="Inter">punto muerto</text>
+        </svg>
+        <div style={{ fontSize: 12.5, color: C.dim, maxWidth: 170 }}>Esquema del giro: dónde producís fuerza y dónde hay punto muerto.</div>
+      </div>
+    </div>
+    {/* Balance izquierda / derecha */}
+    {lrL != null && <div style={{ marginTop: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: C.ink, marginBottom: 6 }}>
+        <span><b style={{ color: C.sage }}>{lrL}%</b> izquierda</span>
+        <span style={{ color: C.dim }}>balance</span>
+        <span>derecha <b style={{ color: C.blue }}>{lrR}%</b></span>
+      </div>
+      <div style={{ position: 'relative', height: 16, borderRadius: 8, overflow: 'hidden', display: 'flex' }}>
+        <div style={{ width: `${lrL}%`, background: C.sage }} /><div style={{ width: `${lrR}%`, background: C.blue }} />
+        <div style={{ position: 'absolute', left: '50%', top: -3, bottom: -3, width: 2, background: C.ink, opacity: 0.8 }} />
+      </div>
+      <div style={{ fontSize: 12.5, color: desb >= 4 ? C.amber : C.dim, marginTop: 6 }}>
+        {desb >= 4 ? `Desbalance ${desb}% hacia la pierna ${dom} — a vigilar (fit / fuerza unilateral).` : `Equilibrado (desbalance ${desb}%). La línea blanca es el 50/50 ideal.`}
+      </div>
+    </div>}
+    {ps != null && <div style={{ fontSize: 12.5, color: C.dim, marginTop: 12 }}>Suavidad de pedaleo: <b style={{ color: C.ink }}>{ps}%</b> — qué tan parejo entregás la fuerza en el giro.</div>}
+  </Glass>
+}
+
+// Ciclismo — cadencia × potencia, 4 cuadrantes
+function FlagCycling({ filas }) {
+  const base = filas.filter(r => r.cadence != null && r.power != null)
+  if (base.length < 12) return <SensorFalta sensor="un medidor de potencia con datos muestra-a-muestra" />
+  const cad = base.map(s => s.cadence), pw = base.map(s => s.power)
+  const mCad = Math.round(median(cad)), mPw = Math.round(median(pw))
+  const xMin = Math.min(...cad), xMax = Math.max(...cad), yMin = Math.min(...pw), yMax = Math.max(...pw)
+  // color por cuadrante (cada color = un patrón)
+  const QC = { fuerza: C.amber, potvel: C.sage, rodaje: C.blue, pesado: C.slate }
+  const quad = (s) => s.power >= mPw ? (s.cadence < mCad ? 'fuerza' : 'potvel') : (s.cadence >= mCad ? 'rodaje' : 'pesado')
+  const pts = base.map(s => ({ cadence: s.cadence, power: s.power, _c: QC[quad(s)] }))
+  const pctFuerza = Math.round(base.filter(s => quad(s) === 'fuerza').length / base.length * 100)
+  const pctPot = Math.round(base.filter(s => quad(s) === 'potvel').length / base.length * 100)
+  return <Glass>
+    <HeadG eyebrow="Ciclismo · Mapa de pedaleo" titulo="Cadencia × Potencia — 4 cuadrantes" subtitulo="Cada punto es una muestra real, pintado según su patrón. Los ejes se cruzan en TU mediana (referencia individual, no un valor fijo)." />
+    <ResponsiveContainer width="100%" height={372}>
+      <ScatterChart margin={{ top: 16, right: 34, left: 26, bottom: 30 }}>
+        <ReferenceArea x1={xMin - 3} y1={mPw} x2={mCad} y2={yMax + 15} fill={C.amber} fillOpacity={0.09} label={{ value: 'Fuerza', position: 'insideTopLeft', fill: C.amber, fontSize: 13.5, fontWeight: 700 }} />
+        <ReferenceArea x1={mCad} y1={mPw} x2={xMax + 3} y2={yMax + 15} fill={C.sage} fillOpacity={0.12} label={{ value: 'Potencia-velocidad', position: 'insideTopRight', fill: C.sage, fontSize: 13.5, fontWeight: 700 }} />
+        <ReferenceArea x1={mCad} y1={yMin - 15} x2={xMax + 3} y2={mPw} fill={C.blue} fillOpacity={0.10} label={{ value: 'Rodaje suelto', position: 'insideBottomRight', fill: C.blue, fontSize: 13.5, fontWeight: 700 }} />
+        <ReferenceArea x1={xMin - 3} y1={yMin - 15} x2={mCad} y2={mPw} fill={C.slate} fillOpacity={0.12} label={{ value: 'Pesado', position: 'insideBottomLeft', fill: C.dim, fontSize: 13.5, fontWeight: 700 }} />
+        <CartesianGrid stroke="rgba(255,255,255,0.05)" />
+        <XAxis type="number" dataKey="cadence" name="Cadencia" domain={[xMin - 3, xMax + 3]} tick={{ fill: C.dim, fontSize: 14 }} tickMargin={8} label={{ value: 'Cadencia (rpm)', position: 'bottom', fill: C.ink, fontSize: 15, offset: 8 }} />
+        <YAxis type="number" dataKey="power" name="Potencia" domain={[yMin - 15, yMax + 15]} tick={{ fill: C.dim, fontSize: 14 }} width={48} label={{ value: 'Potencia (W)', angle: -90, position: 'left', fill: C.ink, fontSize: 15, dx: 8 }} />
+        <ZAxis range={[50, 50]} />
+        <ReferenceLine x={mCad} stroke={C.dim} strokeDasharray="5 5" /><ReferenceLine y={mPw} stroke={C.dim} strokeDasharray="5 5" />
+        <Tooltip cursor={{ stroke: C.dim }} contentStyle={tip} />
+        <Scatter data={pts} isAnimationActive={false}>{pts.map((p, i) => <Cell key={i} fill={p._c} fillOpacity={0.55} />)}</Scatter>
+      </ScatterChart>
+    </ResponsiveContainer>
+    <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>Líneas punteadas = tu mediana de cadencia ({mCad} rpm) y de potencia ({mPw} W).</div>
+    <LeyendaCuad items={[
+      { nombre: 'Fuerza (torque)', desc: 'Cadencia baja + potencia alta: empujás grande. Cuida rodillas.', col: C.amber },
+      { nombre: 'Potencia-velocidad', desc: 'Cadencia alta + potencia alta: tramos fuertes y ágiles.', col: C.sage },
+      { nombre: 'Rodaje suelto', desc: 'Cadencia alta + potencia baja: piernas frescas, eficiente.', col: C.blue },
+      { nombre: 'Pesado / recuperación', desc: 'Cadencia y potencia bajas: recuperás o vas trancado.', col: C.slate },
+    ]} />
+    <Conclusion
+      que={`Pasás el ${pctFuerza}% del tiempo en "fuerza" (cadencia < ${mCad} rpm con potencia ≥ ${mPw} W).`}
+      relacion="Cuanto más alta la potencia, podés mantenerla con más cadencia (ágil) o con más fuerza (torque). Tu nube muestra cuál elegís."
+      mejorar={pctFuerza >= 35 ? 'Tendés a empujar grande: sumá cadencia en los esfuerzos para descargar las piernas de cara a la corrida.' : 'Buena cadencia bajo potencia. Mantené este patrón en los intervalos fuertes.'} />
+  </Glass>
+}
+
+// Natación — reparto de estilos: barra apilada COMPACTA (no una dona gigante)
+function SwimDistribucion({ estilos }) {
+  const items = estilos.map(([n, e]) => ({ name: n, value: e.n_largos || 0 })).filter(x => x.value > 0).sort((a, b) => b.value - a.value)
+  const total = items.reduce((s, x) => s + x.value, 0)
+  if (total < 3) return null
+  const cols = [C.sage, C.blue, C.amber, C.slate, C.cLit]
+  return <Glass style={{ padding: 16 }}>
+    <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: 0.6, color: C.sage, textTransform: 'uppercase', marginBottom: 10 }}>Reparto de estilos · {total} largos</div>
+    <div style={{ display: 'flex', height: 18, borderRadius: 9, overflow: 'hidden' }}>
+      {items.map((x, i) => <div key={i} title={x.name} style={{ width: `${x.value / total * 100}%`, background: cols[i % cols.length] }} />)}
+    </div>
+    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 10 }}>
+      {items.map((x, i) => <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13 }}>
+        <span style={{ width: 11, height: 11, borderRadius: 3, background: cols[i % cols.length] }} />
+        <span style={{ color: C.ink, fontWeight: 600 }}>{x.name}</span><span style={{ color: C.dim, ...num }}>{Math.round(x.value / total * 100)}%</span>
+      </span>)}
+    </div>
+  </Glass>
+}
+
+// Natación — FATIGA de la sesión: barras divergentes (inicio→final)
+function FatigaPanel({ largos }) {
+  const L = (largos || []).filter(l => l != null)
+  if (L.length < 6) return null
+  const t = Math.max(1, Math.floor(L.length / 3))
+  const seg = (arr, k) => { const v = arr.map(x => x[k]).filter(n => n != null && isFinite(n)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
+  const ini = L.slice(0, t), fin = L.slice(-t)
+  const metricas = [
+    { k: 'swolf', label: 'SWOLF', peor: 'up' },
+    { k: 'dps', label: 'Distancia por brazada', peor: 'down' },
+    { k: 'paladas', label: 'Brazadas por largo', peor: 'up' },
+    { k: 'hr', label: 'Frecuencia cardíaca', peor: 'up' },
+  ]
+  const rows = metricas.map(m => {
+    const a = seg(ini, m.k), b = seg(fin, m.k)
+    if (a == null || b == null || a === 0) return null
+    const d = r1((b - a) / a * 100)
+    const malo = m.peor === 'up' ? d > 1.5 : d < -1.5
+    return { ...m, a: r1(a), b: r1(b), d, malo }
+  }).filter(Boolean)
+  if (!rows.length) return null
+  const maxAbs = Math.max(8, ...rows.map(r => Math.abs(r.d)))
+  return <Glass>
+    <HeadG eyebrow="Natación · Fatiga" titulo="¿Qué le pasa a tu brazada al final?" subtitulo="Cambio del primer al último tercio de la sesión. A la derecha empeora, a la izquierda mejora." />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 6 }}>
+      {rows.map((r, i) => {
+        const col = r.malo ? C.amber : Math.abs(r.d) < 1.5 ? C.slate : C.sage
+        const pos = r.peor === 'up' ? r.d > 0 : r.d < 0  // a la derecha = empeora
+        const w = Math.min(50, Math.abs(r.d) / maxAbs * 50)
+        return <div key={i}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, color: C.ink, marginBottom: 5 }}>
+            <span>{r.label}</span><span style={{ color: col, fontWeight: 800, ...num }}>{r.d > 0 ? '+' : ''}{r.d}%</span>
           </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function Recomendaciones({ recs }) {
-  if (!recs || recs.length === 0) return null
-  // Ordenar por prioridad
-  const orden = { alta: 0, media: 1, baja: 2 }
-  const sorted = [...recs].sort((a, b) =>
-    (typeof a === 'object' ? orden[a.prioridad] || 2 : 2) - (typeof b === 'object' ? orden[b.prioridad] || 2 : 2))
-
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 10, color: C.yellow, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>
-        NOAH DETECTÓ
-      </div>
-      {sorted.map((rec, i) => {
-        if (typeof rec === 'string') {
-          return (
-            <p key={i} style={{
-              fontSize: 12, color: 'rgba(255,255,255,0.7)', lineHeight: 1.8,
-              margin: '0 0 10px 0',
-            }}>{rec}</p>
-          )
-        }
-        const pColor = PRIORIDAD_COLOR[rec.prioridad] || C.yellow
-        return (
-          <div key={i} style={{
-            padding: '14px 16px', borderRadius: 12, marginBottom: 8,
-            background: `${pColor}08`, border: `1px solid ${pColor}20`,
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>{rec.texto}</span>
-              <span style={{ fontSize: 8, fontWeight: 700, color: pColor, letterSpacing: 1 }}>
-                {PRIORIDAD_LABEL[rec.prioridad]}
-              </span>
-            </div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
-              <strong style={{ color: C.cyan }}>Ejercicio:</strong> {rec.ejercicio}
-            </div>
-            <div style={{ display: 'flex', gap: 16, marginTop: 6 }}>
-              <span style={{ fontSize: 9, color: C.dim }}>
-                <strong style={{ color: C.purple }}>Frecuencia:</strong> {rec.frecuencia}
-              </span>
-              <span style={{ fontSize: 9, color: C.dim }}>
-                <strong style={{ color: C.green }}>Esperado:</strong> {rec.resultado_esperado}
-              </span>
-            </div>
+          <div style={{ position: 'relative', height: 14, background: 'rgba(255,255,255,0.05)', borderRadius: 7 }}>
+            <div style={{ position: 'absolute', left: '50%', top: -2, bottom: -2, width: 2, background: C.dim, opacity: 0.6 }} />
+            <div style={{ position: 'absolute', top: 0, bottom: 0, borderRadius: 7, background: col, left: pos ? '50%' : `${50 - w}%`, width: `${w}%` }} />
           </div>
-        )
+          <div style={{ fontSize: 12, color: C.dim, marginTop: 3, ...num }}>{r.a} → {r.b}</div>
+        </div>
       })}
     </div>
-  )
-}
-
-function Interpretacion({ items }) {
-  if (!items || items.length === 0) return null
-  return (
-    <div style={{ marginTop: 24 }}>
-      <div style={{ fontSize: 12, color: C.cyan, fontWeight: 700, letterSpacing: 1, marginBottom: 12 }}>
-        LECTURA BIOMECÁNICA
-      </div>
-      {items.map((text, i) => (
-        <p key={i} style={{
-          fontSize: 12, color: 'rgba(255,255,255,0.7)', lineHeight: 1.8,
-          margin: '0 0 10px 0',
-        }}>{text}</p>
-      ))}
+    <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 14, background: `${C.sage}14`, border: `1px solid ${C.sage}3A`, borderRadius: 12, padding: '10px 13px' }}>
+      <span style={{ color: C.sage, fontSize: 15, fontWeight: 800 }}>✓</span>
+      <span style={{ fontSize: 14, color: C.ink, lineHeight: 1.5 }}>{rows.some(r => r.malo) ? 'Tu técnica pierde algo de eficiencia con la fatiga: trabajá series largas manteniendo la distancia por brazada.' : 'Mantenés la técnica estable toda la sesión: buena resistencia del gesto.'}</span>
     </div>
-  )
+  </Glass>
 }
 
-
-// ── Score Donut SVG ──
-function ScoreDonut({ score }) {
-  if (!score) return null
-  const color = score >= 80 ? C.green : score >= 60 ? C.yellow : C.red
-  const label = score >= 80 ? 'Muy bueno' : score >= 60 ? 'Aceptable' : 'Mejorar'
-  const circ = 2 * Math.PI * 38
-  return (
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 9, color: C.dim, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>SCORE TÉCNICO</div>
-      <svg width="100" height="100" viewBox="0 0 100 100" style={{ display: 'block', margin: '0 auto' }}>
-        <circle cx="50" cy="50" r="38" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
-        <circle cx="50" cy="50" r="38" fill="none" stroke={color} strokeWidth="5"
-          strokeDasharray={circ} strokeDashoffset={circ - (score / 100) * circ}
-          strokeLinecap="round" transform="rotate(-90 50 50)" />
-        <text x="50" y="46" textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize="22" fontWeight="800">{score}</text>
-        <text x="50" y="58" textAnchor="middle" fill={C.dim} fontSize="8">/100</text>
-        <text x="50" y="74" textAnchor="middle" fill={color} fontSize="9" fontWeight="600">{label}</text>
-      </svg>
-    </div>
-  )
-}
-
-// ── Donut Estado Sesiones ──
-function DonutEstado({ estado }) {
-  if (!estado || (!estado.eficiente && !estado.compensada && !estado.degradada)) return null
-  const data = [
-    { name: 'Eficiente', value: estado.eficiente || 0, color: C.green },
-    { name: 'Compensada', value: estado.compensada || 0, color: C.yellow },
-    { name: 'Degradada', value: estado.degradada || 0, color: C.red },
-  ].filter(d => d.value > 0)
-  return (
-    <div style={{ marginTop: 20, textAlign: 'center' }}>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 8 }}>ESTADO DE SESIONES</div>
-      <ResponsiveContainer width="100%" height={140}>
-        <PieChart>
-          <Pie data={data} cx="50%" cy="50%" innerRadius={35} outerRadius={55} dataKey="value" stroke="none">
-            {data.map((d, i) => <Cell key={i} fill={d.color} />)}
-          </Pie>
-        </PieChart>
-      </ResponsiveContainer>
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 4 }}>
-        {data.map(d => (
-          <span key={d.name} style={{ fontSize: 10, color: d.color, fontWeight: 600 }}>{d.value}% {d.name}</span>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Gráfico Eficiencia Temporal ──
-function GraficoEficiencia({ data }) {
-  if (!data || data.length < 1) return null
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 10 }}>EFICIENCIA BIOMECÁNICA</div>
-      <ResponsiveContainer width="100%" height={150}>
-        <LineChart data={data}>
-          <CartesianGrid stroke="rgba(255,255,255,0.04)" />
-          <XAxis dataKey="fecha" tick={{ fill: C.dim, fontSize: 8 }} tickFormatter={v => v ? v.slice(5) : ''} />
-          <YAxis domain={[20, 100]} tick={{ fill: C.dim, fontSize: 8 }} />
-          <Tooltip contentStyle={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, fontSize: 10 }} />
-          <Line type="monotone" dataKey="score" stroke={C.purple} strokeWidth={2} dot={{ r: 3, fill: C.purple }} name="Eficiencia" />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════
-// ANÁLISIS / PLAN DE MEJORA — 3 visualizaciones reales
-// (reemplaza tarjetas de texto por gráficos sobre datos existentes)
-// ═══════════════════════════════════════════════════════════════
-
-function pearson(xs, ys) {
-  const n = xs.length
-  if (n < 3) return null
-  const mx = xs.reduce((a, b) => a + b, 0) / n
-  const my = ys.reduce((a, b) => a + b, 0) / n
-  let cov = 0, vx = 0, vy = 0
-  for (let i = 0; i < n; i++) {
-    cov += (xs[i] - mx) * (ys[i] - my)
-    vx += (xs[i] - mx) ** 2
-    vy += (ys[i] - my) ** 2
+// Natación — RELACIONES técnicas: barras de correlación (reemplazan el texto)
+function RelacionesPanel({ interp }) {
+  const rels = []
+  for (const t of interp || []) {
+    const m = t.match(/\(r=(-?\d+(?:\.\d+)?),?\s*n=(\d+)/)
+    if (!m) continue
+    const r = parseFloat(m[1]), n = parseInt(m[2])
+    let lab = t.split('(r=')[0].trim()
+    const parts = lab.split('—'); lab = (parts[0] || lab).trim()
+    if (lab.length > 90) lab = lab.slice(0, 88) + '…'
+    rels.push({ lab, r, n })
   }
-  if (vx === 0 || vy === 0) return 0
-  return +(cov / Math.sqrt(vx * vy)).toFixed(2)
+  if (!rels.length) return null
+  return <Glass>
+    <HeadG eyebrow="Natación · Relaciones" titulo="¿Cómo se relacionan tus variables?" subtitulo="Qué tan ligadas están tus métricas entre sí. Barra a la derecha = suben juntas; a la izquierda = una sube y la otra baja." />
+    <CorrBars rels={rels} />
+  </Glass>
 }
 
-// ── 1) CURVA: Eficiencia vs Fatiga ──
-function CurvaEficienciaFatiga({ serie, correlacion }) {
-  if (!serie || serie.length === 0) return null
-  const r = correlacion !== null && correlacion !== undefined
-    ? correlacion
-    : pearson(serie.map(s => s.fatiga), serie.map(s => s.eficiencia))
-
-  const fuerza = r === null ? null
-    : Math.abs(r) >= 0.6 ? 'FUERTE' : Math.abs(r) >= 0.3 ? 'MODERADA' : 'DÉBIL'
-  const rColor = r === null ? C.dim : r <= -0.3 ? C.red : r >= 0.3 ? C.green : C.yellow
-
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 8 }}>
-        EFICIENCIA VS FATIGA
-      </div>
-      <ResponsiveContainer width="100%" height={220}>
-        <ComposedChart data={serie} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
-          <CartesianGrid stroke="rgba(255,255,255,0.04)" />
-          <XAxis dataKey="fecha" tick={{ fill: C.dim, fontSize: 8 }} tickFormatter={v => v ? v.slice(5) : ''} />
-          <YAxis yAxisId="left" domain={[0, 100]} tick={{ fill: C.purple, fontSize: 8 }} />
-          <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} tick={{ fill: C.red, fontSize: 8 }} />
-          <ReferenceLine yAxisId="left" y={80} stroke={C.green} strokeDasharray="3 3" strokeOpacity={0.5}
-                          label={{ value: 'ÓPTIMO', position: 'insideTopRight', fill: C.green, fontSize: 8 }} />
-          <ReferenceLine yAxisId="left" y={60} stroke="#3B82F6" strokeDasharray="3 3" strokeOpacity={0.5}
-                          label={{ value: 'ESTABLE', position: 'insideTopRight', fill: '#3B82F6', fontSize: 8 }} />
-          <ReferenceLine yAxisId="left" y={40} stroke={C.yellow} strokeDasharray="3 3" strokeOpacity={0.5}
-                          label={{ value: 'ALERTA', position: 'insideTopRight', fill: C.yellow, fontSize: 8 }} />
-          <ReferenceLine yAxisId="left" y={20} stroke={C.red} strokeDasharray="3 3" strokeOpacity={0.5}
-                          label={{ value: 'RIESGO', position: 'insideTopRight', fill: C.red, fontSize: 8 }} />
-          <Tooltip contentStyle={{ background: '#1a1a2e', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 10 }} />
-          <Line yAxisId="left" type="monotone" dataKey="eficiencia" name="Eficiencia" stroke={C.purple} strokeWidth={2} dot={{ r: 3 }} connectNulls />
-          <Line yAxisId="right" type="monotone" dataKey="fatiga" name="Fatiga (ATL)" stroke={C.red} strokeWidth={2} dot={{ r: 3 }} connectNulls />
-        </ComposedChart>
-      </ResponsiveContainer>
-      {r !== null && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 4 }}>
-          <span style={{ fontSize: 9, color: C.dim, fontWeight: 700, letterSpacing: 1 }}>CORRELACIÓN DETECTADA</span>
-          <span style={{ fontSize: 12, fontWeight: 800, color: rColor }}>r = {r}</span>
-          {fuerza && <span style={{ fontSize: 8, color: rColor, fontWeight: 700 }}>({fuerza})</span>}
-        </div>
-      )}
-    </div>
-  )
+// Natación — frecuencia × amplitud (mapa de eficiencia del nadador)
+function SwimFreqAmplitud({ largos }) {
+  const base = (largos || []).filter(l => l.paladas != null && l.dps != null && l.paladas > 0 && l.dps > 0)
+  if (base.length < 6) return null
+  const br = base.map(l => l.paladas), dp = base.map(l => l.dps), pc = base.map(l => l.pace).filter(x => x != null)
+  const mBr = Math.round(median(br)), mDp = Math.round(median(dp) * 100) / 100
+  const pcMin = pc.length ? Math.min(...pc) : 0, pcMax = pc.length ? Math.max(...pc) : 1
+  const pts = base.map(l => ({ paladas: l.paladas, dps: l.dps, _c: l.pace != null && pcMax > pcMin ? hexLerp(C.sage, C.slate, (l.pace - pcMin) / (pcMax - pcMin)) : C.blue }))
+  const xMin = Math.min(...br), xMax = Math.max(...br), yMin = Math.min(...dp), yMax = Math.max(...dp)
+  const pctEfic = Math.round(base.filter(l => l.paladas <= mBr && l.dps >= mDp).length / base.length * 100)
+  return <Glass>
+    <HeadG eyebrow="Natación · Eficiencia" titulo="Frecuencia × Amplitud" subtitulo="Cada punto es un largo real (color: verde = más rápido). Ideal arriba-izquierda: pocas brazadas que avanzan mucho." />
+    <ResponsiveContainer width="100%" height={340}>
+      <ScatterChart margin={{ top: 16, right: 34, left: 26, bottom: 30 }}>
+        <ReferenceArea x1={xMin - 1} y1={mDp} x2={mBr} y2={yMax + 0.1} fill={C.sage} fillOpacity={0.14} label={{ value: 'Eficiente', position: 'insideTopLeft', fill: C.sage, fontSize: 13.5, fontWeight: 700 }} />
+        <ReferenceArea x1={mBr} y1={yMin - 0.1} x2={xMax + 1} y2={mDp} fill={C.amber} fillOpacity={0.10} label={{ value: 'Muchas brazadas, poco avance', position: 'insideBottomRight', fill: C.amber, fontSize: 12.5, fontWeight: 700 }} />
+        <CartesianGrid stroke="rgba(255,255,255,0.05)" />
+        <XAxis type="number" dataKey="paladas" name="Brazadas/largo" domain={[xMin - 1, xMax + 1]} tick={{ fill: C.dim, fontSize: 14 }} tickMargin={8} label={{ value: 'Brazadas por largo', position: 'bottom', fill: C.ink, fontSize: 15, offset: 8 }} />
+        <YAxis type="number" dataKey="dps" name="Dist/brazada" domain={[yMin - 0.1, yMax + 0.1]} tick={{ fill: C.dim, fontSize: 14 }} width={46} tickFormatter={v => v.toFixed(2)} label={{ value: 'Dist/brazada (m)', angle: -90, position: 'left', fill: C.ink, fontSize: 15, dx: 6 }} />
+        <ZAxis range={[60, 60]} />
+        <ReferenceLine x={mBr} stroke={C.dim} strokeDasharray="5 5" /><ReferenceLine y={mDp} stroke={C.dim} strokeDasharray="5 5" />
+        <Tooltip cursor={{ stroke: C.dim }} contentStyle={tip} />
+        <Scatter data={pts} isAnimationActive={false}>{pts.map((p, i) => <Cell key={i} fill={p._c} fillOpacity={0.6} />)}</Scatter>
+      </ScatterChart>
+    </ResponsiveContainer>
+    <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>Líneas punteadas = tu mediana de brazadas ({mBr}) y de distancia por brazada ({mDp} m).</div>
+    <Conclusion
+      que={`El ${pctEfic}% de tus largos cae en la zona eficiente (≤ ${mBr} brazadas con ≥ ${mDp} m por brazada).`}
+      relacion="Menos brazadas que avanzan más = mejor agarre y deslizamiento. Acelerar subiendo la frecuencia sin ganar distancia por brazada suele empeorar la eficiencia."
+      mejorar={pctEfic >= 55 ? 'Buen deslizamiento: sostené la distancia por brazada cuando subís el ritmo.' : 'Trabajá agarre y empuje para ganar distancia por brazada sin acelerar la frecuencia.'} />
+  </Glass>
 }
 
-// ── 2) HEATMAP: Estabilidad biomecánica por sesión vs baseline propio ──
-const ESTADO_COLOR = {
-  optimo: C.green, estable: '#3B82F6', alerta: C.yellow, degradado: C.red,
-}
-const ESTADO_LABEL = { optimo: 'Óptimo', estable: 'Estable', alerta: 'Alerta', degradado: 'Degradado' }
-
-function HeatmapEstabilidad({ heatmap }) {
-  if (!heatmap || !heatmap.metricas || heatmap.sesiones.length === 0) return null
-  const filas = Object.entries(heatmap.metricas)
-  const cols = heatmap.sesiones
-
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 8 }}>
-        ESTABILIDAD BIOMECÁNICA
-      </div>
-      <div style={{ overflowX: 'auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: `90px repeat(${cols.length}, minmax(26px, 1fr))`, gap: 3 }}>
-          <div />
-          {cols.map((f, i) => (
-            <div key={i} title={f} style={{ fontSize: 7, color: C.dim, textAlign: 'center' }}>
-              S{i + 1}
-            </div>
-          ))}
-          {filas.map(([key, row]) => (
-            <FragmentRow key={key} label={row.label} celdas={row.celdas} cols={cols.length} />
-          ))}
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
-        {Object.entries(ESTADO_LABEL).map(([k, label]) => (
-          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <div style={{ width: 9, height: 9, borderRadius: 2, background: ESTADO_COLOR[k] }} />
-            <span style={{ fontSize: 8, color: C.dim }}>{label}</span>
-          </div>
-        ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <div style={{ width: 9, height: 9, borderRadius: 2, background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}` }} />
-          <span style={{ fontSize: 8, color: C.dim }}>N/D</span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function FragmentRow({ label, celdas, cols }) {
-  return (
-    <>
-      <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.75)', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-        {label}
-      </div>
-      {Array.from({ length: cols }).map((_, i) => {
-        const c = celdas[i]
-        if (!c || c === 'N/D') {
-          return (
-            <div key={i} title="N/D" style={{
-              height: 24, borderRadius: 4, background: 'rgba(255,255,255,0.04)',
-              border: `1px dashed ${C.border}`,
-            }} />
-          )
-        }
-        const color = ESTADO_COLOR[c.estado] || C.dim
-        return (
-          <div key={i} title={`${c.valor} — ${ESTADO_LABEL[c.estado] || c.estado}`} style={{
-            height: 24, borderRadius: 4, background: `${color}55`, border: `1px solid ${color}`,
-          }} />
-        )
-      })}
-    </>
-  )
-}
-
-// ── 3) SCATTER: Fatiga × Degradación técnica + regresión + clusters ──
-const CLUSTER_COLOR = [C.cyan, C.yellow, C.purple]
-
-function ScatterFatigaDegradacion({ scatter, regresion }) {
-  if (!scatter || scatter.length === 0) return null
-  const grupos = {}
-  scatter.forEach(p => {
-    const c = p.cluster || 0
-    if (!grupos[c]) grupos[c] = []
-    grupos[c].push(p)
-  })
-  const clusterIds = Object.keys(grupos)
-  const nClusters = clusterIds.length
-
-  // Los clusters de k-means no tienen un orden ni significado propio (son
-  // solo un índice 0/1) — acá les damos una etiqueta legible ordenándolos
-  // por su degradación promedio real, en vez de mostrar "Grupo 1/Grupo 2"
-  // sin contexto.
-  let nombreCluster = {}
-  if (nClusters > 1) {
-    const promedios = clusterIds.map(c => ({
-      c, avg: grupos[c].reduce((s, p) => s + p.degradacion, 0) / grupos[c].length,
-    })).sort((a, b) => a.avg - b.avg)
-    const etiquetas = ['Menor degradación técnica', 'Mayor degradación técnica']
-    promedios.forEach((p, i) => { nombreCluster[p.c] = etiquetas[i] || `Grupo ${i + 1}` })
-  }
-
-  const xs = scatter.map(p => p.fatiga)
-  const minX = Math.min(...xs), maxX = Math.max(...xs)
-  const lineaRegresion = regresion ? [
-    { fatiga: minX, degradacion: regresion.slope * minX + regresion.intercept },
-    { fatiga: maxX, degradacion: regresion.slope * maxX + regresion.intercept },
-  ] : null
-
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 8 }}>
-        FATIGA × DEGRADACIÓN TÉCNICA
-      </div>
-      <ResponsiveContainer width="100%" height={220}>
-        <ScatterChart margin={{ top: 4, right: 12, left: -12, bottom: 0 }}>
-          <CartesianGrid stroke="rgba(255,255,255,0.04)" />
-          <XAxis type="number" dataKey="fatiga" name="Fatiga (-TSB)" tick={{ fill: C.dim, fontSize: 8 }} />
-          <YAxis type="number" dataKey="degradacion" name="Degradación" domain={[0, 'auto']} tick={{ fill: C.dim, fontSize: 8 }} />
-          <ZAxis range={[40, 40]} />
-          <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ background: '#1a1a2e', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 10 }} />
-          {Object.entries(grupos).map(([c, pts]) => (
-            <Scatter key={c} name={nombreCluster[c] || 'Sesiones'}
-                      data={pts} fill={CLUSTER_COLOR[c % CLUSTER_COLOR.length]} />
-          ))}
-          {lineaRegresion && (
-            <Line data={lineaRegresion} type="linear" dataKey="degradacion" xAxisId={0}
-                  stroke={C.dim} strokeWidth={1.5} strokeDasharray="4 4" dot={false} legendType="none" />
-          )}
-          {nClusters > 1 && <Legend wrapperStyle={{ fontSize: 9 }} />}
-        </ScatterChart>
-      </ResponsiveContainer>
-      {regresion && (
-        <div style={{ textAlign: 'center', fontSize: 9, color: C.dim, marginTop: 2 }}>
-          Tendencia: {regresion.slope >= 0 ? '+' : ''}{regresion.slope} pts degradación / pt fatiga
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Clusters de Técnica: Cadencia vs Stride Length, coloreado por
-//    el estado real de eficiencia de cada sesión ──
-const ESTADO_EFICIENCIA_COLOR = { eficiente: C.green, compensada: C.yellow, degradada: C.red }
-const ESTADO_EFICIENCIA_LABEL = { eficiente: 'Eficiente', compensada: 'Compensada', degradada: 'Degradada' }
-
-function ClustersTecnica({ clusters, xNombre = 'Cadencia', xUnidad = ' spm', yNombre = 'Stride', yUnidad = ' m' }) {
-  if (!clusters || clusters.length === 0) return null
-  const grupos = {}
-  clusters.forEach(p => {
-    if (!grupos[p.estado]) grupos[p.estado] = []
-    grupos[p.estado].push(p)
-  })
-
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 8 }}>
-        CLUSTERS DE TÉCNICA
-      </div>
-      <ResponsiveContainer width="100%" height={220}>
-        <ScatterChart margin={{ top: 4, right: 12, left: -12, bottom: 0 }}>
-          <CartesianGrid stroke="rgba(255,255,255,0.04)" />
-          <XAxis type="number" dataKey="cadencia" name={xNombre} unit={xUnidad} tick={{ fill: C.dim, fontSize: 8 }} />
-          <YAxis type="number" dataKey="stride" name={yNombre} unit={yUnidad} tick={{ fill: C.dim, fontSize: 8 }} />
-          <ZAxis range={[40, 40]} />
-          <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ background: '#1a1a2e', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 10 }} />
-          <Legend wrapperStyle={{ fontSize: 9 }} />
-          {Object.entries(grupos).map(([estado, pts]) => (
-            <Scatter key={estado} name={ESTADO_EFICIENCIA_LABEL[estado] || estado}
-                      data={pts} fill={ESTADO_EFICIENCIA_COLOR[estado] || C.dim} />
-          ))}
-        </ScatterChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
-// ── Comparativa: sesión actual vs mejor sesión del período ──
-function ComparativaTecnica({ comparativa }) {
-  if (!comparativa || comparativa.length === 0) return null
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 2 }}>
-        COMPARATIVA vs MEJOR PERÍODO
-      </div>
-      <div style={{ fontSize: 9, color: C.dim, marginBottom: 8 }}>
-        Sesión más reciente vs. tu sesión con mejor score técnico en este período
-        (no es necesariamente la más rápida o exigente)
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {comparativa.map((row, i) => {
-          const color = row.mejora === true ? C.green : row.mejora === false ? C.red : C.dim
-          const arrow = row.diff_pct > 0 ? '↑' : row.diff_pct < 0 ? '↓' : '→'
-          return (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '8px 10px', borderRadius: 8, background: C.bg, border: `1px solid ${C.border}`,
-            }}>
-              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)', flex: '1 1 auto' }}>{row.metrica}</span>
-              <span style={{ fontSize: 10, color: C.dim, marginRight: 10 }}>
-                {row.mejor_periodo} → <strong style={{ color: '#fff' }}>{row.actual}</strong>
-              </span>
-              <span style={{ fontSize: 11, fontWeight: 800, color }}>
-                {arrow} {row.diff_pct > 0 ? '+' : ''}{row.diff_pct}%
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ── Patrón detectado: conclusión automática MUY corta a partir de
-//    valores reales (drift + regresión ya calculados) ──
-function PatronDetectado({ patron }) {
-  if (!patron || !patron.patron) return null
-  return (
-    <div style={{
-      marginTop: 20, padding: '14px 16px', borderRadius: 12,
-      background: `${C.purple}0c`, border: `1px solid ${C.purple}30`,
-    }}>
-      <div style={{ fontSize: 9, color: C.purple, fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>
-        NOAH DETECTÓ
-      </div>
-      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.9)', fontWeight: 600, marginBottom: 6 }}>
-        {patron.patron}
-      </div>
-      {patron.accion && (
-        <div style={{ fontSize: 10, color: C.dim }}>
-          <span style={{ color: C.green, fontWeight: 700 }}>Acción: </span>{patron.accion}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function AnalisisFatigaTecnica({ data, clusterEjes }) {
-  if (!data) return null
-  const hayDatos = (data.serie && data.serie.length > 0) ||
-                    (data.scatter && data.scatter.length > 0) ||
-                    (data.heatmap && data.heatmap.sesiones?.length > 0)
-  if (!hayDatos) return null
-
-  return (
-    <div style={{ marginTop: 24 }}>
-      <div style={{ fontSize: 10, color: C.cyan, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>
-        ANÁLISIS BIOMECÁNICO
-      </div>
-      <CurvaEficienciaFatiga serie={data.serie} correlacion={data.correlacion_eficiencia_fatiga} />
-      <HeatmapEstabilidad heatmap={data.heatmap} />
-      <ClustersTecnica clusters={data.clusters_tecnica} {...(clusterEjes || {})} />
-      <ComparativaTecnica comparativa={data.comparativa} />
-      <ScatterFatigaDegradacion scatter={data.scatter} regresion={data.regresion_fatiga_degradacion} />
-      <PatronDetectado patron={data.patron_detectado} />
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════
-// PANELES POR DEPORTE
-// ═══════════════════════════════════════════════════════════════
-
-function PanelRunning({ data }) {
-  const m = data.metricas || {}
-  const cad = m.cadencia || {}
-  return (
-    <div>
-      {/* Banner (solo imagen, sin números encimados) */}
-      <div style={{ position: 'relative', width: '100%', height: 150, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
-        <img src="/img/tecnica_run.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.55 }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 20%, rgba(13,17,23,0.92) 100%)' }} />
-        <div style={{ position: 'absolute', left: 16, bottom: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Biomecánica · Running</div>
-          <div style={{ fontSize: 10, color: C.purple, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>Nivel: {data.nivel}</div>
-        </div>
-      </div>
-
-      {/* Métricas en tarjetas legibles (qué es + cómo usarla) */}
-      <TecnicaGrid cards={[
-        cad.promedio && { label: 'Cadencia', valor: cad.promedio, unidad: 'spm', estado: cad.estado, info: METRICA_INFO.cadencia_run },
-        cad.drift_pct !== undefined && { label: 'Drift cadencia', valor: `${cad.drift_pct > 0 ? '+' : ''}${cad.drift_pct}`, unidad: '%',
-          estado: Math.abs(cad.drift_pct) < 3 ? 'óptima' : (Math.abs(cad.drift_pct) < 5 ? 'leve' : 'mejorar'), info: METRICA_INFO.drift },
-        m.gct && { label: 'GCT (contacto)', valor: m.gct.promedio_ms, unidad: 'ms', estado: m.gct.estado, info: METRICA_INFO.gct },
-        m.vertical_osc && { label: 'Oscilación vertical', valor: m.vertical_osc.promedio_cm, unidad: 'cm', estado: m.vertical_osc.estado, info: METRICA_INFO.oscilacion },
-        m.economia && { label: 'Economía', valor: m.economia.vertical_ratio, unidad: '%', estado: m.economia.estado, info: METRICA_INFO.economia },
-        cad.q1 && { label: 'Cadencia inicio', valor: cad.q1, unidad: 'spm', estado: cad.q1 >= (cad.referencia?.min || 170) ? 'óptima' : 'baja', info: METRICA_INFO.inicio_run },
-        cad.q4 && { label: 'Cadencia final', valor: cad.q4, unidad: 'spm', estado: Math.abs(cad.drift_pct || 0) < 3 ? 'óptima' : 'mejorar', info: METRICA_INFO.final_run },
-      ]} />
-
-      {/* Sensor notice */}
-      <SensorNotice sensores={data.sensores} metricas={m} />
-
-      {/* ANÁLISIS / PLAN DE MEJORA — 3 gráficos reales sobre datos existentes */}
-      <AnalisisFatigaTecnica data={data.analisis_fatiga} />
-    </div>
-  )
-}
-
-function PanelCycling({ data }) {
-  const m = data.metricas || {}
-  const cad = m.cadencia || {}
-  const lr = m.lr_balance || {}
-  const te = m.torque_effectiveness || {}
-  return (
-    <div>
-      <div style={{ position: 'relative', width: '100%', height: 150, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
-        <img src="/img/tecnica_bike.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.55 }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 20%, rgba(13,17,23,0.92) 100%)' }} />
-        <div style={{ position: 'absolute', left: 16, bottom: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Biomecánica · Ciclismo</div>
-          <div style={{ fontSize: 10, color: C.purple, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>Nivel: {data.nivel}</div>
-        </div>
-      </div>
-
-      {/* Métricas en tarjetas legibles (qué es + cómo usarla) */}
-      <TecnicaGrid cards={[
-        cad.promedio && { label: 'Cadencia', valor: cad.promedio, unidad: 'rpm', estado: cad.estado, info: METRICA_INFO.cadencia_bike },
-        lr.promedio_pct !== undefined && { label: 'Balance L/R', valor: `${lr.promedio_pct}/${(100 - lr.promedio_pct).toFixed(1)}`, unidad: '%', estado: lr.estado, info: METRICA_INFO.lr_balance },
-        te.promedio_pct && { label: 'Torque eff.', valor: te.promedio_pct, unidad: '%', estado: te.estado, info: METRICA_INFO.torque },
-        cad.q1 && { label: 'Cadencia inicio', valor: cad.q1, unidad: 'rpm', estado: cad.q1 >= 80 ? 'óptima' : 'baja', info: METRICA_INFO.inicio_bike },
-        cad.q4 && { label: 'Cadencia final', valor: cad.q4, unidad: 'rpm', estado: Math.abs(cad.drift_pct || 0) < 3 ? 'óptima' : 'mejorar', info: METRICA_INFO.final_bike },
-      ]} />
-
-      <SpiderChart data={data.spider} />
-      <DriftCard drift={data.drift} />
-      <Sparklines data={data.sparkline} cadUnidad="rpm" linea2Key="torque_effectiveness" linea2Nombre="Torque Eff. (%)" />
-      <CadenciaZonas data={m.cadencia_por_zona} tipo="cycling" />
-      <Comparacion data={data.comparacion} />
-      <SensorNotice sensores={data.sensores} metricas={m} />
-      <Interpretacion items={data.interpretacion} />
-      <AnalisisFatigaTecnica data={data.analisis_fatiga}
-        clusterEjes={{ xNombre: 'Cadencia', xUnidad: ' rpm', yNombre: 'Potencia', yUnidad: ' W' }} />
-    </div>
-  )
-}
-
-// ── Curva técnica por largo (última sesión): paladas / DPS / SWOLF, normalizados ──
-function CurvaTecnicaPorLargo({ curva, tendencia }) {
-  if (!curva || curva.length < 4) return null
-  const tieneScore = curva.some(c => c.score_tecnico !== null && c.score_tecnico !== undefined)
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 2 }}>
-        DEGRADACIÓN TÉCNICA POR LARGO (última sesión)
-      </div>
-      <div style={{ fontSize: 9, color: C.dim, marginBottom: 8 }}>
-        Score técnico basado solo en distancia por brazada y SWOLF — sin FC, para medir la calidad
-        de la brazada en sí, no el esfuerzo cardiovascular
-      </div>
-      <ResponsiveContainer width="100%" height={160}>
-        <ComposedChart data={curva} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
-          <CartesianGrid stroke="rgba(255,255,255,0.04)" />
-          <XAxis dataKey="largo" tick={{ fill: C.dim, fontSize: 8 }} label={{ value: 'N° de largo', position: 'insideBottom', offset: -2, fill: C.dim, fontSize: 8 }} />
-          <YAxis domain={[0, 100]} tick={{ fill: C.dim, fontSize: 8 }} />
-          <Tooltip contentStyle={{ background: '#1a1a2e', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 10 }} />
-          {tieneScore && <Line type="monotone" dataKey="score_tecnico" name="Score técnico" stroke={C.purple} strokeWidth={2} dot={{ r: 2 }} connectNulls />}
-        </ComposedChart>
-      </ResponsiveContainer>
-      {tendencia && (
-        <div style={{ textAlign: 'center', fontSize: 9, color: tendencia.slope < -0.5 ? C.red : (tendencia.slope > 0.5 ? C.green : C.dim), marginTop: 2 }}>
-          Tendencia: {tendencia.slope >= 0 ? '+' : ''}{tendencia.slope} pts/largo
-          {tendencia.slope < -0.5 ? ' — la técnica se degrada a lo largo de la sesión' : ''}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Curva cardiovascular por largo (última sesión): FC vs Pace ──
-function CurvaCardiacaPorLargo({ curva, tendencia }) {
-  if (!curva || curva.length < 4) return null
-  const tieneHR = curva.some(c => c.hr !== null && c.hr !== undefined)
-  if (!tieneHR) return null
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 2 }}>
-        DERIVA CARDIOVASCULAR POR LARGO (última sesión)
-      </div>
-      <div style={{ fontSize: 9, color: C.dim, marginBottom: 8 }}>
-        FC y ritmo por largo — si el ritmo se mantiene pero la FC sube, es costo cardiovascular,
-        no necesariamente pérdida de técnica
-      </div>
-      <ResponsiveContainer width="100%" height={160}>
-        <ComposedChart data={curva} margin={{ top: 4, right: 4, left: -12, bottom: 0 }}>
-          <CartesianGrid stroke="rgba(255,255,255,0.04)" />
-          <XAxis dataKey="largo" tick={{ fill: C.dim, fontSize: 8 }} />
-          <YAxis yAxisId="left" domain={['auto', 'auto']} tick={{ fill: C.red, fontSize: 8 }} />
-          <YAxis yAxisId="right" orientation="right" domain={['auto', 'auto']} tick={{ fill: C.cyan, fontSize: 8 }} reversed />
-          <Tooltip contentStyle={{ background: '#1a1a2e', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 10 }} />
-          <Line yAxisId="left" type="monotone" dataKey="hr" name="FC (bpm)" stroke={C.red} strokeWidth={2} dot={{ r: 2 }} connectNulls />
-          <Line yAxisId="right" type="monotone" dataKey="pace" name="Ritmo (min/100m)" stroke={C.cyan} strokeWidth={2} dot={{ r: 2 }} connectNulls />
-        </ComposedChart>
-      </ResponsiveContainer>
-      {tendencia && tendencia.slope > 0.3 && (
-        <div style={{ textAlign: 'center', fontSize: 9, color: C.yellow, marginTop: 2 }}>
-          FC sube {tendencia.slope.toFixed(2)} bpm/largo en promedio — deriva cardiovascular dentro de la sesión
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Correlaciones directas (paladas/pace/hr/swolf) ──
-function CorrelacionesSwim({ correlaciones }) {
-  if (!correlaciones || Object.keys(correlaciones).length === 0) return null
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: 8 }}>
-        RELACIONES DETECTADAS
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {Object.entries(correlaciones).filter(([_, v]) => v.significativo).map(([key, v]) => (
-          <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '8px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.8)' }}>{v.x} × {v.y}</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: Math.abs(v.r) >= 0.6 ? C.green : C.yellow }}>
-              r = {v.r} <span style={{ fontSize: 8, color: C.dim, fontWeight: 400 }}>(n={v.n})</span>
-            </span>
-          </div>
-        ))}
-        {Object.values(correlaciones).every(v => !v.significativo) && (
-          <div style={{ fontSize: 9, color: C.dim, textAlign: 'center' }}>
-            Ninguna relación alcanzó significancia estadística con los datos disponibles todavía.
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function PanelSwimming({ data }) {
-  if (!data || data.error) return (
-    <div style={{ position: 'relative', width: '100%', height: 300, borderRadius: 16, overflow: 'hidden' }}>
-      <img src="/img/tecnica_swim.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.5 }} />
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 30%, rgba(13,17,23,0.95) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ fontSize: 13, color: C.dim }}>{data?.error || 'Sin datos de natación'}</p>
-      </div>
-    </div>
-  )
-  const m = data.metricas || {}
-  const estilos = data.estilos || {}
-  const dist = data.distribucion || {}
-  return (
-    <div>
-      <div style={{ position: 'relative', width: '100%', height: 140, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
-        <img src="/img/tecnica_swim.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.5 }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 20%, rgba(13,17,23,0.95) 100%)' }} />
-        <div style={{ position: 'absolute', left: 16, bottom: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Biomecánica · Natación</div>
-          <div style={{ fontSize: 10, color: C.cyan, fontWeight: 600 }}>Pileta {data.pool_length || 25}m · {data.n_largos} largos</div>
-        </div>
-      </div>
-
-      {/* Métricas en tarjetas legibles (qué es + cómo usarla) */}
-      <TecnicaGrid cards={[
-        m.swolf_avg && { label: 'SWOLF', valor: m.swolf_avg, unidad: '', estado: m.swolf_avg < 40 ? 'óptima' : m.swolf_avg < 50 ? 'bueno' : 'mejorar', info: METRICA_INFO.swolf },
-        m.brazadas_avg && { label: 'Brazadas/25m', valor: m.brazadas_avg, unidad: '', estado: 'bueno', info: METRICA_INFO.brazadas },
-        m.dps_avg && { label: 'DPS', valor: m.dps_avg, unidad: 'm', estado: m.dps_avg > 2.0 ? 'óptima' : 'bueno', info: METRICA_INFO.dps },
-        m.pace_avg && { label: 'Ritmo', valor: m.pace_avg, unidad: 'min/100m', estado: 'bueno', info: METRICA_INFO.ritmo_swim },
-      ]} />
-
-      {Object.keys(estilos).length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, color: C.cyan, fontWeight: 700, letterSpacing: 1, marginBottom: 10 }}>POR ESTILO</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {Object.entries(estilos).map(([nombre, d]) => (
-              <div key={nombre} style={{ flex: '1 1 140px', padding: '12px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <div style={{ fontSize: 11, color: C.cyan, fontWeight: 700, marginBottom: 6 }}>{nombre}</div>
-                <div style={{ fontSize: 10, color: C.dim, lineHeight: 2 }}>
-                  Brazadas: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{d.brazadas_25m}/25m</strong><br/>
-                  DPS: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{d.dps}m</strong><br/>
-                  SWOLF: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{d.swolf}</strong><br/>
-                  Ritmo: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{d.pace_100m} min/100m</strong><br/>
-                  FC: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{d.hr_avg || '--'} bpm</strong>
-                  <div style={{ fontSize: 8, color: C.dim, marginTop: 2 }}>{d.n_largos} largos</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {Object.keys(dist).length > 1 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, color: C.cyan, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>DISTRIBUCIÓN DE ESTILOS</div>
-          <div style={{ display: 'flex', height: 24, borderRadius: 6, overflow: 'hidden' }}>
-            {Object.entries(dist).sort((a,b) => b[1]-a[1]).map(([nombre, pct], i) => {
-              const colors = [C.cyan, C.purple, C.green, C.yellow]
-              return <div key={nombre} style={{ width: pct+'%', background: colors[i%4], display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {pct > 10 && <span style={{ fontSize: 8, color: '#000', fontWeight: 700 }}>{nombre} {pct}%</span>}
-              </div>
-            })}
-          </div>
-        </div>
-      )}
-      <SpiderChart data={data.spider} />
-      <DriftCard drift={data.drift} />
-      <CurvaTecnicaPorLargo curva={data.curva_sesion?.largos} tendencia={data.curva_sesion?.tendencia_tecnica} />
-      <CurvaCardiacaPorLargo curva={data.curva_sesion?.largos} tendencia={data.curva_sesion?.tendencia_cardiaca} />
-      <CorrelacionesSwim correlaciones={data.correlaciones} />
-      <Sparklines data={data.sparkline} cadUnidad="" linea2Key="swolf" linea2Nombre="SWOLF" />
-      <Comparacion data={data.comparacion} />
-      <Interpretacion items={data.interpretacion} />
-      <AnalisisFatigaTecnica data={data.analisis_fatiga}
-        clusterEjes={{ xNombre: 'Brazadas', xUnidad: '/25m', yNombre: 'Ritmo', yUnidad: ' min/100m' }} />
-    </div>
-  )
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-// COMPONENTE PRINCIPAL
-// ═══════════════════════════════════════════════════════════════
 
 export default function SeccionTecnica({ atletaId }) {
   const [sport, setSport] = useState('running')
-  const [data, setData] = useState(null)
+  const [sesionId, setSesionId] = useState(null)
+  const [agg, setAgg] = useState(null)
+  const [lab, setLab] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [evolSel, setEvolSel] = useState(0)
 
+  useEffect(() => { if (atletaId) { setSesionId(null); setEvolSel(0) } }, [atletaId, sport])
   useEffect(() => {
     if (!atletaId) return
     setLoading(true)
-    authFetch(`${API}/atletas/${atletaId}/tecnica?sport=${sport}&semanas=8`)
-      .then(r => r.json())
-      .then(d => { setData(d.data || d); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [atletaId, sport])
+    const qs = sesionId ? `&sesion_id=${sesionId}` : ''
+    Promise.all([
+      authFetch(`${API}/atletas/${atletaId}/tecnica?sport=${sport}&semanas=1040${qs}`).then(r => r.json()).catch(() => null),
+      authFetch(`${API}/atletas/${atletaId}/tecnica_lab?sport=${sport}${qs}`).then(r => r.json()).catch(() => null),
+    ]).then(([a, l]) => { setAgg(a?.data || a); setLab(l?.data || l); setLoading(false) })
+  }, [atletaId, sport, sesionId])
+
+  const d = agg || {}
+  const L = lab || {}
+  const filas = useMemo(() => L.series ? construirFilas(L.series) : [], [L.series])
+  const disp = L.disponibles || {}
+  const hayLab = filas.length > 5
+
+  const metricas = d.metricas || {}
+  const interp = d.interpretacion || []
+  const recs = (d.recomendaciones || []).filter(r => typeof r === 'string' && !/dentro del patrón|habitual|manten[ée] el patrón|sin cambios/i.test(r))
+  const score = typeof d.score_tecnico === 'number' ? d.score_tecnico : null
+  const colScore = score == null ? C.dim : score >= 60 ? C.cian : C.violet
+  const lblScore = score == null ? '' : score >= 80 ? 'Técnica muy sólida' : score >= 60 ? 'Técnica estable' : score >= 45 ? 'Hay margen de mejora' : 'Prioridad de trabajo'
+  const clavesMetricas = (METRICAS_SPORT[sport] || []).filter(k => metricas[k] && META[k])
+  const estilos = d.estilos && typeof d.estilos === 'object' ? Object.entries(d.estilos) : []
+  const esNado = sport === 'swimming'
+  const hayDatos = clavesMetricas.length > 0 || interp.length > 0 || hayLab || estilos.length > 0
+
+  const aEconomia = useMemo(() => (hayLab && sport === 'running') ? genEconomia(filas) : null, [filas, hayLab, sport])
+  const aApoyo = useMemo(() => (hayLab && sport === 'running') ? genApoyo(filas) : null, [filas, hayLab, sport])
+  const aPotencia = useMemo(() => (hayLab && sport === 'cycling') ? genPotencia(filas) : null, [filas, hayLab, sport])
+  const aPedaleo = useMemo(() => (hayLab && sport === 'cycling') ? genPedaleo(filas) : null, [filas, hayLab, sport])
+  const aCambios = useMemo(() => (hayLab && !esNado) ? genCambios(filas, sport) : null, [filas, hayLab, sport, esNado])
+  const semanal = Semanal({ spark: d.sparkline, sport, sel: evolSel, setSel: setEvolSel })
+
+  const panelsEconomia = [
+    { key: 'vo', label: 'Oscilación vertical', unit: 'cm', color: C.violet },
+    { key: 'pace', label: 'Ritmo', unit: '/km', color: C.cian, pace: true },
+    { key: 'hr', label: 'Frecuencia cardíaca', unit: 'bpm', color: C.vMut },
+  ].filter(p => p.key === 'pace' ? disp.speed_ms : disp[p.key])
+  const panelsApoyo = [
+    { key: 'gct', label: 'Tiempo de contacto', unit: 'ms', color: C.cian },
+    { key: 'cadence', label: 'Cadencia', unit: 'spm', color: C.violet },
+    { key: 'stride', label: 'Longitud de zancada', unit: 'm', color: C.cLit },
+  ].filter(p => disp[p.key])
+  const panelsPotencia = [
+    { key: 'power', label: 'Potencia', unit: 'W', color: C.violet },
+    { key: 'cadence', label: 'Cadencia', unit: 'rpm', color: C.cian },
+    { key: 'hr', label: 'Frecuencia cardíaca', unit: 'bpm', color: C.vMut },
+  ].filter(p => disp[p.key])
+  const panelsPedaleo = [
+    { key: 'lr', label: 'Balance izquierda/derecha', unit: '% izq', color: C.cian, center50: true },
+    { key: 'torque', label: 'Torque efectivo', unit: '%', color: C.violet },
+    { key: 'pedal', label: 'Suavidad de pedaleo', unit: '%', color: C.cLit },
+  ].filter(p => disp[p.key])
 
   return (
-    <div style={{ maxWidth: 700, margin: '0 auto' }}>
-      {/* Selector de deporte */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        {[
-          { id: 'running', icon: '🏃', label: 'Running' },
-          { id: 'cycling', icon: '🚴', label: 'Cycling' },
-          { id: 'swimming', icon: '🏊', label: 'Swimming' },
-        ].map(s => (
-          <button key={s.id} onClick={() => setSport(s.id)} style={{
-            flex: 1, padding: '10px 0', borderRadius: 10, cursor: 'pointer',
-            border: `1px solid ${sport === s.id ? C.purple : C.border}`,
-            background: sport === s.id ? `${C.purple}15` : C.bg,
-            color: sport === s.id ? C.purple : C.dim, fontSize: 12, fontWeight: 700,
-            transition: 'all 0.2s',
-          }}>
-            {s.icon} {s.label}
-          </button>
-        ))}
-      </div>
+    <div style={{ position: 'relative', maxWidth: 680, margin: '0 auto', width: '100%', overflowX: 'hidden', fontFamily: 'Inter, system-ui, sans-serif', color: C.ink }}>
+      <style>{`
+        .noah-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px}
+        .noah-exp:hover{opacity:.85}
+        @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+      `}</style>
+      <div style={{ position: 'absolute', top: -30, left: -60, width: 260, height: 260, borderRadius: '50%', background: `radial-gradient(circle, ${C.violet}14, transparent 70%)`, filter: 'blur(10px)', pointerEvents: 'none', zIndex: 0 }} />
+      <div style={{ position: 'absolute', top: 220, right: -80, width: 260, height: 260, borderRadius: '50%', background: `radial-gradient(circle, ${C.cian}12, transparent 70%)`, filter: 'blur(10px)', pointerEvents: 'none', zIndex: 0 }} />
 
-      {loading && <div style={{ textAlign: 'center', color: C.dim, padding: 40 }}>Analizando biomecánica...</div>}
-
-      {!loading && data && !data.error && (
-        <>
-          {sport === 'running' && <PanelRunning data={data} />}
-          {sport === 'cycling' && <PanelCycling data={data} />}
-          {sport === 'swimming' && <PanelSwimming data={data} />}
-        </>
-      )}
-
-      {!loading && data?.error && (
-        <div style={{
-          textAlign: 'center', padding: 40, borderRadius: 16,
-          background: C.bg, border: `1px solid ${C.border}`,
-        }}>
-          <div style={{ fontSize: 13, color: C.dim, marginBottom: 8 }}>{data.error}</div>
-          {data.sensores?.faltantes?.length > 0 && (
-            <SensorNotice sensores={data.sensores} />
-          )}
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ ...glass, padding: 5, display: 'flex', gap: 4, borderRadius: 16 }}>
+          {[['running', 'Running'], ['cycling', 'Ciclismo'], ['swimming', 'Natación']].map(([id, lb]) => {
+            const on = sport === id
+            return <button key={id} onClick={() => setSport(id)} style={{ flex: 1, padding: '11px 0', borderRadius: 12, cursor: 'pointer', fontSize: 13, fontWeight: 700, border: 'none', background: on ? `linear-gradient(135deg, ${C.violet}2E, ${C.cian}24)` : 'transparent', color: on ? C.ink : C.dim, boxShadow: on ? `inset 0 0 0 1px ${C.border}` : 'none' }}>{lb}</button>
+          })}
         </div>
-      )}
+
+        {!esNado && L.sesiones && L.sesiones.length > 1 && (
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
+            {L.sesiones.map(s => { const on = s.id === L.sesion_id; return <button key={s.id} onClick={() => setSesionId(s.id)} style={{ flex: '0 0 auto', padding: '8px 13px', borderRadius: 10, cursor: 'pointer', fontSize: 12, fontWeight: 700, border: `1px solid ${on ? C.cian : C.border}`, background: on ? `${C.cian}1F` : 'rgba(22,29,46,0.4)', color: on ? C.cian : C.dim }}>{String(s.fecha).slice(5, 10)}</button> })}
+          </div>
+        )}
+
+        {loading && <div style={{ textAlign: 'center', color: C.dim, padding: 56 }}>Cargando análisis…</div>}
+
+        {!loading && !hayDatos && (
+          <Glass style={{ textAlign: 'center', color: C.dim, padding: 30 }}>
+            Todavía no hay datos de técnica para {esNado ? 'natación' : sport === 'cycling' ? 'ciclismo' : 'running'}.<br />Aparece cuando sincronices una actividad con los sensores correspondientes.
+          </Glass>
+        )}
+
+        {!loading && hayDatos && <>
+          {score != null && (
+            <Glass style={{ position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 18 }}>
+              <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(120% 120% at 0% 0%, ${colScore}14, transparent 55%)`, pointerEvents: 'none' }} />
+              <div style={{ position: 'relative', width: 72, height: 72, borderRadius: '50%', flex: '0 0 auto', background: `conic-gradient(${colScore} ${score * 3.6}deg, rgba(255,255,255,0.06) 0)`, display: 'grid', placeItems: 'center', boxShadow: `0 0 24px -6px ${colScore}66` }}>
+                <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#0D1324', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 800, color: C.ink, ...num }}>{score}</div>
+              </div>
+              <div style={{ position: 'relative' }}>
+                <div style={{ fontSize: 11, color: C.aux, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase' }}>Índice técnico</div>
+                <div style={{ fontSize: 19, fontWeight: 700, color: C.ink, marginTop: 2 }}>{lblScore}</div>
+              </div>
+            </Glass>
+          )}
+
+          {(hayLab || (esNado && d.curva_sesion)) && (
+            <div>
+              <TituloSeccion>Qué vemos en tu técnica</TituloSeccion>
+              <div style={{ marginTop: 10 }}>
+                <SignalStrip sport={sport} filas={filas} d={d} />
+                {interp.length > 0 && !esNado && <div style={{ marginTop: 12 }}><Glass style={{ padding: 14 }}><Expander label="Leer la lectura de NOAH">
+                  {interp.map((t, i) => <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '6px 0', borderTop: i ? `1px solid ${C.border}` : 'none' }}><span style={{ width: 6, height: 6, borderRadius: 9, background: C.sage, marginTop: 8, flex: '0 0 auto' }} /><span style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.55 }}>{t}</span></div>)}
+                </Expander></Glass></div>}
+              </div>
+            </div>
+          )}
+
+          {/* ───────── NATACIÓN (datos por largo) ───────── */}
+          {esNado && <>
+            {estilos.length > 0 && (
+              <div>
+                <TituloSeccion>Tus estilos</TituloSeccion>
+                <div style={{ fontSize: 12, color: C.aux, margin: '2px 2px 10px', lineHeight: 1.5 }}>La natación se mide por largo (vuelta), no segundo a segundo. Estas son tus medias reales por estilo.</div>
+                <div className="noah-grid">{estilos.filter(([, e]) => e && e.n_largos >= 3).map(([nombre, e]) => <TarjetaEstilo key={nombre} nombre={nombre} e={e} />)}</div>
+              </div>
+            )}
+            {estilos.length > 1 && <SwimDistribucion estilos={estilos} />}
+            {d.curva_sesion && Array.isArray(d.curva_sesion.largos) && d.curva_sesion.largos.length >= 6 && (
+              <div>
+                <TituloSeccion>Análisis · Frecuencia vs amplitud</TituloSeccion>
+                <div style={{ marginTop: 10 }}><SwimFreqAmplitud largos={d.curva_sesion.largos} /></div>
+              </div>
+            )}
+            {interp.length > 0 && (
+              <div>
+                <TituloSeccion>Análisis · Relaciones técnicas</TituloSeccion>
+                <div style={{ marginTop: 10 }}><RelacionesPanel interp={interp} /></div>
+              </div>
+            )}
+            {d.curva_sesion && Array.isArray(d.curva_sesion.largos) && d.curva_sesion.largos.length >= 6 && (
+              <div>
+                <TituloSeccion>Análisis · Fatiga en la sesión</TituloSeccion>
+                <div style={{ marginTop: 10 }}><FatigaPanel largos={d.curva_sesion.largos} /></div>
+              </div>
+            )}
+            <div>
+              <TituloSeccion>Análisis · Evolución</TituloSeccion>
+              <div style={{ marginTop: 10 }}>{semanal.node
+                ? <Analisis eyebrow="Evolución histórica" titulo="¿Estás nadando más eficiente?" subtitulo="SWOLF y brazadas por largo, mes a mes (toda tu historia)." interp={semanal.interp}>{semanal.node}</Analisis>
+                : <Glass style={{ textAlign: 'center', color: C.dim }}><div style={{ fontSize: 13.5, lineHeight: 1.5 }}>Necesitás registros en al menos 2 meses distintos para ver la tendencia.</div></Glass>}
+                <ComparativaBox d={d} /></div>
+            </div>
+          </>}
+
+          {/* ───────── RUNNING / CICLISMO ───────── */}
+          {!esNado && <>
+            {clavesMetricas.length > 0 && (
+              <div>
+                <TituloSeccion>Estado técnico · semáforo</TituloSeccion>
+                <div style={{ marginTop: 10 }}><SemaforoRow sport={sport} metricas={metricas} filas={filas} /></div>
+              </div>
+            )}
+
+            {clavesMetricas.length > 0 && (
+              <div>
+                <TituloSeccion>Tus métricas</TituloSeccion>
+                <div className="noah-grid" style={{ marginTop: 10 }}>
+                  {clavesMetricas.map(k => <TarjetaMetrica key={k} k={k} m={metricas[k]} sport={sport} />)}
+                </div>
+              </div>
+            )}
+
+            {hayLab && relsDe(filas, sport).length > 0 && (
+              <div>
+                <TituloSeccion>Relaciones entre tus variables</TituloSeccion>
+                <div style={{ marginTop: 10 }}><Glass><HeadG eyebrow={`${sport === 'cycling' ? 'Ciclismo' : 'Running'} · Relaciones`} titulo="¿Qué se mueve junto con qué?" subtitulo="Calculado sobre las muestras reales de la sesión. A la derecha suben juntas; a la izquierda una sube y la otra baja." /><CorrBars rels={relsDe(filas, sport)} /></Glass></div>
+              </div>
+            )}
+
+            {/* ANÁLISIS 1 */}
+            <div>
+              <TituloSeccion>{sport === 'cycling' ? 'Análisis 1 · Entrega de potencia' : 'Análisis 1 · Economía del movimiento'}</TituloSeccion>
+              <div style={{ marginTop: 10 }}>
+                {sport === 'running'
+                  ? (panelsEconomia.length >= 2 && aEconomia
+                    ? <Analisis eyebrow="Economía del movimiento" titulo="¿Mantenés la mecánica cuando cambia el ritmo?" subtitulo="Oscilación, ritmo y FC en el tiempo (misma sesión)." interp={aEconomia}><MultiSerie filas={filas} panels={panelsEconomia} /></Analisis>
+                    : <SensorFalta sensor="un sensor de Running Dynamics (oscilación vertical)" />)
+                  : (panelsPotencia.length >= 2 && aPotencia
+                    ? <Analisis eyebrow="Entrega de potencia" titulo="¿Cómo sostenés la potencia?" subtitulo="Potencia, cadencia y FC en el tiempo (misma sesión)." interp={aPotencia}><MultiSerie filas={filas} panels={panelsPotencia} /></Analisis>
+                    : <SensorFalta sensor="un medidor de potencia" />)}
+              </div>
+            </div>
+
+            {/* ANÁLISIS 2 */}
+            <div>
+              <TituloSeccion>{sport === 'cycling' ? 'Análisis 2 · Simetría y pedaleo' : 'Análisis 2 · Mecánica del apoyo'}</TituloSeccion>
+              <div style={{ marginTop: 10 }}>
+                {sport === 'running'
+                  ? (panelsApoyo.length >= 2 && aApoyo
+                    ? <Analisis eyebrow="Mecánica del apoyo" titulo="¿Cómo organizás cada apoyo?" subtitulo="Contacto, cadencia y zancada en el tiempo." interp={aApoyo}><MultiSerie filas={filas} panels={panelsApoyo} /></Analisis>
+                    : <SensorFalta sensor="un sensor de Running Dynamics (tiempo de contacto)" />)
+                  : (panelsPedaleo.length >= 1 && aPedaleo
+                    ? <Analisis eyebrow="Simetría y pedaleo" titulo="¿Cómo pedaleás y qué tan parejo?" subtitulo="Balance izquierda/derecha (50/50 ideal) y torque efectivo en el tiempo." interp={aPedaleo}><MultiSerie filas={filas} panels={panelsPedaleo} /></Analisis>
+                    : <SensorFalta sensor="un medidor con Cycling Dynamics (balance L/R y torque)" />)}
+              </div>
+            </div>
+
+            {/* Círculo de pedaleo (ciclismo) */}
+            {sport === 'cycling' && hayLab && (
+              <div>
+                <TituloSeccion>Pedaleo · modelo</TituloSeccion>
+                <div style={{ marginTop: 10 }}><PedalClock filas={filas} /></div>
+              </div>
+            )}
+
+            {/* ANÁLISIS 3 — mapa biomecánico insignia */}
+            <div>
+              <TituloSeccion>Análisis 3 · Mapa biomecánico</TituloSeccion>
+              <div style={{ marginTop: 10 }}>{!hayLab
+                ? <SensorFalta sensor="una sesión con datos muestra-a-muestra" />
+                : sport === 'running' ? <FlagRunning filas={filas} /> : <FlagCycling filas={filas} />}</div>
+            </div>
+
+            {/* ANÁLISIS 4 */}
+            <div>
+              <TituloSeccion>Análisis 4 · Cambios durante la sesión</TituloSeccion>
+              <div style={{ marginTop: 10 }}>{hayLab && aCambios && aCambios.metricas.length
+                ? <Analisis eyebrow="Cambios durante la sesión" titulo="¿Tu técnica se mantiene o se deteriora?" subtitulo="Inicio, mitad y final de la misma sesión." interp={aCambios.interp}><Cambios T={aCambios.T} metricas={aCambios.metricas} /></Analisis>
+                : <SensorFalta sensor="una sesión con suficientes datos muestra-a-muestra" />}</div>
+            </div>
+
+            {/* ANÁLISIS 5 */}
+            <div>
+              <TituloSeccion>Análisis 5 · Evolución histórica</TituloSeccion>
+              <div style={{ marginTop: 10 }}>{semanal.node
+                ? <Analisis eyebrow="Evolución histórica" titulo="¿Estás mejorando con el entrenamiento?" subtitulo="Promedio por mes, toda tu historia." interp={semanal.interp}>{semanal.node}</Analisis>
+                : <Glass style={{ textAlign: 'center', color: C.dim }}><div style={{ fontSize: 13.5, lineHeight: 1.5 }}>Necesitás registros en al menos 2 meses distintos para ver la tendencia.</div></Glass>}
+                <ComparativaBox d={d} /></div>
+            </div>
+          </>}
+
+          {recs.length > 0 && (
+            <div>
+              <TituloSeccion>Qué trabajar ahora</TituloSeccion>
+              <Glass style={{ marginTop: 10, background: `linear-gradient(160deg, ${C.violet}10, rgba(22,29,46,0.48))` }}>
+                {recs.map((t, i) => <div key={i} style={{ display: 'flex', gap: 11, alignItems: 'flex-start', padding: '8px 0', borderTop: i ? `1px solid ${C.border}` : 'none' }}><span style={{ color: C.violet, fontWeight: 800, fontSize: 14, lineHeight: 1.5 }}>→</span><span style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.55 }}>{t}</span></div>)}
+              </Glass>
+            </div>
+          )}
+        </>}
+      </div>
     </div>
   )
 }

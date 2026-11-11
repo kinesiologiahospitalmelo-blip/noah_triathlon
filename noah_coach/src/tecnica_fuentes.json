@@ -1,0 +1,140 @@
+{
+  "_meta": {
+    "titulo": "Técnica / Biomecánica — fuentes y criterios",
+    "descripcion": "De dónde salen las métricas, umbrales e interpretaciones de la sección de Técnica de NOAH.",
+    "nota_importante": "Los umbrales (elite / bueno / promedio / mejorar) son referencias PRÁCTICAS de uso habitual en el análisis del gesto deportivo. La dirección y el significado de cada métrica (qué conviene y por qué) están respaldados por la literatura citada; los puntos de corte exactos son orientativos y no constituyen diagnóstico. Deben leerse junto al contexto del atleta (nivel, ritmo, superficie, calzado).",
+    "actualizado": "2026-11",
+    "coincide_con": "noah_tecnica.py"
+  },
+
+  "running": {
+    "cadencia": {
+      "que_mide": "Pasos por minuto (spm). Una cadencia más alta tiende a acortar la zancada y reducir el impacto y el frenado en cada apoyo.",
+      "umbrales_noah": {
+        "elite": "180–190",
+        "avanzado": "175–185",
+        "intermedio": "168–178",
+        "principiante": "160–172",
+        "unidad": "spm"
+      },
+      "por_que_importa": "Aumentar la frecuencia de pasos reduce la carga articular (rodilla/cadera) y el componente de frenado, sin necesariamente cambiar la velocidad.",
+      "fuentes": [
+        "Heiderscheit BC, Chumanov ES, Michalski MP, Wille CM, Ryan MB. Effects of step rate manipulation on joint mechanics during running. Med Sci Sports Exerc. 2011;43(2):296-302.",
+        "Schubert AG, Kempf J, Heiderscheit BC. Influence of stride frequency and length on running mechanics: a systematic review. Sports Health. 2014;6(3):210-217."
+      ]
+    },
+    "gct": {
+      "que_mide": "Tiempo de contacto con el suelo (ms). Menos tiempo de apoyo se asocia a un apoyo más reactivo y mejor economía.",
+      "umbrales_noah": { "elite": 200, "bueno": 240, "promedio": 270, "mejorar": 300, "unidad": "ms" },
+      "por_que_importa": "El tiempo de contacto se relaciona con la economía de carrera: tiempos menores suelen acompañar a corredores más económicos, aunque depende del ritmo.",
+      "fuentes": [
+        "Di Michele R, Merni F. The concurrent effects of strike pattern and ground-contact time on running economy. J Sci Med Sport. 2014;17(4):414-418.",
+        "Folland JP, Allen SJ, Black MI, Handsaker JC, Forrester SE. Running Technique is an Important Component of Running Economy and Performance. Med Sci Sports Exerc. 2017;49(7):1412-1423."
+      ]
+    },
+    "oscilacion_vertical": {
+      "que_mide": "Cuánto sube y baja el centro de masa en cada paso (cm). Un rebote excesivo gasta energía que no va hacia adelante.",
+      "umbrales_noah": { "elite": 6.0, "bueno": 8.0, "promedio": 9.5, "mejorar": 11.0, "unidad": "cm" },
+      "por_que_importa": "Menor oscilación vertical, en relación al avance, se asocia a mejor economía de carrera.",
+      "fuentes": [
+        "Folland JP, et al. Running Technique is an Important Component of Running Economy and Performance. Med Sci Sports Exerc. 2017;49(7):1412-1423.",
+        "Tartaruga MP, et al. The relationship between running economy and biomechanical variables in distance runners. Res Q Exerc Sport. 2012;83(3):367-375."
+      ]
+    },
+    "vertical_ratio": {
+      "que_mide": "Relación entre la oscilación vertical y la longitud de zancada (%). Normaliza el rebote respecto del avance real.",
+      "umbrales_noah": { "elite": 6.0, "bueno": 8.0, "promedio": 10.0, "mejorar": 12.0, "unidad": "%" },
+      "por_que_importa": "Es una medida de eficiencia: un ratio más bajo indica que la energía se traduce mejor en avance y no en rebote.",
+      "fuentes": [
+        "Folland JP, et al. Running Technique is an Important Component of Running Economy and Performance. Med Sci Sports Exerc. 2017;49(7):1412-1423."
+      ]
+    },
+    "zancada": {
+      "que_mide": "Longitud de cada paso (m). Se interpreta SIEMPRE junto a la cadencia y el ritmo, no de forma aislada.",
+      "por_que_importa": "Una zancada demasiado larga para una cadencia baja puede indicar sobrepaso (overstride) y mayor frenado; pero una zancada larga no es un error por sí misma.",
+      "fuentes": [
+        "Cavanagh PR, Williams KR. The effect of stride length variation on oxygen uptake during distance running. Med Sci Sports Exerc. 1982;14(1):30-35."
+      ]
+    }
+  },
+
+  "ciclismo": {
+    "cadencia": {
+      "que_mide": "Pedaladas por minuto (rpm). La cadencia preferida varía con la potencia y el nivel del ciclista.",
+      "por_que_importa": "Cadencias altas descargan fuerza por pedalada (cuidan la musculatura) a costa de mayor costo cardiovascular; el óptimo es individual.",
+      "fuentes": [
+        "Lucía A, Hoyos J, Chicharro JL. Preferred pedalling cadence in professional cycling. Med Sci Sports Exerc. 2001;33(8):1361-1366."
+      ]
+    },
+    "balance_lr": {
+      "que_mide": "Reparto de potencia entre pierna izquierda y derecha (%). Lo ideal es cercano a 50/50.",
+      "por_que_importa": "Asimetrías marcadas y sostenidas pueden señalar compensaciones o fatiga de un lado; diferencias chicas son normales.",
+      "nota": "Es una métrica definida por el medidor de potencia (Garmin Cycling Dynamics / medidores duales), con base biomecánica en los estudios de fuerza de pedaleo.",
+      "fuentes": [
+        "Bini RR, Hume PA, Croft JL. Effects of bicycle saddle height on knee injury risk and cycling performance. Sports Med. 2011;41(6):463-476.",
+        "Coyle EF, et al. Physiological and biomechanical factors associated with elite endurance cycling performance. Med Sci Sports Exerc. 1991;23(1):93-107."
+      ]
+    },
+    "torque_effectiveness": {
+      "que_mide": "Qué porcentaje de la pedalada produce fuerza útil hacia adelante (%). Más alto = pedaleo más efectivo.",
+      "por_que_importa": "Indica cuánta fuerza se 'desperdicia' en la fase no propulsiva; útil para trabajar la técnica de pedaleo, aunque su relación con el rendimiento no es lineal.",
+      "nota": "Métrica de Garmin Cycling Dynamics; interpretarla como tendencia, no como diagnóstico.",
+      "fuentes": [
+        "Coyle EF, et al. Physiological and biomechanical factors associated with elite endurance cycling performance. Med Sci Sports Exerc. 1991;23(1):93-107."
+      ]
+    }
+  },
+
+  "natacion": {
+    "swolf": {
+      "que_mide": "Brazadas + segundos por largo. Índice de eficiencia: más bajo = nadás gastando menos por metro.",
+      "por_que_importa": "Combina ritmo y economía de brazada en un solo número; es un indicador práctico de eficiencia técnica.",
+      "nota": "SWOLF es una métrica compuesta de uso práctico (coaching); su base conceptual está en la relación frecuencia-distancia por brazada.",
+      "fuentes": [
+        "Craig AB Jr, Pendergast DR. Relationships of stroke rate, distance per stroke, and velocity in competitive swimming. Med Sci Sports Exerc. 1979;11(3):278-283."
+      ]
+    },
+    "dps_brazadas": {
+      "que_mide": "Distancia por brazada (m) y brazadas por 25 m. Más distancia por brazada = mejor agarre y deslizamiento.",
+      "por_que_importa": "A igual velocidad, más distancia por brazada (menos brazadas) suele reflejar mejor técnica y menor costo energético.",
+      "fuentes": [
+        "Craig AB Jr, Pendergast DR. Relationships of stroke rate, distance per stroke, and velocity in competitive swimming. Med Sci Sports Exerc. 1979;11(3):278-283.",
+        "Zamparo P, Capelli C, Pendergast D. Energetics of swimming: a historical perspective. Eur J Appl Physiol. 2011;111(3):367-378."
+      ]
+    }
+  },
+
+  "fatiga_y_consistencia": {
+    "tecnica_bajo_fatiga": {
+      "que_mide": "Variación de las métricas técnicas del inicio al final del esfuerzo (drift) y a lo largo de las sesiones.",
+      "por_que_importa": "La técnica que se mantiene bajo fatiga protege de lesión y sostiene el rendimiento; su deterioro marca un objetivo de entrenamiento (fuerza, resistencia a la fatiga).",
+      "fuentes": [
+        "Folland JP, et al. Running Technique is an Important Component of Running Economy and Performance. Med Sci Sports Exerc. 2017;49(7):1412-1423.",
+        "Friel J. The Triathlete's Training Bible. VeloPress (desacople aeróbico / Efficiency Factor como criterio práctico)."
+      ]
+    },
+    "carga_vs_tecnica": {
+      "que_mide": "Relación entre la carga/fatiga acumulada y la calidad técnica (prioriza gestión de carga sobre el cue técnico cuando la fatiga es alta).",
+      "fuentes": [
+        "Gabbett TJ. The training-injury prevention paradox. Br J Sports Med. 2016;50(5):273-280.",
+        "Foster C. Monitoring training in athletes with reference to overtraining syndrome. Med Sci Sports Exerc. 1998;30(7):1164-1168."
+      ]
+    }
+  },
+
+  "bibliografia": [
+    "Heiderscheit BC, Chumanov ES, Michalski MP, Wille CM, Ryan MB. Effects of step rate manipulation on joint mechanics during running. Med Sci Sports Exerc. 2011;43(2):296-302.",
+    "Schubert AG, Kempf J, Heiderscheit BC. Influence of stride frequency and length on running mechanics: a systematic review. Sports Health. 2014;6(3):210-217.",
+    "Di Michele R, Merni F. The concurrent effects of strike pattern and ground-contact time on running economy. J Sci Med Sport. 2014;17(4):414-418.",
+    "Folland JP, Allen SJ, Black MI, Handsaker JC, Forrester SE. Running Technique is an Important Component of Running Economy and Performance. Med Sci Sports Exerc. 2017;49(7):1412-1423.",
+    "Tartaruga MP, et al. The relationship between running economy and biomechanical variables in distance runners. Res Q Exerc Sport. 2012;83(3):367-375.",
+    "Cavanagh PR, Williams KR. The effect of stride length variation on oxygen uptake during distance running. Med Sci Sports Exerc. 1982;14(1):30-35.",
+    "Lucía A, Hoyos J, Chicharro JL. Preferred pedalling cadence in professional cycling. Med Sci Sports Exerc. 2001;33(8):1361-1366.",
+    "Bini RR, Hume PA, Croft JL. Effects of bicycle saddle height on knee injury risk and cycling performance. Sports Med. 2011;41(6):463-476.",
+    "Coyle EF, et al. Physiological and biomechanical factors associated with elite endurance cycling performance. Med Sci Sports Exerc. 1991;23(1):93-107.",
+    "Craig AB Jr, Pendergast DR. Relationships of stroke rate, distance per stroke, and velocity in competitive swimming. Med Sci Sports Exerc. 1979;11(3):278-283.",
+    "Zamparo P, Capelli C, Pendergast D. Energetics of swimming: a historical perspective. Eur J Appl Physiol. 2011;111(3):367-378.",
+    "Gabbett TJ. The training-injury prevention paradox: should athletes be training smarter and harder? Br J Sports Med. 2016;50(5):273-280.",
+    "Foster C. Monitoring training in athletes with reference to overtraining syndrome. Med Sci Sports Exerc. 1998;30(7):1164-1168."
+  ]
+}
