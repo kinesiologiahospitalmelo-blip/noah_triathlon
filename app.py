@@ -5988,6 +5988,128 @@ def get_tecnica(atleta_id):
         return ok({'error': str(e)})
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# LABORATORIO BIOMECÁNICO — datos muestra-a-muestra de UNA sesión.
+# Pegar en app.py junto a los otros @app.route (antes de `if __name__`).
+# NO recalcula ni inventa nada: devuelve las series REALES de activity_samples.
+# - "Sesión con streams" = sesión que tiene filas en activity_samples (EXISTS),
+#   no depende de ninguna columna has_streams.
+# - Filtra SIEMPRE por atleta_id (igual que el resto de app.py).
+# - Si el atleta no tiene un sensor (p.ej. running dynamics), esas columnas vienen
+#   en null y se informan en `disponibles` -> el front muestra lo que sí hay y
+#   avisa qué falta, sin fabricar curvas.
+# - Robusto a los dos esquemas de nombres que puede tener activity_samples.
+# ─────────────────────────────────────────────────────────────────────────────
+@app.route('/api/atletas/<int:atleta_id>/tecnica_lab', methods=['GET'])
+@requiere_login
+def get_tecnica_lab(atleta_id):
+    import traceback
+    try:
+        sesion_id = request.args.get('sesion_id', type=int)
+        sport     = request.args.get('sport')
+        conn = get_conn()
+        try:
+            # 1) Resolver sesión: la pedida, o la última CON samples del deporte.
+            if not sesion_id:
+                q = ("SELECT s.id, s.sport FROM sesiones s "
+                     "WHERE s.atleta_id=%s "
+                     "AND EXISTS (SELECT 1 FROM activity_samples sa "
+                     "            WHERE sa.sesion_id=s.id AND sa.atleta_id=%s)")
+                p = [atleta_id, atleta_id]
+                if sport:
+                    q += " AND s.sport=%s"; p.append(sport)
+                q += " ORDER BY s.fecha DESC LIMIT 1"
+                row = conn.execute(q, tuple(p)).fetchone()
+                if not row:
+                    return ok({'error': 'sin_sesiones', 'sport': sport, 'sesiones': []})
+                sesion_id, sport = row[0], row[1]
+            else:
+                row = conn.execute(
+                    "SELECT sport FROM sesiones WHERE id=%s AND atleta_id=%s",
+                    (sesion_id, atleta_id)).fetchone()
+                if row:
+                    sport = row[0]
+
+            # 2) Lista de sesiones recientes con samples (para el selector del front).
+            ses_rows = conn.execute(
+                "SELECT s.id, s.fecha, s.sport FROM sesiones s "
+                "WHERE s.atleta_id=%s "
+                "AND (%s::text IS NULL OR s.sport=%s) "
+                "AND EXISTS (SELECT 1 FROM activity_samples sa "
+                "            WHERE sa.sesion_id=s.id AND sa.atleta_id=%s) "
+                "ORDER BY s.fecha DESC LIMIT 25",
+                (atleta_id, sport, sport, atleta_id)).fetchall()
+            sesiones = [{'id': r[0], 'fecha': str(r[1]), 'sport': r[2]} for r in ses_rows]
+
+            # 3) Qué columnas de dinámica existen realmente (los dos nombres posibles).
+            cols_db = {r[0] for r in conn.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='activity_samples'").fetchall()}
+
+            # clave canónica -> candidatos de columna (primer existente gana)
+            MAP = {
+                'ts':          ['ts_s'],
+                'hr':          ['hr'],
+                'speed_ms':    ['speed_ms'],
+                'cadence':     ['cadence'],
+                'power':       ['power_w'],
+                'gct':         ['ground_contact_ms', 'gct_ms'],
+                'vo':          ['vertical_osc_mm', 'vert_osc_mm'],
+                'stride':      ['stride_length_m', 'stride_cm'],
+                'vratio':      ['vertical_ratio', 'vert_ratio'],
+                'gct_balance': ['ground_balance', 'gct_balance'],
+                'lr':          ['left_right_pct'],
+                'torque':      ['torque_effectiveness'],
+                'cadence_swim':['cadence_swim'],
+            }
+            sel = {}   # clave canónica -> columna real
+            for k, cands in MAP.items():
+                for c in cands:
+                    if c in cols_db:
+                        sel[k] = c
+                        break
+
+            if 'ts' not in sel:
+                return ok({'error': 'sin_timestamps', 'sesion_id': sesion_id,
+                           'sport': sport, 'sesiones': sesiones})
+
+            claves   = list(sel.keys())
+            cols_sql = ', '.join(sel[k] for k in claves)
+            rows = conn.execute(
+                "SELECT %s FROM activity_samples WHERE sesion_id=%%s AND atleta_id=%%s "
+                "ORDER BY %s" % (cols_sql, sel['ts']),
+                (sesion_id, atleta_id)).fetchall()
+
+            # 4) Downsample a ~1200 puntos (fluido y liviano en el front).
+            MAX = 1200
+            if len(rows) > MAX:
+                paso = len(rows) // MAX
+                rows = rows[::paso]
+
+            series = {k: [] for k in claves}
+            for r in rows:
+                for i, k in enumerate(claves):
+                    v = r[i]
+                    series[k].append(round(v, 2) if isinstance(v, float) else v)
+
+            # 5) Qué variable tiene datos reales (no todo null) -> el front decide.
+            disponibles = {k: any(v is not None for v in series[k]) for k in claves}
+
+            return ok({
+                'sesion_id': sesion_id,
+                'sport': sport,
+                'n_muestras': len(rows),
+                'series': series,          # {ts:[...], hr:[...], vo:[...], gct:[...], ...}
+                'disponibles': disponibles,
+                'sesiones': sesiones,
+            })
+        finally:
+            conn.close()
+    except Exception as e:
+        traceback.print_exc()
+        return ok({'error': 'tecnica_lab: ' + str(e)})
+
+
 # ── Reloj Garmin (NOAH) ──
 try:
     from noah_watch import register_watch
