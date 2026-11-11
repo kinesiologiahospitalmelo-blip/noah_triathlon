@@ -5992,14 +5992,27 @@ def get_tecnica(atleta_id):
 # LABORATORIO BIOMECÁNICO — datos muestra-a-muestra de UNA sesión.
 # Pegar en app.py junto a los otros @app.route (antes de `if __name__`).
 # NO recalcula ni inventa nada: devuelve las series REALES de activity_samples.
-# - "Sesión con streams" = sesión que tiene filas en activity_samples (EXISTS),
-#   no depende de ninguna columna has_streams.
-# - Filtra SIEMPRE por atleta_id (igual que el resto de app.py).
-# - Si el atleta no tiene un sensor (p.ej. running dynamics), esas columnas vienen
-#   en null y se informan en `disponibles` -> el front muestra lo que sí hay y
-#   avisa qué falta, sin fabricar curvas.
+# - "Sesión con streams" = sesión que tiene filas en activity_samples (EXISTS).
+# - Filtra SIEMPRE por atleta_id.
+# - Decodifica el balance L/R (left_right_pct) con el estándar ANT+/FIT de Garmin,
+#   igual que noah_tecnica._decode_lr_balance -> devuelve % de la pierna IZQUIERDA.
+# - Si falta un sensor, esa serie viene en null y se informa en `disponibles`.
 # - Robusto a los dos esquemas de nombres que puede tener activity_samples.
 # ─────────────────────────────────────────────────────────────────────────────
+def _lab_decode_lr(raw):
+    """left_right_pct ANT+/FIT -> % pierna izquierda (0-100). None si inválido."""
+    try:
+        r = int(round(float(raw)))
+    except (TypeError, ValueError):
+        return None
+    if r & 0x80:
+        right_pct = r & 0x7F
+        return round(100 - right_pct, 1) if 0 <= right_pct <= 100 else None
+    if 0 <= r <= 100:
+        return float(r)
+    return None
+
+
 @app.route('/api/atletas/<int:atleta_id>/tecnica_lab', methods=['GET'])
 @requiere_login
 def get_tecnica_lab(atleta_id):
@@ -6014,8 +6027,8 @@ def get_tecnica_lab(atleta_id):
                 q = ("SELECT s.id, s.sport FROM sesiones s "
                      "WHERE s.atleta_id=%s "
                      "AND EXISTS (SELECT 1 FROM activity_samples sa "
-                     "            WHERE sa.sesion_id=s.id AND sa.atleta_id=%s)")
-                p = [atleta_id, atleta_id]
+                     "            WHERE sa.sesion_id=s.id)")
+                p = [atleta_id]
                 if sport:
                     q += " AND s.sport=%s"; p.append(sport)
                 q += " ORDER BY s.fecha DESC LIMIT 1"
@@ -6036,9 +6049,9 @@ def get_tecnica_lab(atleta_id):
                 "WHERE s.atleta_id=%s "
                 "AND (%s::text IS NULL OR s.sport=%s) "
                 "AND EXISTS (SELECT 1 FROM activity_samples sa "
-                "            WHERE sa.sesion_id=s.id AND sa.atleta_id=%s) "
+                "            WHERE sa.sesion_id=s.id) "
                 "ORDER BY s.fecha DESC LIMIT 25",
-                (atleta_id, sport, sport, atleta_id)).fetchall()
+                (atleta_id, sport, sport)).fetchall()
             sesiones = [{'id': r[0], 'fecha': str(r[1]), 'sport': r[2]} for r in ses_rows]
 
             # 3) Qué columnas de dinámica existen realmente (los dos nombres posibles).
@@ -6060,25 +6073,31 @@ def get_tecnica_lab(atleta_id):
                 'gct_balance': ['ground_balance', 'gct_balance'],
                 'lr':          ['left_right_pct'],
                 'torque':      ['torque_effectiveness'],
+                'pedal':       ['pedal_smoothness'],
                 'cadence_swim':['cadence_swim'],
             }
-            sel = {}   # clave canónica -> columna real
+            # clave canónica -> expresión SQL. COALESCE de TODOS los nombres que
+            # existan, para funcionar con los dos esquemas de sync a la vez
+            # (sincronizar_garmin.py: ground_contact_ms...  /  noah_streams.py: gct_ms...).
+            sel = {}
             for k, cands in MAP.items():
-                for c in cands:
-                    if c in cols_db:
-                        sel[k] = c
-                        break
+                existentes = [c for c in cands if c in cols_db]
+                if not existentes:
+                    continue
+                sel[k] = existentes[0] if len(existentes) == 1 else 'COALESCE(%s)' % ', '.join(existentes)
 
             if 'ts' not in sel:
                 return ok({'error': 'sin_timestamps', 'sesion_id': sesion_id,
                            'sport': sport, 'sesiones': sesiones})
 
             claves   = list(sel.keys())
-            cols_sql = ', '.join(sel[k] for k in claves)
+            cols_sql = ', '.join('%s AS %s' % (sel[k], k) for k in claves)
+            # el muestreo pertenece a la sesión (que ya es del atleta); no exigimos
+            # atleta_id en la muestra por si algún sync lo dejó nulo.
             rows = conn.execute(
-                "SELECT %s FROM activity_samples WHERE sesion_id=%%s AND atleta_id=%%s "
+                "SELECT %s FROM activity_samples WHERE sesion_id=%%s "
                 "ORDER BY %s" % (cols_sql, sel['ts']),
-                (sesion_id, atleta_id)).fetchall()
+                (sesion_id,)).fetchall()
 
             # 4) Downsample a ~1200 puntos (fluido y liviano en el front).
             MAX = 1200
@@ -6092,6 +6111,10 @@ def get_tecnica_lab(atleta_id):
                     v = r[i]
                     series[k].append(round(v, 2) if isinstance(v, float) else v)
 
+            # 4b) Decodificar el balance L/R (viene como byte ANT+/FIT, no como %).
+            if 'lr' in series:
+                series['lr'] = [_lab_decode_lr(v) for v in series['lr']]
+
             # 5) Qué variable tiene datos reales (no todo null) -> el front decide.
             disponibles = {k: any(v is not None for v in series[k]) for k in claves}
 
@@ -6099,7 +6122,7 @@ def get_tecnica_lab(atleta_id):
                 'sesion_id': sesion_id,
                 'sport': sport,
                 'n_muestras': len(rows),
-                'series': series,          # {ts:[...], hr:[...], vo:[...], gct:[...], ...}
+                'series': series,          # {ts:[...], hr:[...], vo:[...], gct:[...], lr:[...], ...}
                 'disponibles': disponibles,
                 'sesiones': sesiones,
             })

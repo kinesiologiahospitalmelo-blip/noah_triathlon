@@ -209,10 +209,10 @@ def _detectar_sensores(conn, atleta_id, sport='running'):
 
     cur.execute("""
         SELECT
-            COUNT(*) FILTER (WHERE ground_contact_ms IS NOT NULL AND ground_contact_ms > 0) as n_gct,
-            COUNT(*) FILTER (WHERE vertical_osc_mm IS NOT NULL AND vertical_osc_mm > 0) as n_vo,
-            COUNT(*) FILTER (WHERE stride_length_m IS NOT NULL AND stride_length_m > 0) as n_stride,
-            COUNT(*) FILTER (WHERE vertical_ratio IS NOT NULL AND vertical_ratio > 0) as n_vr,
+            COUNT(*) FILTER (WHERE COALESCE(ground_contact_ms, gct_ms) > 0) as n_gct,
+            COUNT(*) FILTER (WHERE COALESCE(vertical_osc_mm, vert_osc_mm) > 0) as n_vo,
+            COUNT(*) FILTER (WHERE COALESCE(stride_length_m, stride_cm/100.0) > 0) as n_stride,
+            COUNT(*) FILTER (WHERE COALESCE(vertical_ratio, vert_ratio) > 0) as n_vr,
             COUNT(*) FILTER (WHERE left_right_pct IS NOT NULL AND left_right_pct > 0) as n_lr,
             COUNT(*) FILTER (WHERE torque_effectiveness IS NOT NULL AND torque_effectiveness > 0) as n_te,
             COUNT(*) as n_total
@@ -277,16 +277,18 @@ def analizar_running(conn, atleta_id, sesion_id=None, semanas=8):
     # Samples — cadence > 140 excluye caminata/warm-up
     if sesion_id:
         cur.execute("""
-            SELECT cadence, speed_ms, hr, ground_contact_ms, vertical_osc_mm,
-                   stride_length_m, vertical_ratio, ts_s
+            SELECT cadence, speed_ms, hr,
+                   COALESCE(ground_contact_ms, gct_ms), COALESCE(vertical_osc_mm, vert_osc_mm),
+                   COALESCE(stride_length_m, stride_cm/100.0), COALESCE(vertical_ratio, vert_ratio), ts_s
             FROM activity_samples
             WHERE sesion_id=%s AND cadence > 140
             ORDER BY ts_s
         """, (sesion_id,))
     else:
         cur.execute("""
-            SELECT sa.cadence, sa.speed_ms, sa.hr, sa.ground_contact_ms, sa.vertical_osc_mm,
-                   sa.stride_length_m, sa.vertical_ratio, sa.ts_s,
+            SELECT sa.cadence, sa.speed_ms, sa.hr,
+                   COALESCE(sa.ground_contact_ms, sa.gct_ms), COALESCE(sa.vertical_osc_mm, sa.vert_osc_mm),
+                   COALESCE(sa.stride_length_m, sa.stride_cm/100.0), COALESCE(sa.vertical_ratio, sa.vert_ratio), sa.ts_s,
                    s.fecha::date, s.id, s.tsb
             FROM activity_samples sa
             JOIN sesiones s ON s.id = sa.sesion_id
@@ -529,8 +531,8 @@ def analizar_running(conn, atleta_id, sesion_id=None, semanas=8):
         cur.execute("""
             SELECT DATE_TRUNC('week', s.fecha)::date as semana,
                    AVG(sa.cadence) as cad_avg,
-                   AVG(sa.ground_contact_ms) as gct_avg,
-                   AVG(sa.vertical_osc_mm) as vo_avg
+                   AVG(COALESCE(sa.ground_contact_ms, sa.gct_ms)) as gct_avg,
+                   AVG(COALESCE(sa.vertical_osc_mm, sa.vert_osc_mm)) as vo_avg
             FROM activity_samples sa
             JOIN sesiones s ON s.id = sa.sesion_id
             WHERE s.atleta_id=%s AND s.sport='running'
@@ -554,7 +556,7 @@ def analizar_running(conn, atleta_id, sesion_id=None, semanas=8):
     # ══════════════════════════════════════════════════════════
     try:
         cur.execute("""
-            SELECT AVG(sa.cadence), AVG(sa.ground_contact_ms), AVG(sa.vertical_osc_mm)
+            SELECT AVG(sa.cadence), AVG(COALESCE(sa.ground_contact_ms, sa.gct_ms)), AVG(COALESCE(sa.vertical_osc_mm, sa.vert_osc_mm))
             FROM activity_samples sa
             JOIN sesiones s ON s.id = sa.sesion_id
             WHERE s.atleta_id=%s AND s.sport='running'
