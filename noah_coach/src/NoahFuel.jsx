@@ -19,6 +19,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
   Flame, AlertTriangle, Send, X, Droplet, Pill, Info, Utensils, ChevronRight,
+  Activity, HeartPulse, Zap, Brain, Trophy, Gauge,
 } from 'lucide-react'
 
 const esLocal = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
@@ -39,6 +40,8 @@ function authFetch(url, options = {}) {
 const C = {
   ink: '#292D29', ink2: 'rgba(41,45,41,0.72)', ink3: 'rgba(41,45,41,0.48)', ink4: 'rgba(41,45,41,0.32)',
   bg: '#F3F0E8',
+  // paleta oficial NOAH
+  marfil: '#F3F0E8', grafito: '#292D29', salvia: '#78866B', coral: '#E65B45', azul: '#4F8CC9',
   accent: '#78866B', accentDim: '#5C6952',
   success: '#35C07A', warning: '#E6B655', danger: '#E2726E', info: '#4F8CC9',
   cho: '#E6B655', prot: '#78866B', grasa: '#4F8CC9',
@@ -46,9 +49,11 @@ const C = {
 const FONT = "'Archivo', system-ui, -apple-system, sans-serif"
 const MONO = "'IBM Plex Mono', ui-monospace, monospace"
 const widgetStyle = {
-  background: 'linear-gradient(160deg, #FBFAF6 0%, #F1EDE4 100%)',
-  border: '1px solid rgba(41,45,41,0.12)', borderRadius: 18,
-  boxShadow: '0 1px 2px rgba(41,45,41,0.04), 0 12px 28px -16px rgba(41,45,41,0.4)',
+  position: 'relative', overflow: 'hidden',
+  background: 'linear-gradient(158deg, rgba(255,255,255,0.74) 0%, rgba(243,240,232,0.42) 100%)',
+  backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
+  border: '1px solid rgba(255,255,255,0.72)', borderRadius: 22,
+  boxShadow: '0 12px 34px -14px rgba(41,45,41,0.30), 0 2px 8px -4px rgba(41,45,41,0.12)',
   padding: '16px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center',
   textAlign: 'center', cursor: 'pointer', minHeight: 148, justifyContent: 'space-between',
 }
@@ -153,8 +158,8 @@ function MarkdownLite({ texto }) {
 
 function FotoComida({ comida, size = 56, radius = 14 }) {
   const assetName = ASSET_COMIDA[comida.foto_key] || comida.foto_key
-  const [intento, setIntento] = useState(0) // 0: .png, 1: .jpg, 2: foto_url backend, 3: emoji
-  const fuentes = [`/assets/comidas/${assetName}.png`, `/assets/comidas/${assetName}.jpg`, comida.foto_url].filter(Boolean)
+  const [intento, setIntento] = useState(0) // 0: .jpg (archivos reales), 1: .png, 2: foto_url backend, 3: emoji
+  const fuentes = [`/assets/comidas/${assetName}.jpg`, `/assets/comidas/${assetName}.png`, comida.foto_url].filter(Boolean)
   const src = fuentes[intento]
   const emoji = EMOJI_COMIDA[comida.foto_key] || '🍽️'
   return (
@@ -177,10 +182,10 @@ function Sheet({ titulo, onClose, children }) {
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100,
     }}>
       <div onClick={e => e.stopPropagation()} style={{
-        width: '100%', maxWidth: 640, maxHeight: '82vh', overflowY: 'auto',
-        background: '#FBFAF6', borderTop: '1px solid rgba(41,45,41,0.10)',
-        borderRadius: '22px 22px 0 0', padding: '10px 20px 28px',
-        boxShadow: '0 -20px 60px rgba(0,0,0,0.5)',
+        width: '100%', maxWidth: 640, maxHeight: '82vh', overflowY: 'auto', color: C.ink, fontFamily: FONT,
+        background: 'linear-gradient(180deg, #FBFAF6 0%, #F3F0E8 100%)', borderTop: '1px solid rgba(255,255,255,0.8)',
+        borderRadius: '24px 24px 0 0', padding: '10px 20px 28px',
+        boxShadow: '0 -20px 60px rgba(41,45,41,0.28)',
       }}>
         <div style={{ width: 36, height: 4, borderRadius: 4, background: 'rgba(41,45,41,0.18)', margin: '4px auto 16px' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -197,6 +202,229 @@ function Sheet({ titulo, onClose, children }) {
 
 function WidgetTitulo({ children }) {
   return <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.1, textTransform: 'uppercase', color: C.ink3 }}>{children}</div>
+}
+
+// ── GlassCard: superficie translúcida con profundidad y reflejo de luz ──
+function GlassCard({ accent, delay = 0, onClick, style = {}, children }) {
+  return (
+    <div className="fuel-w" onClick={onClick} style={{
+      position: 'relative', overflow: 'hidden', borderRadius: 22, cursor: onClick ? 'pointer' : 'default',
+      background: 'linear-gradient(158deg, rgba(255,255,255,0.74) 0%, rgba(243,240,232,0.42) 100%)',
+      backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)',
+      border: '1px solid rgba(255,255,255,0.72)',
+      boxShadow: '0 12px 34px -14px rgba(41,45,41,0.30), 0 2px 8px -4px rgba(41,45,41,0.12)',
+      animation: 'fuelRise .55s both', animationDelay: `${delay}ms`, ...style,
+    }}>
+      <span style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.95), transparent)', pointerEvents: 'none' }} />
+      {accent && <span style={{ position: 'absolute', top: 14, right: 16, width: 26, height: 3, borderRadius: 3, background: accent, opacity: 0.9, pointerEvents: 'none' }} />}
+      {children}
+    </div>
+  )
+}
+
+// ── MacroRing: anillo SVG segmentado (CHO/PROT/GRASA por kcal), caps redondeados ──
+function MacroRing({ macros, size = 120 }) {
+  const items = [
+    { g: macros.cho_g, kcal: (macros.cho_g || 0) * 4, c: C.cho },
+    { g: macros.prot_g, kcal: (macros.prot_g || 0) * 4, c: C.prot },
+    { g: macros.grasa_g, kcal: (macros.grasa_g || 0) * 9, c: C.grasa },
+  ]
+  const total = items.reduce((a, s) => a + s.kcal, 0) || 1
+  const R = (size - 18) / 2, CX = size / 2, CY = size / 2, Circ = 2 * Math.PI * R, GAP = 0.03, SW = 11
+  let off = 0
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flex: '0 0 auto' }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={CX} cy={CY} r={R} fill="none" stroke="rgba(41,45,41,0.07)" strokeWidth={SW} />
+        {items.map((s, i) => {
+          const f = s.kcal / total, draw = Math.max(0.001, f - GAP)
+          const el = (
+            <circle key={i} cx={CX} cy={CY} r={R} fill="none" stroke={s.c} strokeWidth={SW} strokeLinecap="round"
+              strokeDasharray={`${draw * Circ} ${Circ}`} strokeDashoffset={-(off * Circ)}
+              transform={`rotate(-90 ${CX} ${CY})`} style={{ transition: 'stroke-dasharray .8s cubic-bezier(.4,0,.2,1)' }} />
+          )
+          off += f
+          return el
+        })}
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <Flame size={16} color={C.coral} strokeWidth={2.2} />
+        <span style={{ fontFamily: MONO, fontSize: 8.5, color: C.ink3, letterSpacing: 0.6, marginTop: 3 }}>MACROS</span>
+      </div>
+    </div>
+  )
+}
+
+// ── HydrationRing: objetivo del día (azul natación) ──
+function HydrationRing({ ml, size = 104 }) {
+  const L = ml ? (ml / 1000).toFixed(1) : '—'
+  const R = (size - 16) / 2, CX = size / 2, CY = size / 2, Circ = 2 * Math.PI * R, SW = 9
+  return (
+    <div style={{ position: 'relative', width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <defs>
+          <linearGradient id="hydg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={C.info} /><stop offset="100%" stopColor="#8FB9DE" />
+          </linearGradient>
+        </defs>
+        <circle cx={CX} cy={CY} r={R} fill="none" stroke="rgba(41,45,41,0.07)" strokeWidth={SW} />
+        <circle cx={CX} cy={CY} r={R} fill="none" stroke="url(#hydg)" strokeWidth={SW} strokeLinecap="round"
+          strokeDasharray={`${Circ} ${Circ}`} transform={`rotate(-90 ${CX} ${CY})`} />
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <Droplet size={13} color={C.info} strokeWidth={2.2} style={{ marginBottom: 1 }} />
+        <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: C.info, letterSpacing: -1, lineHeight: 1 }}>{L}</span>
+        <span style={{ fontFamily: MONO, fontSize: 8.5, color: C.ink3, letterSpacing: 0.5 }}>LITROS</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Lista elegante de suplementos (cantidad + estado) ──
+function SuplLista({ suplementos }) {
+  if (!suplementos?.length) return <div style={{ fontSize: 11.5, color: C.ink3 }}>Sin sugerencias para hoy.</div>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+      {suplementos.slice(0, 3).map((s, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 12,
+          background: 'rgba(120,134,107,0.10)', border: '1px solid rgba(120,134,107,0.20)' }}>
+          <span style={{ width: 7, height: 7, borderRadius: 999, background: C.accent, flex: '0 0 auto' }} />
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: C.ink, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.item}</span>
+          {s.dosis && <span style={{ fontFamily: MONO, fontSize: 10, color: C.ink3, flex: '0 0 auto' }}>{s.dosis}</span>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Foto de comida a lo ancho (cover), mismos fallbacks que FotoComida ──
+function FotoBanner({ comida, height = 150, radius = 0 }) {
+  const assetName = ASSET_COMIDA[comida.foto_key] || comida.foto_key
+  const [intento, setIntento] = useState(0)
+  const fuentes = [`/assets/comidas/${assetName}.jpg`, `/assets/comidas/${assetName}.png`, comida.foto_url].filter(Boolean)
+  const src = fuentes[intento]
+  const emoji = EMOJI_COMIDA[comida.foto_key] || '🍽️'
+  return (
+    <div style={{ width: '100%', height, borderRadius: radius, overflow: 'hidden',
+      background: 'linear-gradient(155deg, rgba(120,134,107,0.28), rgba(79,140,201,0.16))',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: height * 0.4 }}>
+      {src
+        ? <img src={src} alt={comida.nombre} onError={() => setIntento(i => i + 1)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        : emoji}
+    </div>
+  )
+}
+
+// ── Hero de próxima comida: foto protagonista + overlay legible ──
+function ComidaHero({ comida, onClick }) {
+  if (!comida) return null
+  return (
+    <GlassCard accent={C.coral} delay={120} onClick={onClick} style={{ padding: 0, marginBottom: 12 }}>
+      <div style={{ position: 'relative', height: 164 }}>
+        <FotoBanner comida={comida} height={164} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, rgba(20,24,20,0.78) 0%, rgba(20,24,20,0.25) 42%, transparent 70%)' }} />
+        <span style={{ position: 'absolute', top: 12, left: 14, fontFamily: FONT, fontSize: 9.5, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', color: '#fff', background: 'rgba(230,91,69,0.85)', padding: '4px 10px', borderRadius: 999 }}>Próxima comida</span>
+        <div style={{ position: 'absolute', left: 16, right: 16, bottom: 12 }}>
+          <div style={{ fontFamily: FONT, fontSize: 19, fontWeight: 800, color: '#fff', letterSpacing: -0.3, textTransform: 'capitalize', textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}>{comida.nombre.replace('-', ' ')}</div>
+          <div style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(255,255,255,0.9)', marginTop: 2 }}>{comida.hora} · {comida.kcal} kcal</div>
+        </div>
+      </div>
+      <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {[['CHO', comida.cho_g, C.cho], ['PROT', comida.prot_g, C.prot], ['GRASA', comida.grasa_g, C.grasa]].map(([l, v, col]) => (
+          <span key={l} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 9px', borderRadius: 999, background: `${col}18` }}>
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: col }} />
+            <span style={{ fontFamily: FONT, fontSize: 9.5, fontWeight: 700, color: C.ink3 }}>{l}</span>
+            <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, color: C.ink }}>{v}g</span>
+          </span>
+        ))}
+        {comida.alimentos?.length > 0 && (
+          <span style={{ flexBasis: '100%', fontSize: 11, color: C.ink3, marginTop: 2 }}>{comida.alimentos.map(a => a.medida || a.alimento).join(' · ')}</span>
+        )}
+      </div>
+    </GlassCard>
+  )
+}
+
+// ── Tira de comidas del día (fotográficas, compactas) ──
+function ComidasTira({ comidas, horaActual, onOpen }) {
+  if (!comidas?.length) return null
+  return (
+    <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4, marginBottom: 12, scrollbarWidth: 'none' }}>
+      {comidas.map((c, i) => {
+        const [h, m] = (c.hora || '00:00').split(':').map(Number)
+        const pasada = (h * 60 + m) < horaActual
+        return (
+          <div key={i} className="fuel-w" onClick={onOpen} style={{ flex: '0 0 auto', width: 120, cursor: 'pointer', opacity: pasada ? 0.6 : 1 }}>
+            <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.6)', boxShadow: '0 8px 20px -12px rgba(41,45,41,0.4)' }}>
+              <FotoBanner comida={c} height={82} />
+            </div>
+            <div style={{ padding: '6px 2px 0' }}>
+              <div style={{ fontFamily: FONT, fontSize: 11.5, fontWeight: 700, color: C.ink, textTransform: 'capitalize', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.nombre.replace('-', ' ')} {pasada && '✓'}</div>
+              <div style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink3 }}>{c.hora} · {c.kcal} kcal</div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Inteligencia nutricional NOAH: qué ajusta y por qué (datos de nivel2) ──
+function InteligenciaNOAH({ nivel2, onPorque }) {
+  const { ajustes_bio, ea, protocolo_cho, protocolo_prot, recuperacion_ayer, carrera_proxima } = nivel2 || {}
+  const tiles = []
+  if (ea?.disponible) tiles.push({ Icon: Gauge, label: 'Energy Availability', val: `${ea.valor}`, unit: 'kcal/kg', tag: ea.status?.toUpperCase(), col: C.info })
+  if (protocolo_cho?.seleccionado_gkg != null) tiles.push({ Icon: Flame, label: 'Protocolo CHO', val: `${protocolo_cho.seleccionado_gkg}`, unit: 'g/kg', tag: protocolo_cho.clasificacion, col: C.cho })
+  if (protocolo_prot?.seleccionado_gkg != null) tiles.push({ Icon: Activity, label: 'Proteína', val: `${protocolo_prot.seleccionado_gkg}`, unit: 'g/kg', col: C.prot })
+  if (recuperacion_ayer) tiles.push({ Icon: HeartPulse, label: 'Recuperación', val: `+${recuperacion_ayer.ajuste_cho_pct}`, unit: '% CHO', col: C.salvia })
+  const hayAlgo = tiles.length || ajustes_bio?.length || carrera_proxima
+  return (
+    <GlassCard delay={260} style={{ padding: '16px', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
+        <Brain size={15} color={C.salvia} strokeWidth={2.2} />
+        <span style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: C.salvia }}>Inteligencia NOAH</span>
+      </div>
+      {!hayAlgo && <div style={{ fontSize: 12, color: C.ink3, marginBottom: 12 }}>NOAH ajusta tu plan cuando haya más datos fisiológicos disponibles.</div>}
+      {tiles.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: ajustes_bio?.length || carrera_proxima ? 12 : 0 }}>
+          {tiles.map((t, i) => (
+            <div key={i} style={{ position: 'relative', padding: '11px 12px', borderRadius: 14, background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.65)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <t.Icon size={13} color={t.col} strokeWidth={2.2} />
+                <span style={{ fontFamily: FONT, fontSize: 10, fontWeight: 600, color: C.ink3 }}>{t.label}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color: C.ink, letterSpacing: -0.5 }}>{t.val}</span>
+                <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink4 }}>{t.unit}</span>
+              </div>
+              {t.tag && <span style={{ display: 'inline-block', marginTop: 6, fontFamily: FONT, fontSize: 9, fontWeight: 700, color: t.col, background: `${t.col}1c`, padding: '2px 7px', borderRadius: 999 }}>{t.tag}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {ajustes_bio?.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: carrera_proxima ? 12 : 0 }}>
+          {ajustes_bio.map((a, i) => (
+            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10.5, fontWeight: 600, padding: '5px 10px', borderRadius: 999, background: 'rgba(120,134,107,0.12)', color: C.ink2 }}>
+              <Zap size={11} color={C.salvia} />{a.factor}{a.accion ? ` → ${a.accion}` : (a.interpretacion ? `: ${a.interpretacion}` : '')}
+            </span>
+          ))}
+        </div>
+      )}
+      {carrera_proxima && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 12px', borderRadius: 12, background: 'rgba(79,140,201,0.10)', border: '1px solid rgba(79,140,201,0.22)', marginBottom: 12 }}>
+          <Trophy size={15} color={C.info} strokeWidth={2.1} />
+          <span style={{ fontSize: 11, color: C.ink2 }}><b>{carrera_proxima.nombre}</b> en {carrera_proxima.dias_restantes} día(s){carrera_proxima.prioridad ? ` · prioridad ${carrera_proxima.prioridad}` : ''}</span>
+        </div>
+      )}
+      <button onClick={(e) => { e.stopPropagation(); onPorque() }} className="noah-press" style={{
+        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer',
+        padding: '11px 12px', borderRadius: 12, background: 'rgba(41,45,41,0.04)', border: '1px solid rgba(41,45,41,0.10)', color: C.ink }}>
+        <span style={{ display: 'flex', gap: 9, alignItems: 'center' }}><Info size={15} color={C.salvia} /><span style={{ fontFamily: FONT, fontSize: 12.5, fontWeight: 700 }}>Por qué este plan</span></span>
+        <ChevronRight size={16} color={C.ink4} />
+      </button>
+    </GlassCard>
+  )
 }
 
 // ══════════════════════════ COMPONENTE PRINCIPAL ═══════════════════════════
@@ -235,83 +463,120 @@ export default function NoahFuel({ atletaId }) {
   const colorEstado = alertaAlta ? C.danger : (nivel1.alertas || []).length ? C.warning : C.success
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', color: C.ink, fontFamily: FONT }}>
+    <div style={{ position: 'relative', maxWidth: 640, margin: '0 auto', color: C.ink, fontFamily: FONT }}>
+      <style>{`
+        @keyframes fuelRise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+        .fuel-w{transition:transform .22s cubic-bezier(.22,.61,.36,1),box-shadow .22s ease}
+        .fuel-w:hover{transform:translateY(-3px);box-shadow:0 18px 42px -16px rgba(41,45,41,0.34)}
+        @media(prefers-reduced-motion:reduce){.fuel-w{transition:none;animation:none!important}}
+      `}</style>
 
-      {/* Header: "de un vistazo" */}
-      <div style={{ padding: '4px 4px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.3 }}>Tu día</span>
-          <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: `${colorEstado}22`, color: colorEstado, letterSpacing: 0.4 }}>
-            {alertaAlta ? 'REVISAR' : (nivel1.alertas || []).length ? 'ATENCIÓN' : 'READY'}
-          </span>
-          {nivel1.doble_turno && <Chip color={C.accent}>DOBLE TURNO</Chip>}
-          {nivel1.dia_descanso && <Chip color={C.ink3}>DESCANSO</Chip>}
-        </div>
-        <div style={{ fontSize: 12.5, color: C.ink2, lineHeight: 1.5 }}>{nivel1.narrativa}</div>
-        {!onboarding.onboarding_completo && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 8, fontSize: 10.5, color: C.warning }}>
-            <AlertTriangle size={12} style={{ marginTop: 1, flexShrink: 0 }} />
-            <span>Faltan datos: {onboarding.requeridos_faltantes.join(', ')}</span>
-          </div>
-        )}
+      {/* Fondo decorativo: da color para que el glass refracte */}
+      <div style={{ position: 'absolute', inset: '-30px -14px 0', overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
+        <div style={{ position: 'absolute', top: -20, right: -50, width: 240, height: 240, borderRadius: '50%', background: `radial-gradient(circle, ${C.coral}38, transparent 68%)` }} />
+        <div style={{ position: 'absolute', top: 300, left: -70, width: 250, height: 250, borderRadius: '50%', background: `radial-gradient(circle, ${C.salvia}36, transparent 68%)` }} />
+        <div style={{ position: 'absolute', top: 640, right: -60, width: 240, height: 240, borderRadius: '50%', background: `radial-gradient(circle, ${C.azul}30, transparent 68%)` }} />
+        <div style={{ position: 'absolute', top: 980, left: -60, width: 230, height: 230, borderRadius: '50%', background: `radial-gradient(circle, ${C.coral}2a, transparent 68%)` }} />
       </div>
 
-      {/* Grid de ventanas tipo Garmin */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ position: 'relative', zIndex: 1 }}>
 
-        <div style={widgetStyle} onClick={() => setSheet('energia')}>
-          <WidgetTitulo>Energía</WidgetTitulo>
-          <div>
-            <div style={{ fontFamily: MONO, fontSize: 30, fontWeight: 700, letterSpacing: -0.5 }}>{nivel1.kcal_dia}</div>
-            <div style={{ fontSize: 9, color: C.ink3, marginTop: -2 }}>kcal hoy</div>
+        {/* Header */}
+        <div style={{ padding: '2px 4px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 28, fontWeight: 800, letterSpacing: -0.8, color: C.ink }}>Tu día</span>
+            <span style={{ fontSize: 9.5, fontWeight: 800, padding: '4px 10px', borderRadius: 20, background: `${colorEstado}22`, color: colorEstado, letterSpacing: 0.6 }}>
+              {alertaAlta ? 'REVISAR' : (nivel1.alertas || []).length ? 'ATENCIÓN' : 'READY'}
+            </span>
+            {nivel1.doble_turno && <Chip color={C.cho}>DOBLE TURNO</Chip>}
+            {nivel1.dia_descanso && <Chip color={C.ink3}>DESCANSO</Chip>}
           </div>
-          <MiniAnillos macros={nivel1.macros} />
+          <div style={{ fontSize: 13, color: C.ink2, lineHeight: 1.5 }}>{nivel1.narrativa}</div>
+          {!onboarding.onboarding_completo && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, fontSize: 10.5, color: C.warning }}>
+              <AlertTriangle size={12} style={{ marginTop: 1, flexShrink: 0 }} />
+              <span>Faltan datos: {onboarding.requeridos_faltantes.join(', ')}</span>
+            </div>
+          )}
         </div>
 
-        <div style={widgetStyle} onClick={() => setSheet('comidas')}>
-          <WidgetTitulo>Próxima comida</WidgetTitulo>
-          {proxima ? (
-            <>
-              <FotoComida comida={proxima} size={62} radius={16} />
-              <div>
-                <div style={{ fontSize: 12.5, fontWeight: 700 }}>{proxima.nombre.replace('-', ' ')}</div>
-                <div style={{ fontSize: 10, color: C.ink3 }}>{proxima.hora} · {proxima.kcal} kcal</div>
+        {/* 2 · ENERGÍA + MACROS + GASTO */}
+        <GlassCard accent={C.coral} delay={0} onClick={() => setSheet('energia')} style={{ padding: '18px', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+            <MacroRing macros={nivel1.macros} size={120} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.1, textTransform: 'uppercase', color: C.ink3 }}>Energía</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginTop: 3 }}>
+                <span style={{ fontFamily: MONO, fontSize: 38, fontWeight: 700, letterSpacing: -1.5, color: C.coral, lineHeight: 1 }}>{nivel1.kcal_dia}</span>
+                <span style={{ fontFamily: MONO, fontSize: 11, color: C.ink3 }}>kcal</span>
               </div>
-            </>
-          ) : <div style={{ fontSize: 11, color: C.ink3 }}>Sin comidas hoy</div>}
-        </div>
-
-        <div style={widgetStyle} onClick={() => setSheet('suplementos')}>
-          <WidgetTitulo>Suplementos</WidgetTitulo>
-          <Pill size={30} color={C.accent} strokeWidth={1.6} />
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 800 }}>{nivel1.suplementos?.length || 0}</div>
-            <div style={{ fontSize: 9, color: C.ink3 }}>{nivel1.suplementos?.[0]?.item || 'sin sugerencias'}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 12 }}>
+                {[['Carbos', nivel1.macros.cho_g, nivel1.macros.cho_gkg, C.cho], ['Proteína', nivel1.macros.prot_g, nivel1.macros.prot_gkg, C.prot], ['Grasa', nivel1.macros.grasa_g, nivel1.macros.grasa_gkg, C.grasa]].map(([l, g, gkg, col]) => (
+                  <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 3, background: col, flex: '0 0 auto' }} />
+                    <span style={{ fontSize: 11, color: C.ink2, flex: 1 }}>{l}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 600, color: C.ink }}>{g}g</span>
+                    {gkg != null && <span style={{ fontFamily: MONO, fontSize: 9.5, color: C.ink4, minWidth: 46, textAlign: 'right' }}>{gkg} g/kg</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+          {nivel2?.gasto_desglose && (() => {
+            const g = nivel2.gasto_desglose
+            const gasto = g.total_gasto_estimado ?? ((g.tmb || 0) + (g.neat || 0) + (g.entreno || 0) + (g.tef || 0))
+            const obj = g.objetivo_kcal ?? nivel1.kcal_dia
+            const bal = Math.round((obj || 0) - (gasto || 0))
+            return (
+              <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(41,45,41,0.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 9 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: C.ink3 }}>Gasto energético</span>
+                  <span style={{ fontFamily: MONO, fontSize: 11, color: C.ink3 }}>balance <b style={{ color: bal < 0 ? C.warning : bal > 0 ? C.info : C.success }}>{bal > 0 ? '+' : ''}{bal}</b></span>
+                </div>
+                <BarraGasto g={g} />
+              </div>
+            )
+          })()}
+        </GlassCard>
 
-        <div style={widgetStyle} onClick={() => setSheet('hidratacion')}>
-          <WidgetTitulo>Hidratación</WidgetTitulo>
-          <Droplet size={30} color={C.info} strokeWidth={1.6} />
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 800 }}>{nivel1.hidratacion_ml ? (nivel1.hidratacion_ml / 1000).toFixed(1) : '—'} L</div>
-            <div style={{ fontSize: 9, color: C.ink3 }}>objetivo del día</div>
+        {/* 3 · PLAN DE COMIDAS (fotográfico) */}
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: '0 4px', margin: '4px 0 10px' }}>
+          <span style={{ fontFamily: FONT, fontSize: 14, fontWeight: 800, letterSpacing: -0.2, color: C.ink }}>Plan de comidas</span>
+          <button onClick={() => setSheet('comidas')} className="noah-press" style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT, fontSize: 11, fontWeight: 700, color: C.salvia, display: 'flex', alignItems: 'center', gap: 2 }}>Ver todo <ChevronRight size={13} /></button>
+        </div>
+        <ComidaHero comida={proxima} onClick={() => setSheet('comidas')} />
+        <ComidasTira comidas={nivel1.comidas} horaActual={horaActual} onOpen={() => setSheet('comidas')} />
+
+        {/* 4 · SUPLEMENTACIÓN */}
+        <GlassCard accent={C.salvia} delay={200} onClick={() => setSheet('suplementos')} style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
+          <div style={{ textAlign: 'center', flex: '0 0 auto', paddingLeft: 4 }}>
+            <div style={{ fontFamily: MONO, fontSize: 32, fontWeight: 700, color: C.salvia, lineHeight: 1 }}>{nivel1.suplementos?.length || 0}</div>
+            <div style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: C.ink3, marginTop: 4 }}>Suplementos</div>
           </div>
-        </div>
+          <div style={{ flex: 1, minWidth: 0 }}><SuplLista suplementos={nivel1.suplementos} /></div>
+        </GlassCard>
 
-      </div>
+        {/* 5 · HIDRATACIÓN */}
+        <GlassCard accent={C.azul} delay={240} onClick={() => setSheet('hidratacion')} style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
+          <HydrationRing ml={nivel1.hidratacion_ml} size={96} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: C.ink3, marginBottom: 9 }}>Hidratación · objetivo</div>
+            {nivel2?.hidratacion_detalle ? (<>
+              {[['Base', nivel2.hidratacion_detalle.base_ml], ['Entrenamiento', nivel2.hidratacion_detalle.entreno_ml]].map(([l, ml]) => (
+                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 0' }}>
+                  <span style={{ fontSize: 11.5, color: C.ink2 }}>{l}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 600, color: C.ink }}>{ml != null ? (ml / 1000).toFixed(1) : '—'} L</span>
+                </div>
+              ))}
+              {nivel2.hidratacion_detalle.sodio_nota && <div style={{ fontSize: 10, color: C.ink4, marginTop: 6, lineHeight: 1.35 }}>{nivel2.hidratacion_detalle.sodio_nota}</div>}
+            </>) : <div style={{ fontSize: 11.5, color: C.ink3 }}>Objetivo total del día.</div>}
+          </div>
+        </GlassCard>
 
-      {/* Por qué este plan — ancho completo, abajo del grid */}
-      <div style={{ ...widgetStyle, flexDirection: 'row', justifyContent: 'space-between', textAlign: 'left', marginTop: 12, minHeight: 'auto', padding: '14px 16px' }}
-        onClick={() => setSheet('porque')}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <Info size={16} color={C.ink3} />
-          <span style={{ fontSize: 12, fontWeight: 700 }}>Por qué este plan</span>
-        </div>
-        <ChevronRight size={16} color={C.ink4} />
-      </div>
+        {/* 6 · INTELIGENCIA NOAH */}
+        <InteligenciaNOAH nivel2={nivel2} onPorque={() => setSheet('porque')} />
 
-      <div style={{ marginTop: 14 }}>
+        {/* 7 · CHAT NOAH */}
         <ChatNoah atletaId={atletaId} quickActions={data.quick_actions} />
       </div>
 
@@ -346,25 +611,6 @@ export default function NoahFuel({ atletaId }) {
 
 function Chip({ children, color }) {
   return <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: `${color}22`, color }}>{children}</span>
-}
-
-// ══════════════════════════ MINI ANILLOS (widget Energía) ═══════════════════
-
-function MiniAnillos({ macros }) {
-  if (!macros) return null
-  return (
-    <div style={{ display: 'flex', gap: 14 }}>
-      {[['Carbos', macros.cho_g, C.cho], ['Proteína', macros.prot_g, C.prot], ['Grasa', macros.grasa_g, C.grasa]].map(([l, v, col]) => (
-        <div key={l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-          <div style={{ width: 34, height: 34, borderRadius: '50%', border: `2.5px solid ${col}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: 11, fontWeight: 700, color: col }}>
-            {v}
-          </div>
-          <div style={{ fontSize: 8, color: C.ink3, fontWeight: 600 }}>{l}</div>
-        </div>
-      ))}
-    </div>
-  )
 }
 
 // ══════════════════════════ DETALLE: ENERGÍA ════════════════════════════════
