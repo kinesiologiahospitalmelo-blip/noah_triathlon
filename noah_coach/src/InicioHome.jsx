@@ -12,8 +12,7 @@ import {
 import { NOAH, DEPORTE, SERIES, FONT } from './noahTheme'
 
 // Semáforo (tonos del estilo nuevo)
-const SEMA = { ok: '#35C07A', warn: '#E6B655', bad: '#E2726E' }
-const AZUL = '#1C8FC4' // azul clásico v1.0.1 (#38BDF8), tono legible sobre marfil
+const SEMA = { ok: '#35C07A', warn: '#E8A24B', bad: '#E2726E' } // verde hoy · naranja ayer · rojo hace días
 const NIVEL_COLOR = { 'Óptimo': SEMA.ok, 'Bueno': NOAH.azul, 'Moderado': SEMA.warn, 'Bajo': NOAH.coral, 'Crítico': SEMA.bad }
 
 // Identidad por disciplina + tintes de zona (endurance / umbral / vo2)
@@ -301,15 +300,19 @@ export default function InicioHome({
               const c = led(b.esHoy, b.dias)
               return (
                 <button key={i} onClick={b.f} disabled={b.l} className="noah-press" style={{
-                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                  padding: '9px 10px', borderRadius: 999, cursor: b.l ? 'default' : 'pointer',
-                  background: 'rgba(56,189,248,0.10)', border: '1px solid rgba(56,189,248,0.40)',
-                  fontFamily: FONT.base, fontSize: 11.5, fontWeight: 700, color: AZUL,
+                  position: 'relative', overflow: 'hidden', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  padding: '11px 12px', borderRadius: 14, cursor: b.l ? 'default' : 'pointer',
+                  background: 'linear-gradient(162deg, rgba(38,58,102,0.96) 0%, rgba(20,32,60,0.94) 100%)',
+                  backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+                  border: '1px solid rgba(255,255,255,0.16)',
+                  boxShadow: '0 1px 0 rgba(255,255,255,0.20) inset, 0 10px 24px -10px rgba(16,26,52,0.75)',
+                  fontFamily: FONT.base, fontSize: 12, fontWeight: 700, color: '#EAF0F8', letterSpacing: 0.2,
                 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 999, background: c, boxShadow: `0 0 6px ${c}99`, flex: '0 0 auto' }} />
+                  <span style={{ position: 'absolute', top: 0, left: 10, right: 10, height: 1, background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)', pointerEvents: 'none' }} />
+                  <span style={{ width: 9, height: 9, borderRadius: 999, background: c, boxShadow: `0 0 8px ${c}, 0 0 2px ${c}`, flex: '0 0 auto' }} />
                   <span>{b.lbl}</span>
                   <span style={{ fontFamily: FONT.mono, fontSize: 10.5, color: c, fontWeight: 700 }}>{b.l ? '…' : ledTxt(b.esHoy, b.dias)}</span>
-                  <RefreshCw size={12} color={AZUL} style={b.l ? { animation: 'noahspin 1s linear infinite' } : undefined} />
+                  <RefreshCw size={13} color="rgba(234,240,248,0.6)" style={b.l ? { animation: 'noahspin 1s linear infinite' } : undefined} />
                 </button>
               )
             })}
