@@ -13,6 +13,7 @@ import { NOAH, DEPORTE, SERIES, FONT } from './noahTheme'
 
 // Semáforo (tonos del estilo nuevo)
 const SEMA = { ok: '#35C07A', warn: '#E6B655', bad: '#E2726E' }
+const AZUL = '#1C8FC4' // azul clásico v1.0.1 (#38BDF8), tono legible sobre marfil
 const NIVEL_COLOR = { 'Óptimo': SEMA.ok, 'Bueno': NOAH.azul, 'Moderado': SEMA.warn, 'Bajo': NOAH.coral, 'Crítico': SEMA.bad }
 
 // Identidad por disciplina + tintes de zona (endurance / umbral / vo2)
@@ -56,43 +57,63 @@ const fmtHoras = h => {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`
 }
 
-// ── Anillo de disciplina: horas en el centro, distribución de zonas en el aro ──
-function SportRing({ d, s, anim }) {
-  const R = 33, STROKE = 7, CX = 44, CY = 44, C = 2 * Math.PI * R
-  const horas = s?.horas
-  const pct = s?.pct
-  const z = s?.zonas
-  const segs = z ? [
-    { f: Math.max(0, (z.endurance || 0)) / 100, c: d.tints[1] },
-    { f: Math.max(0, (z.threshold || 0)) / 100, c: d.tints[0] },
-    { f: Math.max(0, (z.vo2 || 0)) / 100, c: d.tints[2] },
+// Helpers de color: separar claramente las 3 zonas dentro de un mismo color
+const _rgb = h => { const s = h.replace('#', ''); return [0, 2, 4].map(i => parseInt(s.slice(i, i + 2), 16)) }
+const _mix = (hex, tgt, a) => { const [r1, g1, b1] = _rgb(hex), [r2, g2, b2] = _rgb(tgt); const m = (x, y) => Math.round(x + (y - x) * a); return `#${[m(r1, r2), m(g1, g2), m(b1, b2)].map(v => v.toString(16).padStart(2, '0')).join('')}` }
+const lighten = (h, a) => _mix(h, '#ffffff', a)
+const darken  = (h, a) => _mix(h, '#000000', a)
+
+// ── Anillo de disciplina: horas + pct al centro; Endurance/FTP/VO₂ en aro y filas ──
+function SportRing({ d, s, anim, delay = 0 }) {
+  const R = 30, STROKE = 8.5, CX = 40, CY = 40, C = 2 * Math.PI * R
+  const horas = s?.horas, pct = s?.pct, z = s?.zonas
+  const cEnd = lighten(d.color, 0.50), cFtp = d.color, cVo2 = darken(d.color, 0.30)
+  const zonas = z ? [
+    { k: 'Endurance', v: z.endurance, c: cEnd, glow: false },
+    { k: 'FTP',       v: z.threshold, c: cFtp, glow: false },
+    { k: 'VO₂',       v: z.vo2,       c: cVo2, glow: true  },
   ] : null
+  const GAP = 0.014 // separación visible entre segmentos
   let off = 0
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9, flex: 1, minWidth: 0, ...(anim ? { animation: 'noahRise .6s both', animationDelay: `${delay}ms` } : {}) }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         <d.Icon size={14} color={d.color} strokeWidth={2.4} />
         <span style={{ fontFamily: FONT.base, fontSize: 11, fontWeight: 700, letterSpacing: 0.8, color: d.color }}>{d.label}</span>
       </div>
-      <div style={{ position: 'relative', width: 88, height: 88 }}>
-        <svg viewBox="0 0 88 88" style={{ width: 88, height: 88, transform: anim ? 'scale(1)' : undefined }}>
-          <circle cx={CX} cy={CY} r={R} fill="none" stroke="rgba(41,45,41,0.08)" strokeWidth={STROKE} />
-          {segs ? segs.map((g, i) => {
+      <div style={{ position: 'relative', width: 80, height: 80 }}>
+        <svg viewBox="0 0 80 80" style={{ width: 80, height: 80 }}>
+          <circle cx={CX} cy={CY} r={R} fill="none" stroke="rgba(41,45,41,0.09)" strokeWidth={STROKE} />
+          {zonas ? zonas.map((g, i) => {
+            const f = Math.max(0, (g.v || 0)) / 100
+            const draw = Math.max(0, f - GAP)
             const el = (
               <circle key={i} cx={CX} cy={CY} r={R} fill="none" stroke={g.c} strokeWidth={STROKE} strokeLinecap="butt"
-                strokeDasharray={`${g.f * C} ${C}`} strokeDashoffset={-(off * C)}
+                strokeDasharray={`${draw * C} ${C}`} strokeDashoffset={-(off * C)}
                 transform={`rotate(-90 ${CX} ${CY})`}
-                style={anim ? { transition: 'stroke-dasharray .7s cubic-bezier(.4,0,.2,1)' } : undefined} />
+                style={{ ...(g.glow ? { filter: `drop-shadow(0 0 3px ${g.c}bb)` } : {}), ...(anim ? { transition: 'stroke-dasharray .7s cubic-bezier(.4,0,.2,1)' } : {}) }} />
             )
-            off += g.f
+            off += f
             return el
           }) : <circle cx={CX} cy={CY} r={R} fill="none" stroke={`${d.color}3a`} strokeWidth={STROKE} />}
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontFamily: FONT.mono, fontSize: 18, fontWeight: 600, color: NOAH.ink, letterSpacing: -0.5, lineHeight: 1 }}>{fmtHoras(horas)}</span>
-          {pct != null && <span style={{ fontFamily: FONT.mono, fontSize: 10.5, color: NOAH.ink45, marginTop: 2 }}>{pct}%</span>}
+          <span style={{ fontFamily: FONT.mono, fontSize: 16, fontWeight: 600, color: NOAH.ink, letterSpacing: -0.5, lineHeight: 1 }}>{fmtHoras(horas)}</span>
+          {pct != null && <span style={{ fontFamily: FONT.mono, fontSize: 10, color: NOAH.ink45, marginTop: 1 }}>{pct}%</span>}
         </div>
       </div>
+      {/* Distribución Endurance / FTP / VO₂ con su valor (fundamental) */}
+      {zonas && (
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {zonas.map(g => (
+            <div key={g.k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: 7, height: 7, borderRadius: 2, background: g.c, flex: '0 0 auto' }} />
+              <span style={{ fontFamily: FONT.base, fontSize: 10, color: NOAH.ink70, flex: 1, whiteSpace: 'nowrap' }}>{g.k}</span>
+              <span style={{ fontFamily: FONT.mono, fontSize: 11, fontWeight: 600, color: NOAH.ink }}>{g.v != null ? `${Math.round(g.v)}%` : '—'}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -225,20 +246,9 @@ export default function InicioHome({
               {totalHoras > 0 && <span style={{ fontFamily: FONT.mono, fontSize: 12, color: NOAH.ink45 }}>{fmtHoras(totalHoras)} h</span>}
             </div>
             {conDatos ? (
-              <>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-around', gap: 6 }}>
-                  {DEP.map(d => <SportRing key={d.key} d={d} s={semana[d.key]} anim={anim} />)}
-                </div>
-                {/* leyenda de zonas, una sola, centrada */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 12 }}>
-                  {[['Endurance', 1], ['Umbral', 0], ['VO₂', 2]].map(([lbl, idx]) => (
-                    <div key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 2, background: idx === 1 ? '#A9A9A9' : idx === 0 ? '#7E7E7E' : '#555' }} />
-                      <span style={{ fontFamily: FONT.base, fontSize: 10.5, color: NOAH.ink45 }}>{lbl}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-around', gap: 8 }}>
+                {DEP.map((d, i) => <SportRing key={d.key} d={d} s={semana[d.key]} anim={anim} delay={150 + i * 90} />)}
+              </div>
             ) : (
               <div style={{ textAlign: 'center', padding: '14px 8px', fontFamily: FONT.base, fontSize: 12.5, color: NOAH.ink45 }}>
                 Sin datos de entrenamiento esta semana.
@@ -293,13 +303,13 @@ export default function InicioHome({
                 <button key={i} onClick={b.f} disabled={b.l} className="noah-press" style={{
                   flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
                   padding: '9px 10px', borderRadius: 999, cursor: b.l ? 'default' : 'pointer',
-                  background: 'rgba(255,255,255,0.5)', border: `1px solid ${NOAH.border}`,
-                  fontFamily: FONT.base, fontSize: 11.5, fontWeight: 600, color: NOAH.ink70, backdropFilter: 'blur(3px)',
+                  background: 'rgba(56,189,248,0.10)', border: '1px solid rgba(56,189,248,0.40)',
+                  fontFamily: FONT.base, fontSize: 11.5, fontWeight: 700, color: AZUL,
                 }}>
                   <span style={{ width: 8, height: 8, borderRadius: 999, background: c, boxShadow: `0 0 6px ${c}99`, flex: '0 0 auto' }} />
                   <span>{b.lbl}</span>
                   <span style={{ fontFamily: FONT.mono, fontSize: 10.5, color: c, fontWeight: 700 }}>{b.l ? '…' : ledTxt(b.esHoy, b.dias)}</span>
-                  <RefreshCw size={12} color={NOAH.ink45} style={b.l ? { animation: 'noahspin 1s linear infinite' } : undefined} />
+                  <RefreshCw size={12} color={AZUL} style={b.l ? { animation: 'noahspin 1s linear infinite' } : undefined} />
                 </button>
               )
             })}
