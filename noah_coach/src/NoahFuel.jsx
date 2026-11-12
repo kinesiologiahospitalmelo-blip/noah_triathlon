@@ -37,16 +37,18 @@ function authFetch(url, options = {}) {
 
 // ── Paleta: la misma que ya usa el resto de la app (acento violeta del CTL, anillos CHO/PROT/GRASA que ya se ven en tu captura) ──
 const C = {
-  ink: 'rgba(255,255,255,0.94)', ink2: 'rgba(255,255,255,0.70)', ink3: 'rgba(255,255,255,0.45)', ink4: 'rgba(255,255,255,0.28)',
-  bg: '#0B0B10',
-  accent: '#8B5CF6', accentDim: '#6D28D9',
-  success: '#34D399', warning: '#F59E0B', danger: '#F87171', info: '#60A5FA',
-  cho: '#F5A623', prot: '#8B5CF6', grasa: '#38BDF8',
+  ink: '#292D29', ink2: 'rgba(41,45,41,0.72)', ink3: 'rgba(41,45,41,0.48)', ink4: 'rgba(41,45,41,0.32)',
+  bg: '#F3F0E8',
+  accent: '#78866B', accentDim: '#5C6952',
+  success: '#35C07A', warning: '#E6B655', danger: '#E2726E', info: '#4F8CC9',
+  cho: '#E6B655', prot: '#78866B', grasa: '#4F8CC9',
 }
+const FONT = "'Archivo', system-ui, -apple-system, sans-serif"
+const MONO = "'IBM Plex Mono', ui-monospace, monospace"
 const widgetStyle = {
-  background: 'linear-gradient(165deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.015) 100%)',
-  border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18,
-  boxShadow: '0 10px 28px -10px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)',
+  background: 'linear-gradient(160deg, #FBFAF6 0%, #F1EDE4 100%)',
+  border: '1px solid rgba(41,45,41,0.12)', borderRadius: 18,
+  boxShadow: '0 1px 2px rgba(41,45,41,0.04), 0 12px 28px -16px rgba(41,45,41,0.4)',
   padding: '16px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center',
   textAlign: 'center', cursor: 'pointer', minHeight: 148, justifyContent: 'space-between',
 }
@@ -76,7 +78,7 @@ function _mdInline(txt) {
     if (idx > 0) out.push(rest.slice(0, idx))
     if (m[2] != null) out.push(<strong key={key++} style={{ fontWeight: 700, color: C.ink }}>{m[2]}</strong>)
     else if (m[3] != null) out.push(<em key={key++}>{m[3]}</em>)
-    else if (m[4] != null) out.push(<code key={key++} style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 4 }}>{m[4]}</code>)
+    else if (m[4] != null) out.push(<code key={key++} style={{ background: 'rgba(41,45,41,0.08)', padding: '1px 5px', borderRadius: 4 }}>{m[4]}</code>)
     rest = rest.slice(idx + m[0].length)
   }
   if (rest) out.push(rest)
@@ -121,11 +123,11 @@ function MarkdownLite({ texto }) {
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 11.5 }}>
               <thead><tr>{b.head.map((h, hi) => (
                 <th key={hi} style={{ textAlign: 'left', padding: '5px 7px', color: C.accent, fontWeight: 700,
-                  borderBottom: '1px solid rgba(255,255,255,0.18)', whiteSpace: 'nowrap' }}>{_mdInline(h)}</th>
+                  borderBottom: '1px solid rgba(41,45,41,0.18)', whiteSpace: 'nowrap' }}>{_mdInline(h)}</th>
               ))}</tr></thead>
               <tbody>{b.rows.map((r, ri) => (
                 <tr key={ri}>{r.map((c, ci) => (
-                  <td key={ci} style={{ padding: '5px 7px', borderBottom: '1px solid rgba(255,255,255,0.06)', color: C.ink2, verticalAlign: 'top' }}>{_mdInline(c)}</td>
+                  <td key={ci} style={{ padding: '5px 7px', borderBottom: '1px solid rgba(41,45,41,0.06)', color: C.ink2, verticalAlign: 'top' }}>{_mdInline(c)}</td>
                 ))}</tr>
               ))}</tbody>
             </table>
@@ -142,7 +144,7 @@ function MarkdownLite({ texto }) {
           </div>
         )
         if (b.type === 'h') return <div key={bi} style={{ fontWeight: 700, color: C.ink, fontSize: 13 }}>{_mdInline(b.text)}</div>
-        if (b.type === 'hr') return <div key={bi} style={{ height: 1, background: 'rgba(255,255,255,0.12)' }}/>
+        if (b.type === 'hr') return <div key={bi} style={{ height: 1, background: 'rgba(41,45,41,0.12)' }}/>
         return <div key={bi} style={{ lineHeight: 1.5 }}>{_mdInline(b.text)}</div>
       })}
     </div>
@@ -157,7 +159,7 @@ function FotoComida({ comida, size = 56, radius = 14 }) {
   const emoji = EMOJI_COMIDA[comida.foto_key] || '🍽️'
   return (
     <div style={{ width: size, height: size, borderRadius: radius, flexShrink: 0, overflow: 'hidden',
-      background: 'linear-gradient(160deg, rgba(139,92,246,0.20), rgba(56,189,248,0.10))',
+      background: 'linear-gradient(160deg, rgba(120,134,107,0.20), rgba(79,140,201,0.10))',
       display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.4 }}>
       {src
         ? <img src={src} alt={comida.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }}
@@ -171,19 +173,19 @@ function FotoComida({ comida, size = 56, radius = 14 }) {
 function Sheet({ titulo, onClose, children }) {
   return (
     <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)',
+      position: 'fixed', inset: 0, background: 'rgba(41,45,41,0.42)', backdropFilter: 'blur(3px)',
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100,
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         width: '100%', maxWidth: 640, maxHeight: '82vh', overflowY: 'auto',
-        background: '#14141C', borderTop: '1px solid rgba(255,255,255,0.10)',
+        background: '#FBFAF6', borderTop: '1px solid rgba(41,45,41,0.10)',
         borderRadius: '22px 22px 0 0', padding: '10px 20px 28px',
         boxShadow: '0 -20px 60px rgba(0,0,0,0.5)',
       }}>
-        <div style={{ width: 36, height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.18)', margin: '4px auto 16px' }} />
+        <div style={{ width: 36, height: 4, borderRadius: 4, background: 'rgba(41,45,41,0.18)', margin: '4px auto 16px' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <span style={{ fontSize: 14, fontWeight: 800, color: C.ink, letterSpacing: 0.3 }}>{titulo}</span>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 10, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <button onClick={onClose} style={{ background: 'rgba(41,45,41,0.06)', border: 'none', borderRadius: 10, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <X size={15} color={C.ink3} />
           </button>
         </div>
@@ -233,7 +235,7 @@ export default function NoahFuel({ atletaId }) {
   const colorEstado = alertaAlta ? C.danger : (nivel1.alertas || []).length ? C.warning : C.success
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', color: C.ink }}>
+    <div style={{ maxWidth: 640, margin: '0 auto', color: C.ink, fontFamily: FONT }}>
 
       {/* Header: "de un vistazo" */}
       <div style={{ padding: '4px 4px 14px' }}>
@@ -260,7 +262,7 @@ export default function NoahFuel({ atletaId }) {
         <div style={widgetStyle} onClick={() => setSheet('energia')}>
           <WidgetTitulo>Energía</WidgetTitulo>
           <div>
-            <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: -0.5 }}>{nivel1.kcal_dia}</div>
+            <div style={{ fontFamily: MONO, fontSize: 30, fontWeight: 700, letterSpacing: -0.5 }}>{nivel1.kcal_dia}</div>
             <div style={{ fontSize: 9, color: C.ink3, marginTop: -2 }}>kcal hoy</div>
           </div>
           <MiniAnillos macros={nivel1.macros} />
@@ -355,7 +357,7 @@ function MiniAnillos({ macros }) {
       {[['Carbos', macros.cho_g, C.cho], ['Proteína', macros.prot_g, C.prot], ['Grasa', macros.grasa_g, C.grasa]].map(([l, v, col]) => (
         <div key={l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
           <div style={{ width: 34, height: 34, borderRadius: '50%', border: `2.5px solid ${col}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: col }}>
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontSize: 11, fontWeight: 700, color: col }}>
             {v}
           </div>
           <div style={{ fontSize: 8, color: C.ink3, fontWeight: 600 }}>{l}</div>
@@ -374,7 +376,7 @@ function AnilloGrande({ label, gramos, gkg, color }) {
     <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
       <div style={{ width: 64, height: 64, borderRadius: '50%', margin: '0 auto 8px', display: 'flex',
         alignItems: 'center', justifyContent: 'center', border: `3px solid ${color}`, background: `${color}14` }}>
-        <span style={{ fontSize: 15, fontWeight: 800, color }}>{gramos}g</span>
+        <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color }}>{gramos}g</span>
       </div>
       <div style={{ fontSize: 9.5, color: C.ink3, letterSpacing: 0.5, textTransform: 'uppercase' }}>{label}</div>
       <div style={{ fontSize: 9.5, color: C.ink4 }}>{gkg} g/kg</div>
@@ -393,7 +395,7 @@ function BarraGasto({ g }) {
   const total = segs.reduce((a, s) => a + s.v, 0) || 1
   return (
     <div>
-      <div style={{ display: 'flex', height: 16, borderRadius: 8, overflow: 'hidden', background: 'rgba(255,255,255,0.05)' }}>
+      <div style={{ display: 'flex', height: 16, borderRadius: 8, overflow: 'hidden', background: 'rgba(41,45,41,0.05)' }}>
         {segs.filter(s => s.v > 0).map(s => (
           <div key={s.k} title={`${s.k} ${FMT(s.v)}`} style={{ width: `${s.v / total * 100}%`, background: s.col }} />
         ))}
@@ -432,7 +434,7 @@ function EntrenoFila({ ent, kcal, dobleTurno }) {
         const tss = s.tss || s.tss_total
         return (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12,
-            background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.16)' }}>
+            background: 'rgba(53,192,122,0.08)', border: '1px solid rgba(53,192,122,0.16)' }}>
             <span style={{ fontSize: 18 }}>{ICON_DEP[dep] || '🏋️'}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'capitalize' }}>{dep}{dur ? ` · ${Math.round(dur)} min` : ''}</div>
@@ -464,7 +466,7 @@ function EnergiaDetalle({ nivel1, nivel2 }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
       {/* HEADER */}
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 42, fontWeight: 800, letterSpacing: -1, lineHeight: 1 }}>{FMT(gasto)}</div>
+        <div style={{ fontFamily: MONO, fontSize: 42, fontWeight: 700, letterSpacing: -1, lineHeight: 1 }}>{FMT(gasto)}</div>
         <div style={{ fontSize: 9.5, color: C.ink3, letterSpacing: 0.7, textTransform: 'uppercase', marginTop: 5 }}>Gasto total estimado · kcal</div>
       </div>
 
@@ -519,7 +521,7 @@ function EnergiaDetalle({ nivel1, nivel2 }) {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
             {ajustes.map((a, i) => (
               <span key={i} style={{ fontSize: 10.5, fontWeight: 600, padding: '4px 10px', borderRadius: 16,
-                background: 'rgba(139,92,246,0.14)', color: C.ink2 }}>
+                background: 'rgba(120,134,107,0.14)', color: C.ink2 }}>
                 {a.factor}{a.interpretacion ? `: ${a.interpretacion}` : ''}
               </span>
             ))}
@@ -533,7 +535,7 @@ function EnergiaDetalle({ nivel1, nivel2 }) {
       {/* Competencia próxima */}
       {carrera && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 12px', borderRadius: 12,
-          background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.18)' }}>
+          background: 'rgba(79,140,201,0.08)', border: '1px solid rgba(79,140,201,0.18)' }}>
           <span style={{ fontSize: 15 }}>🏁</span>
           <div style={{ fontSize: 11, color: C.ink2 }}>
             <b>{carrera.nombre}</b> en {carrera.dias_restantes} día(s) · ↑ disponibilidad de carbohidratos
@@ -557,7 +559,7 @@ function ComidasDetalle({ comidas, horaActual }) {
         const abre = abierta === i
         return (
           <div key={i} style={{ padding: '10px 4px', opacity: pasada ? 0.5 : 1,
-            borderBottom: i < comidas.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+            borderBottom: i < comidas.length - 1 ? '1px solid rgba(41,45,41,0.06)' : 'none' }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', cursor: 'pointer' }} onClick={() => setAbierta(abre ? null : i)}>
               <FotoComida comida={c} />
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -730,7 +732,7 @@ function ChatNoah({ atletaId, quickActions }) {
           {(quickActions || []).map(a => (
             <button key={a.id} onClick={() => enviar(a.label)} style={{
               padding: '7px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', color: C.ink2,
+              background: 'rgba(41,45,41,0.04)', border: '1px solid rgba(41,45,41,0.09)', color: C.ink2,
             }}>{a.label}</button>
           ))}
         </div>
@@ -744,7 +746,7 @@ function ChatNoah({ atletaId, quickActions }) {
               maxWidth: m.rol === 'usuario' ? '85%' : '100%',
               width: m.rol === 'usuario' ? 'auto' : '100%',
               padding: '8px 12px', borderRadius: 12, fontSize: 12, lineHeight: 1.5,
-              background: m.rol === 'usuario' ? 'rgba(139,92,246,0.20)' : 'rgba(255,255,255,0.04)', color: C.ink2,
+              background: m.rol === 'usuario' ? 'rgba(120,134,107,0.20)' : 'rgba(41,45,41,0.04)', color: C.ink2,
               whiteSpace: m.rol === 'usuario' ? 'pre-wrap' : 'normal', overflowWrap: 'anywhere',
             }}>{m.rol === 'usuario' ? m.texto : <MarkdownLite texto={m.texto} />}</div>
           ))}
@@ -756,10 +758,10 @@ function ChatNoah({ atletaId, quickActions }) {
         <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && enviar()}
           placeholder="¿Qué debería comer antes del entrenamiento?"
           style={{ flex: 1, padding: '10px 14px', borderRadius: 12, fontSize: 12,
-            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: C.ink, outline: 'none' }} />
+            background: 'rgba(41,45,41,0.05)', border: '1px solid rgba(41,45,41,0.12)', color: C.ink, outline: 'none' }} />
         <button onClick={() => enviar()} disabled={sending || !text.trim()} style={{
           width: 40, height: 40, borderRadius: 12, border: 'none', flexShrink: 0,
-          background: (sending || !text.trim()) ? 'rgba(139,92,246,0.3)' : C.accent,
+          background: (sending || !text.trim()) ? 'rgba(120,134,107,0.3)' : C.accent,
           color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
         }}><Send size={15} /></button>
       </div>
