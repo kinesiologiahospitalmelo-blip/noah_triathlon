@@ -21,6 +21,7 @@ import { Heart,
   BatteryLow, Moon, GlassWater, Brain, ChevronLeft, ChevronRight, Banana, Minus, Check, Scale, LogOut,
   UserCircle, MessageCircle, Send, ChevronDown, Home } from 'lucide-react'
 import InicioHome from './InicioHome'
+import PantallaNoah from './PantallaNoah'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
 // como ya funcionaba. En Vercel (1 sola dirección para front y backend)
@@ -4266,6 +4267,17 @@ export default function AtletaDashboard({ atletaId }) {
     {id:'cycling',  label:'Ciclismo', show: true},
     {id:'swimming', label:'Natación', show: true},
   ].filter(t => t.show)
+
+  // ── Pantallas interiores rediseñadas: cada una independiente, en su cáscara ──
+  if (tab === 'fuel') {
+    const goNav = (idN) => setTab({ inicio: 'inicio', entreno: 'hoy', analisis: 'metricas', perfil: 'perfil' }[idN] || 'inicio')
+    return (
+      <PantallaNoah title="Nutrición" onBack={() => setTab('inicio')}
+        navActivo="" onNav={goNav} onAsistente={() => setTab('asistente')}>
+        <NoahFuel atletaId={id} />
+      </PantallaNoah>
+    )
+  }
 
   // ── Inicio (Opción 1) como pantalla propia (no toca el dashboard actual) ──
   if (tab === 'inicio') {
