@@ -22,6 +22,7 @@ import { Heart,
   UserCircle, MessageCircle, Send, ChevronDown, Home } from 'lucide-react'
 import InicioHome from './InicioHome'
 import PantallaNoah from './PantallaNoah'
+import SeccionAnalisis from './SeccionAnalisis'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
 // como ya funcionaba. En Vercel (1 sola dirección para front y backend)
@@ -4269,12 +4270,20 @@ export default function AtletaDashboard({ atletaId }) {
   ].filter(t => t.show)
 
   // ── Pantallas interiores rediseñadas: cada una independiente, en su cáscara ──
+  const goNav = (idN) => setTab({ inicio: 'inicio', entreno: 'hoy', analisis: 'metricas', perfil: 'perfil' }[idN] || 'inicio')
   if (tab === 'fuel') {
-    const goNav = (idN) => setTab({ inicio: 'inicio', entreno: 'hoy', analisis: 'metricas', perfil: 'perfil' }[idN] || 'inicio')
     return (
       <PantallaNoah title="Nutrición" onBack={() => setTab('inicio')}
         navActivo="" onNav={goNav} onAsistente={() => setTab('asistente')}>
         <NoahFuel atletaId={id} />
+      </PantallaNoah>
+    )
+  }
+  if (tab === 'metricas') {
+    return (
+      <PantallaNoah title="Análisis" onBack={() => setTab('inicio')}
+        navActivo="analisis" onNav={goNav} onAsistente={() => setTab('asistente')}>
+        <SeccionAnalisis atletaId={id} />
       </PantallaNoah>
     )
   }
