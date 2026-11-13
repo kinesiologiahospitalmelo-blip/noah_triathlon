@@ -19,7 +19,10 @@ import { Heart,
   Target, Flag, FlaskConical, CheckCircle2, XCircle, AlertTriangle, Zap, Ruler,
   HeartPulse, Flame, Activity, RotateCw, Satellite, ClipboardList, User, BatteryFull,
   BatteryLow, Moon, GlassWater, Brain, ChevronLeft, ChevronRight, Banana, Minus, Check, Scale, LogOut,
-  UserCircle, MessageCircle, Send, ChevronDown } from 'lucide-react'
+  UserCircle, MessageCircle, Send, ChevronDown, Home } from 'lucide-react'
+import InicioHome from './InicioHome'
+import PantallaNoah from './PantallaNoah'
+import SeccionAnalisis from './SeccionAnalisis'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
 // como ya funcionaba. En Vercel (1 sola dirección para front y backend)
@@ -4107,7 +4110,7 @@ export default function AtletaDashboard({ atletaId }) {
   const [zonasSwim, setZonasSwim] = useState(null)
   const [health, setHealth]       = useState(null)
   const [diag, setDiag]           = useState(null)
-  const [tab, setTab]             = useState('hoy')
+  const [tab, setTab]             = useState('inicio')
   const [activeTabIdx, setActiveTabIdx] = useState(0)
   const tabsTrackRef = useRef(null)
   const touchXRef = useRef(null)
@@ -4124,6 +4127,40 @@ export default function AtletaDashboard({ atletaId }) {
   const [wahooStatus, setWahooStatus] = useState(null) // 'ok'|'error'|null
 
   const id = atletaId || 1
+
+  // ── Inicio (Opción 1): distribución semanal + resumen HANNA para la home ──
+  const [inicioDistrib, setInicioDistrib] = useState(null)
+  const [hannaResumen, setHannaResumen]   = useState(null)
+  useEffect(() => {
+    if (!id) return
+    authFetch(`${API}/atletas/${id}/distribucion_entrenamiento?dias=28`).then(r=>r.json()).then(r=>setInicioDistrib(r.data||null)).catch(()=>{})
+    authFetch(`${API}/atletas/${id}/hanna_life?dias=90`).then(r=>r.json()).then(r=>setHannaResumen(r.data||null)).catch(()=>{})
+  }, [id])
+
+  // Handlers de sincronización para la home (misma lógica que el SyncBar)
+  const handleSyncBio = async () => {
+    setSyncBioLoad(true); setSyncResult(null)
+    try {
+      const r = await axios.post(`${API}/atletas/${id}/sincronizar`, {modo:'bio'})
+      const bio = r.data.data
+      const detalles = [bio?.body_battery&&`BB:${bio.body_battery}`, bio?.hr_reposo&&`FC:${bio.hr_reposo}`, bio?.sleep_h&&`Sueño:${bio.sleep_h}h`, bio?.hrv_ms&&`HRV:${bio.hrv_ms}ms`].filter(Boolean).join(' · ')
+      setSyncResult({tipo:'bio', ok:bio?.exito, msg: bio?.exito ? `Bio actualizado${detalles?' — '+detalles:''}` : 'Sin datos nuevos'})
+      axios.get(`${API}/atletas/${id}/sync_status`).then(r2=>setSyncStatus(r2.data.data)).catch(()=>{})
+      axios.get(`${API}/atletas/${id}/estado`).then(r2=>setEstado(r2.data.data)).catch(()=>{})
+    } catch { setSyncResult({tipo:'bio', ok:false, msg:'Error'}) }
+    setSyncBioLoad(false)
+  }
+  const handleSyncAct = async () => {
+    setSyncLoading(true); setSyncResult(null)
+    try {
+      const r = await axios.post(`${API}/atletas/${id}/sincronizar`, {modo:'actividad'})
+      const nueva = (r.data.data?.output||'').includes('nueva')
+      setSyncResult({tipo:'actividad', ok:r.data.data?.exito, msg: nueva ? 'Actividad descargada' : 'Sin actividades nuevas'})
+      axios.get(`${API}/atletas/${id}/sync_status`).then(r2=>setSyncStatus(r2.data.data)).catch(()=>{})
+      if (nueva) axios.get(`${API}/atletas/${id}/estado`).then(r2=>setEstado(r2.data.data)).catch(()=>{})
+    } catch { setSyncResult({tipo:'actividad', ok:false, msg:'Error'}) }
+    setSyncLoading(false)
+  }
 
   // --- Wahoo connection status ---
   useEffect(() => {
@@ -4224,12 +4261,61 @@ export default function AtletaDashboard({ atletaId }) {
     {id:'fuel',          label:'Nutrición',     icon: Flame},
     {id:'perfil',        label:'Perfil',        icon: UserCircle},
     {id:'asistente',     label:'Asistente',     icon: MessageCircle},
+    {id:'inicio',        label:'Inicio',        icon: Home},
   ]
   const zonasSubTabs = [
     {id:'running',  label:'Running',  show: true},
     {id:'cycling',  label:'Ciclismo', show: true},
     {id:'swimming', label:'Natación', show: true},
   ].filter(t => t.show)
+
+  // ── Pantallas interiores rediseñadas: cada una independiente, en su cáscara ──
+  const goNav = (idN) => setTab({ inicio: 'inicio', entreno: 'hoy', analisis: 'metricas', perfil: 'perfil' }[idN] || 'inicio')
+  if (tab === 'fuel') {
+    return (
+      <PantallaNoah title="Nutrición" onBack={() => setTab('inicio')}
+        navActivo="" onNav={goNav} onAsistente={() => setTab('asistente')}>
+        <NoahFuel atletaId={id} />
+      </PantallaNoah>
+    )
+  }
+  if (tab === 'metricas') {
+    return (
+      <PantallaNoah title="Análisis" onBack={() => setTab('inicio')}
+        navActivo="analisis" onNav={goNav} onAsistente={() => setTab('asistente')}>
+        <SeccionAnalisis atletaId={id} />
+      </PantallaNoah>
+    )
+  }
+
+  // ── Inicio (Opción 1) como pantalla propia (no toca el dashboard actual) ──
+  if (tab === 'inicio') {
+    const mapDep = { swim: 'swimming', bike: 'cycling', run: 'running' }
+    const semana = Object.fromEntries(['swim','bike','run'].map(k => {
+      const dep = inicioDistrib?.deporte?.[mapDep[k]]
+      const z   = inicioDistrib?.intensidad_por_deporte?.[mapDep[k]] || null
+      return [k, dep ? { horas: dep.horas, pct: dep.pct, zonas: z } : null]
+    }))
+    const hoyH = hannaResumen?.hanna_hoy || (hannaResumen?.puntos?.length ? hannaResumen.puntos[hannaResumen.puntos.length-1] : null)
+    const hannaProp = hoyH ? {
+      valor: hoyH.hanna_life != null ? Math.round(hoyH.hanna_life*10)/10 : null,
+      nivel: hoyH.hanna_nivel || null,
+      hrv: hoyH.hrv ?? null,
+      tsb: hoyH.hanna_scores?.tsb ?? null,
+      sueno: hoyH.hanna_scores?.sueno ?? null,
+      riesgo_viral: hoyH.riesgo_viral ?? null,
+    } : null
+    const goAcceso = (idA) => setTab({ entrenamiento:'hoy', analisis:'metricas', evaluaciones:'tests', competicion:'race', bienestar:'fuel', twin:'twin' }[idA] || 'hoy')
+    const goNav    = (idN) => setTab({ inicio:'inicio', entreno:'hoy', analisis:'metricas', perfil:'perfil' }[idN] || 'inicio')
+    return <InicioHome
+      atleta={{ nombre: atleta?.nombre, foto: atleta?.foto }}
+      semana={semana} hanna={hannaProp}
+      syncStatus={syncStatus} bioLoading={syncBioLoading} actLoading={syncLoading}
+      onSyncBio={handleSyncBio} onSyncAct={handleSyncAct}
+      onAcceso={goAcceso} onNav={goNav} navActivo="inicio"
+      onAsistente={() => setTab('asistente')} onSubirFoto={() => setTab('perfil')}
+    />
+  }
 
   return (
     <div style={{ maxWidth:'100vw', overflowX:'hidden', minHeight:'100vh', background:`
