@@ -11,7 +11,9 @@ import {
   Gauge, Scale, Waves, ShieldAlert,
 } from 'lucide-react'
 import { NOAH, FONT } from './noahTheme'
-import heroImg from './assets/analisis_hero.jpg'
+// Foto editorial servida desde public/assets (como el resto de imágenes del proyecto).
+// Si todavía no está subida, el build NO se rompe: solo no se muestra la imagen.
+const heroImg = `${process.env.PUBLIC_URL || ''}/assets/analisis_hero.jpg`
 
 const esLocal = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
 const API = esLocal ? `http://${window.location.hostname}:5000/api` : '/api'
