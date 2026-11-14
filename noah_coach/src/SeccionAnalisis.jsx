@@ -11,9 +11,15 @@ import {
   Gauge, Scale, Waves, ShieldAlert, BatteryFull, BatteryLow, Thermometer,
 } from 'lucide-react'
 import { NOAH, FONT } from './noahTheme'
-// Foto editorial servida desde public/assets (como el resto de imágenes del proyecto).
-// Si todavía no está subida, el build NO se rompe: solo no se muestra la imagen.
-const heroImg = `${process.env.PUBLIC_URL || ''}/assets/analisis_hero.jpg`
+// Foto editorial — importada desde src/assets (donde ya está subida en el repo).
+import heroImg from './assets/analisis_hero.jpg'
+function FotoHero() {
+  return (
+    <img src={heroImg} alt="Atleta NOAH"
+      onError={e => { e.currentTarget.style.display = 'none' }}
+      style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: '50% 32%' }} />
+  )
+}
 
 const esLocal = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
 const API = esLocal ? `http://${window.location.hostname}:5000/api` : '/api'
@@ -406,7 +412,7 @@ export default function SeccionAnalisis({ atletaId }) {
       {/* ───── A. ENCABEZADO EDITORIAL + HANNA LIFE ───── */}
       <section style={{ position: 'relative' }}>
         <div style={{ position: 'relative', height: 208, overflow: 'hidden' }}>
-          <img src={heroImg} alt="Atleta NOAH" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: '50% 32%' }} />
+          <FotoHero />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(20,24,20,0.42) 0%, rgba(20,24,20,0.08) 42%, transparent 66%)' }} />
           <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 90, background: `linear-gradient(180deg, transparent, ${NOAH.marfil} 96%)` }} />
           <div style={{ position: 'absolute', top: 18, left: 18 }}>
