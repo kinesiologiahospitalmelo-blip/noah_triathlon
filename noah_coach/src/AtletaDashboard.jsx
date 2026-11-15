@@ -23,6 +23,7 @@ import { Heart,
 import InicioHome from './InicioHome'
 import PantallaNoah from './PantallaNoah'
 import SeccionAnalisis from './SeccionAnalisis'
+import { NOAH, FONT } from './noahTheme'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
 // como ya funcionaba. En Vercel (1 sola dirección para front y backend)
@@ -4101,6 +4102,257 @@ function DistribucionEntrenamiento({ atletaId }) {
 }
 
 
+// ══════════════════════════════════════════════════════════════════════════════
+// PANTALLAS OPCIÓN 1 — Entreno (Mi Sesión) + grupos con sub-tabs.
+// Solo presentación. Reutiliza los gráficos científicos existentes (streams,
+// mapa, reserva energética, torque) INTACTOS, enmarcados en tarjetas marfil —
+// cero riesgo de perder función. Nada de lógica ni datos se modifica.
+// ══════════════════════════════════════════════════════════════════════════════
+const o1card = (extra = {}) => ({
+  background: NOAH.surface, border: `1px solid ${NOAH.border}`, borderRadius: 18,
+  boxShadow: '0 1px 2px rgba(41,45,41,0.04), 0 8px 24px -16px rgba(41,45,41,0.18)', ...extra,
+})
+const o1eyebrow = { fontFamily: FONT.base, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: NOAH.ink45 }
+const DEP_O1 = { running: NOAH.coral, cycling: NOAH.salvia, swimming: NOAH.azul }
+
+function EnRediseno({ nombre, onAbrir }) {
+  return (
+    <div style={{ ...o1card({ padding: '38px 22px', textAlign: 'center' }) }}>
+      <div style={{ width: 46, height: 46, borderRadius: 14, margin: '0 auto 14px', display: 'grid', placeItems: 'center', background: 'rgba(120,134,107,0.1)' }}>
+        <Activity size={22} color={NOAH.salvia} strokeWidth={2.2} />
+      </div>
+      <div style={{ fontFamily: FONT.base, fontSize: 16, fontWeight: 800, color: NOAH.ink, letterSpacing: -0.3 }}>{nombre}</div>
+      <div style={{ fontFamily: FONT.base, fontSize: 12.5, color: NOAH.ink45, marginTop: 6, lineHeight: 1.5 }}>
+        En rediseño al nuevo estilo.<br />Mientras tanto podés abrir la versión actual.
+      </div>
+      {onAbrir && (
+        <button onClick={onAbrir} style={{
+          marginTop: 16, padding: '9px 18px', borderRadius: 999, cursor: 'pointer',
+          fontFamily: FONT.base, fontSize: 12.5, fontWeight: 700, color: '#fff',
+          background: NOAH.grafito, border: 'none', boxShadow: '0 6px 16px -6px rgba(41,45,41,0.4)',
+        }}>Abrir versión actual →</button>
+      )}
+    </div>
+  )
+}
+
+function MiniCalMarfil({ fechaSel, onSelect, acts7 }) {
+  const hoy = hoyKey()
+  const dias = []
+  for (let i = 6; i >= 0; i--) dias.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10))
+  const DIAS = ['D', 'L', 'M', 'M', 'J', 'V', 'S']
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      {dias.map(d => {
+        const acts = (acts7 || {})[d] || []
+        const esHoy = d === hoy, esSel = d === fechaSel
+        const o = new Date(d + 'T12:00:00')
+        return (
+          <button key={d} onClick={() => onSelect(d)} style={{
+            flex: 1, borderRadius: 14, cursor: 'pointer', padding: '9px 2px', textAlign: 'center',
+            background: esSel ? NOAH.grafito : NOAH.surface,
+            border: `1px solid ${esSel ? NOAH.grafito : NOAH.border}`,
+            boxShadow: esSel ? '0 6px 16px -6px rgba(41,45,41,0.4)' : 'none', transition: 'all .15s',
+          }}>
+            <div style={{ fontFamily: FONT.base, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, color: esSel ? 'rgba(255,255,255,0.7)' : NOAH.ink45 }}>{DIAS[o.getDay()]}</div>
+            <div style={{ fontFamily: FONT.mono, fontSize: 16, fontWeight: 700, marginTop: 1, color: esSel ? '#fff' : NOAH.ink }}>{o.getDate()}</div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 3, marginTop: 4, minHeight: 6 }}>
+              {esHoy && !esSel && <div style={{ width: 4, height: 4, borderRadius: 9, background: NOAH.coral }} />}
+              {acts.map((a, i) => <div key={i} style={{ width: 5, height: 5, borderRadius: 9, background: esSel ? 'rgba(255,255,255,0.8)' : (DEP_O1[a.sport] || NOAH.ink45) }} />)}
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function ActividadCardV2({ act, sesionPresc, atletaId }) {
+  const sport = (act.sport || 'running').toLowerCase()
+  const s = SPORT[sport] || SPORT.running
+  const LTHR = sesionPresc?.lthr || (sport === 'cycling' ? 155 : 162)
+  const zonas = useZonasAtletaDash(atletaId, sport)
+  const cssVal = sport === 'swimming' ? zonas?.css : null
+  const paceUmbralVal = sport === 'running' ? zonas?.pace_umbral : null
+  const tssR = act.tss_total, tssP = sesionPresc?.tss
+  const pct = tssP && tssR ? Math.round((tssR - tssP) / tssP * 100) : null
+  const cumpl = !sesionPresc ? { c: NOAH.coral, t: 'Sin prescripción' }
+    : pct === null ? { c: NOAH.ink45, t: 'Sin TSS' }
+    : Math.abs(pct) <= 15 ? { c: NOAH.salvia, t: 'Cumplida' }
+    : pct > 15 ? { c: NOAH.coral, t: `+${pct}% sobre` }
+    : { c: NOAH.azul, t: `${Math.abs(pct)}% bajo` }
+  const depColor = DEP_O1[sport] || NOAH.coral
+  const sid = act.sesion_id || act.id
+
+  const Panel = ({ label, children, pad = '12px 10px' }) => (
+    <div style={{ ...o1card({ padding: pad, marginTop: 12, overflow: 'hidden' }) }}>
+      {label && <div style={{ ...o1eyebrow, padding: '2px 4px 10px' }}>{label}</div>}
+      {children}
+    </div>
+  )
+
+  return (
+    <div style={{ ...o1card({ padding: '16px 12px' }) }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+        <div style={{ width: 42, height: 42, borderRadius: 12, background: `${depColor}1A`, display: 'grid', placeItems: 'center' }}>
+          <s.Icon size={19} color={depColor} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: FONT.base, fontSize: 15, fontWeight: 800, color: NOAH.ink, letterSpacing: -0.3 }}>{s.label}</div>
+          <div style={{ fontFamily: FONT.base, fontSize: 11.5, color: NOAH.ink45 }}>Sesión registrada</div>
+        </div>
+        <div style={{ padding: '5px 11px', borderRadius: 999, background: `${cumpl.c}18`, border: `1px solid ${cumpl.c}44` }}>
+          <span style={{ fontFamily: FONT.mono, fontSize: 11, fontWeight: 700, color: cumpl.c }}>{cumpl.t}</span>
+        </div>
+      </div>
+
+      <Panel label="Streams · ritmo, FC y altitud">
+        <GraficoActividad act={act} laps={act.laps || []} sport={sport} lthr={LTHR} sesionId={sid} atletaId={atletaId} css={cssVal} paceUmbral={paceUmbralVal} />
+      </Panel>
+
+      <Panel label="Recorrido">
+        <SeccionRoute sesionId={sid} atletaId={atletaId} sport={sport} />
+      </Panel>
+
+      <Panel pad="0">
+        <EnergyReserveTimeline atletaId={atletaId} sesionId={sid} act={act} sport={sport} />
+      </Panel>
+
+      {sport === 'cycling' && (
+        <Panel pad="0">
+          <TorqueWbalBotones atletaId={atletaId} sesionId={sid} ftp={act.ftp || 200} cadenciaOptima={85} />
+        </Panel>
+      )}
+    </div>
+  )
+}
+
+function SesionDelDiaV2({ atletaId, presc }) {
+  const hoy = hoyKey()
+  const [acts, setActs] = useState(null)
+  const [acts7, setActs7] = useState({})
+  const [fechaSel, setFechaSel] = useState(hoy)
+
+  useEffect(() => {
+    if (!atletaId) return
+    setActs(null); setActs7({})
+    const desde = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10)
+    const hasta = new Date().toISOString().slice(0, 10)
+    authFetch(`${API}/atletas/${atletaId}/actividades_rango?desde=${desde}&hasta=${hasta}`)
+      .then(r => r.json())
+      .then(r => { const map = r.data?.actividades || {}; setActs7(map); setActs(map[fechaSel] ?? map[hoy] ?? []) })
+      .catch(() => { setActs7({}); setActs([]) })
+  }, [atletaId]) // eslint-disable-line
+  useEffect(() => { if (acts7[fechaSel] !== undefined) setActs(acts7[fechaSel]) }, [fechaSel, acts7])
+
+  const sesiones = presc?.prescripcion?.sesiones || []
+  const sesDelDia = sesiones.filter(se => getDiaKey(se.fecha) === fechaSel)
+  const esHoySel = fechaSel === hoy
+  const diasAtras = Math.round((new Date(hoy) - new Date(fechaSel)) / 86400000)
+  const labelPresc = esHoySel ? 'Prescripción de hoy' : 'Prescripción de ese día'
+  const fechaTxt = new Date(fechaSel + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <div style={{ ...o1eyebrow, marginBottom: 4 }}>{esHoySel ? 'Hoy' : diasAtras === 1 ? 'Ayer' : 'Día seleccionado'}</div>
+        <div style={{ fontFamily: FONT.base, fontSize: 22, fontWeight: 800, color: NOAH.ink, letterSpacing: -0.6, textTransform: 'capitalize', lineHeight: 1.1 }}>{fechaTxt}</div>
+      </div>
+
+      <MiniCalMarfil fechaSel={fechaSel} onSelect={setFechaSel} acts7={acts7} />
+
+      {acts === null && <div style={{ ...o1card({ padding: 26, textAlign: 'center' }), fontFamily: FONT.base, fontSize: 12.5, color: NOAH.ink45 }}>Cargando…</div>}
+
+      {acts !== null && acts.length > 0 && acts.map((act, i) => (
+        <ActividadCardV2 key={act.sesion_id || act.id || i} act={act} sesionPresc={sesDelDia.find(se => se.sport === act.sport) || null} atletaId={atletaId} />
+      ))}
+
+      {acts !== null && acts.length > 0 && (
+        <div style={{ ...o1card({ padding: 4, overflow: 'hidden' }) }}>
+          <NutricionPost atletaId={atletaId} fecha={fechaSel} proxima24h={hayExigenteManana(sesiones, fechaSel)} />
+        </div>
+      )}
+
+      {acts !== null && acts.length === 0 && (
+        <div style={{ ...o1card({ padding: '28px 20px', textAlign: 'center' }) }}>
+          <Satellite size={26} color={NOAH.ink45} style={{ marginBottom: 8 }} />
+          <div style={{ fontFamily: FONT.base, fontSize: 14, fontWeight: 700, color: NOAH.ink }}>{esHoySel ? 'Sin actividad registrada hoy' : 'Sin actividad ese día'}</div>
+          <div style={{ fontFamily: FONT.base, fontSize: 12, color: NOAH.ink45, marginTop: 3 }}>Sincronizá Garmin para ver el entrenamiento.</div>
+        </div>
+      )}
+
+      {sesDelDia.length > 0 && (
+        <div style={{ ...o1card({ padding: '16px 12px' }) }}>
+          <div style={{ ...o1eyebrow, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}><ClipboardList size={13} /> {labelPresc}</div>
+          {sesDelDia.map((ses, i) => {
+            const SI = (SPORT[ses.sport] || SPORT.running).Icon
+            const col = DEP_O1[ses.sport] || NOAH.coral
+            return (
+              <div key={i} style={{ marginTop: i ? 18 : 0, paddingTop: i ? 16 : 0, borderTop: i ? `1px solid ${NOAH.border}` : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: `${col}1A`, display: 'grid', placeItems: 'center' }}><SI size={16} color={col} /></div>
+                  <div>
+                    <div style={{ fontFamily: FONT.base, fontSize: 15, fontWeight: 700, color: NOAH.ink }}>{ses.nombre}</div>
+                    <div style={{ fontFamily: FONT.base, fontSize: 11.5, color: NOAH.ink45 }}>{Math.round(ses.duracion)}min · TSS {ses.tss}</div>
+                  </div>
+                </div>
+                <WorkoutChart sesion={ses} atletaId={atletaId} />
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {acts !== null && acts.length === 0 && sesDelDia.length === 0 && (
+        <div style={{ ...o1card({ padding: '34px 20px', textAlign: 'center' }), fontFamily: FONT.base, fontSize: 13, color: NOAH.ink45 }}>
+          Sin actividad ni sesión planificada {esHoySel ? 'para hoy' : 'para ese día'}.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GrupoEntreno({ atletaId, presc, goNav, onInicio, onAsistente, abrir }) {
+  const [sub, setSub] = useState('hoy')
+  const subtabs = [{ id: 'hoy', label: 'Hoy' }, { id: 'semana', label: 'Semana' }, { id: 'calendario', label: 'Calendario' }, { id: 'plan', label: 'Planificación' }]
+  return (
+    <PantallaNoah title="Entreno" onBack={onInicio} navActivo="entreno" onNav={goNav} onAsistente={onAsistente} subtabs={subtabs} subActivo={sub} onSub={setSub}
+      foto="/assets/hero_entreno.jpg" heroEyebrow="Entrenamiento" heroTitulo="Tu sesión de hoy">
+      {sub === 'hoy' && <SesionDelDiaV2 atletaId={atletaId} presc={presc} />}
+      {sub === 'semana' && <EnRediseno nombre="Esta Semana" onAbrir={() => abrir('semana')} />}
+      {sub === 'calendario' && <EnRediseno nombre="Calendario" onAbrir={() => abrir('calendario')} />}
+      {sub === 'plan' && <EnRediseno nombre="Planificación" onAbrir={() => abrir('periodizacion')} />}
+    </PantallaNoah>
+  )
+}
+
+function GrupoRendimiento({ atletaId, goNav, onInicio, onAsistente, abrir }) {
+  const [sub, setSub] = useState('bio')
+  const subtabs = [{ id: 'bio', label: 'Biomarcadores' }, { id: 'zonas', label: 'Zonas' }, { id: 'tests', label: 'Tests' }, { id: 'tecnica', label: 'Técnica' }]
+  return (
+    <PantallaNoah title="Análisis" onBack={onInicio} navActivo="analisis" onNav={goNav} onAsistente={onAsistente} subtabs={subtabs} subActivo={sub} onSub={setSub}
+      foto="/assets/hero_analisis.jpg" heroEyebrow="Rendimiento" heroTitulo="Tu estado de hoy">
+      {sub === 'bio' && <SeccionAnalisis atletaId={atletaId} />}
+      {sub === 'zonas' && <EnRediseno nombre="Mis Zonas" onAbrir={() => abrir('zonas')} />}
+      {sub === 'tests' && <EnRediseno nombre="Tests" onAbrir={() => abrir('tests')} />}
+      {sub === 'tecnica' && <EnRediseno nombre="Técnica" onAbrir={() => abrir('tecnica')} />}
+    </PantallaNoah>
+  )
+}
+
+function GrupoPerfil({ atletaId, goNav, onInicio, onAsistente, abrir }) {
+  const [sub, setSub] = useState('perfil')
+  const subtabs = [{ id: 'perfil', label: 'Perfil' }, { id: 'race', label: 'Race' }, { id: 'twin', label: 'Mi Twin' }]
+  return (
+    <PantallaNoah title="Perfil" onBack={onInicio} navActivo="perfil" onNav={goNav} onAsistente={onAsistente} subtabs={subtabs} subActivo={sub} onSub={setSub}
+      foto="/assets/hero_perfil.jpg" heroEyebrow="Perfil" heroTitulo="Tu cuenta">
+      {sub === 'perfil' && <EnRediseno nombre="Perfil" onAbrir={() => abrir('perfil')} />}
+      {sub === 'race' && <EnRediseno nombre="Race" onAbrir={() => abrir('race')} />}
+      {sub === 'twin' && <EnRediseno nombre="Mi Twin" onAbrir={() => abrir('twin')} />}
+    </PantallaNoah>
+  )
+}
+
 export default function AtletaDashboard({ atletaId }) {
   const [atleta, setAtleta]       = useState(null)
   const [estado, setEstado]       = useState(null)
@@ -4111,6 +4363,7 @@ export default function AtletaDashboard({ atletaId }) {
   const [health, setHealth]       = useState(null)
   const [diag, setDiag]           = useState(null)
   const [tab, setTab]             = useState('inicio')
+  const [verPerfilV1, setVerPerfilV1] = useState(false) // "abrir versión actual" del Perfil
   const [activeTabIdx, setActiveTabIdx] = useState(0)
   const tabsTrackRef = useRef(null)
   const touchXRef = useRef(null)
@@ -4270,22 +4523,32 @@ export default function AtletaDashboard({ atletaId }) {
   ].filter(t => t.show)
 
   // ── Pantallas interiores rediseñadas: cada una independiente, en su cáscara ──
-  const goNav = (idN) => setTab({ inicio: 'inicio', entreno: 'hoy', analisis: 'metricas', perfil: 'perfil' }[idN] || 'inicio')
+  const goNav = (idN) => { setVerPerfilV1(false); setTab({ inicio: 'inicio', entreno: 'entreno', analisis: 'analisis', perfil: 'perfil' }[idN] || 'inicio') }
   if (tab === 'fuel') {
     return (
       <PantallaNoah title="Nutrición" onBack={() => setTab('inicio')}
-        navActivo="" onNav={goNav} onAsistente={() => setTab('asistente')}>
+        navActivo="" onNav={goNav} onAsistente={() => setTab('asistente')}
+        foto="/assets/hero_nutricion.jpg" heroEyebrow="Nutrición" heroTitulo="Tu plan de hoy">
         <NoahFuel atletaId={id} />
       </PantallaNoah>
     )
   }
-  if (tab === 'metricas') {
-    return (
-      <PantallaNoah title="Análisis" onBack={() => setTab('inicio')}
-        navActivo="analisis" onNav={goNav} onAsistente={() => setTab('asistente')}>
-        <SeccionAnalisis atletaId={id} />
-      </PantallaNoah>
-    )
+  // ── Grupo ENTRENO (Hoy / Semana / Calendario / Planificación) ──
+  if (tab === 'entreno') {
+    return <GrupoEntreno atletaId={id} presc={presc} goNav={goNav}
+      onInicio={() => setTab('inicio')} onAsistente={() => setTab('asistente')} abrir={setTab} />
+  }
+  // ── Grupo ANÁLISIS (Biomarcadores / Zonas / Tests / Técnica) ──
+  if (tab === 'analisis' || tab === 'metricas') {
+    return <GrupoRendimiento atletaId={id} goNav={goNav}
+      onInicio={() => setTab('inicio')} onAsistente={() => setTab('asistente')} abrir={setTab} />
+  }
+  // ── Grupo PERFIL (Perfil / Race / Mi Twin). "Abrir versión actual" del Perfil
+  //    levanta el flag para caer a la pantalla real (logout/ajustes) sin loop. ──
+  if (tab === 'perfil' && !verPerfilV1) {
+    return <GrupoPerfil atletaId={id} goNav={goNav}
+      onInicio={() => { setVerPerfilV1(false); setTab('inicio') }} onAsistente={() => setTab('asistente')}
+      abrir={(t) => { if (t === 'perfil') setVerPerfilV1(true); else setTab(t) }} />
   }
 
   // ── Inicio (Opción 1) como pantalla propia (no toca el dashboard actual) ──
@@ -4305,8 +4568,8 @@ export default function AtletaDashboard({ atletaId }) {
       sueno: hoyH.hanna_scores?.sueno ?? null,
       riesgo_viral: hoyH.riesgo_viral ?? null,
     } : null
-    const goAcceso = (idA) => setTab({ entrenamiento:'hoy', analisis:'metricas', evaluaciones:'tests', competicion:'race', bienestar:'fuel', twin:'twin' }[idA] || 'hoy')
-    const goNav    = (idN) => setTab({ inicio:'inicio', entreno:'hoy', analisis:'metricas', perfil:'perfil' }[idN] || 'inicio')
+    const goAcceso = (idA) => setTab({ entrenamiento:'entreno', analisis:'analisis', evaluaciones:'tests', competicion:'race', bienestar:'fuel', twin:'twin' }[idA] || 'entreno')
+    const goNav    = (idN) => { setVerPerfilV1(false); setTab({ inicio:'inicio', entreno:'entreno', analisis:'analisis', perfil:'perfil' }[idN] || 'inicio') }
     return <InicioHome
       atleta={{ nombre: atleta?.nombre, foto: atleta?.foto }}
       semana={semana} hanna={hannaProp}
