@@ -4189,44 +4189,46 @@ function ActividadCardV2({ act, sesionPresc, atletaId }) {
   const depColor = DEP_O1[sport] || NOAH.coral
   const sid = act.sesion_id || act.id
 
-  const Panel = ({ label, children, pad = '12px 10px' }) => (
-    <div style={{ ...o1card({ padding: pad, marginTop: 12, overflow: 'hidden' }) }}>
-      {label && <div style={{ ...o1eyebrow, padding: '2px 4px 10px' }}>{label}</div>}
-      {children}
-    </div>
-  )
-
+  // Lenguaje visual: cada elemento FLOTA directo sobre el fondo (como los chips
+  // de fechas). Sin contenedor grande que los envuelva, sin títulos de sección.
+  // Una sola capa de vidrio esmerilado por elemento.
   return (
-    <div style={{ ...o1card({ padding: '16px 8px' }) }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '0 4px' }}>
-        <div style={{ width: 42, height: 42, borderRadius: 12, background: `${depColor}1A`, display: 'grid', placeItems: 'center' }}>
-          <s.Icon size={19} color={depColor} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Chip del deporte (flotante) + estado */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 9, padding: '7px 15px 7px 8px', borderRadius: 999,
+          background: 'linear-gradient(160deg, rgba(251,250,246,0.82), rgba(243,240,232,0.70))',
+          backdropFilter: 'blur(18px) saturate(1.3)', WebkitBackdropFilter: 'blur(18px) saturate(1.3)',
+          border: '1px solid rgba(255,255,255,0.6)', boxShadow: '0 8px 20px -14px rgba(41,45,41,0.3)',
+        }}>
+          <span style={{ width: 30, height: 30, borderRadius: 9, background: `${depColor}1A`, display: 'grid', placeItems: 'center' }}>
+            <s.Icon size={16} color={depColor} />
+          </span>
+          <span style={{ fontFamily: FONT.base, fontSize: 14.5, fontWeight: 800, color: NOAH.ink, letterSpacing: -0.2 }}>{s.label}</span>
         </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: FONT.base, fontSize: 15, fontWeight: 800, color: NOAH.ink, letterSpacing: -0.3 }}>{s.label}</div>
-          <div style={{ fontFamily: FONT.base, fontSize: 11.5, color: NOAH.ink45 }}>Sesión registrada</div>
-        </div>
-        <div style={{ padding: '5px 11px', borderRadius: 999, background: `${cumpl.c}18`, border: `1px solid ${cumpl.c}44` }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', padding: '7px 13px', borderRadius: 999, background: `${cumpl.c}1A`, border: `1px solid ${cumpl.c}3D` }}>
           <span style={{ fontFamily: FONT.mono, fontSize: 11, fontWeight: 700, color: cumpl.c }}>{cumpl.t}</span>
         </div>
       </div>
 
-      <Panel label="Streams · ritmo, FC y altitud" pad="12px 2px">
+      {/* Streams — vidrio directo sobre el fondo, sin título */}
+      <div style={{ ...o1card({ padding: '10px 2px', overflow: 'hidden' }) }}>
         <GraficoActividad act={act} laps={act.laps || []} sport={sport} lthr={LTHR} sesionId={sid} atletaId={atletaId} css={cssVal} paceUmbral={paceUmbralVal} />
-      </Panel>
+      </div>
 
-      <Panel label="Recorrido">
-        <SeccionRoute sesionId={sid} atletaId={atletaId} sport={sport} />
-      </Panel>
+      {/* Recorrido GPS — el mapa ya trae su propia superficie, flota directo */}
+      <SeccionRoute sesionId={sid} atletaId={atletaId} sport={sport} />
 
-      <Panel pad="0">
+      {/* Reserva energética — flota directo sobre el fondo */}
+      <div style={{ ...o1card({ overflow: 'hidden' }) }}>
         <EnergyReserveTimeline atletaId={atletaId} sesionId={sid} act={act} sport={sport} />
-      </Panel>
+      </div>
 
       {sport === 'cycling' && (
-        <Panel pad="0">
+        <div style={{ ...o1card({ overflow: 'hidden' }) }}>
           <TorqueWbalBotones atletaId={atletaId} sesionId={sid} ftp={act.ftp || 200} cadenciaOptima={85} />
-        </Panel>
+        </div>
       )}
     </div>
   )
