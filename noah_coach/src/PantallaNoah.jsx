@@ -2,7 +2,6 @@
 // Barra superior (volver + título) + sub-tabs + contenido + chat flotante + nav inferior.
 // Cada sección se siente INDEPENDIENTE, luminosa y en identidad NOAH. Solo presentación.
 // Props existentes preservadas; se agregan opcionales (foto, eyebrow) sin cambiar comportamiento.
-import { useState } from 'react'
 import { ArrowLeft, Home, Dumbbell, BarChart3, User, MessageCircle } from 'lucide-react'
 import { NOAH, FONT } from './noahTheme'
 
@@ -13,15 +12,9 @@ const NAV_DEFAULT = [
   { id: 'perfil', label: 'Perfil', Icon: User },
 ]
 
-// Glifo del FAB: marca NOAH (blanca) servida desde /assets (recurso real del proyecto);
-// si no está disponible, cae con elegancia al ícono de chat. No inventa rutas.
+// Glifo del FAB: ícono de chat claro (no el logo — el logo confundía).
 function AsistenteGlyph() {
-  const [err, setErr] = useState(false)
-  if (err) return <MessageCircle size={23} color="#fff" strokeWidth={2.2} />
-  return (
-    <img src="/assets/noah_logo_icono_blanco.png" alt="NOAH" onError={() => setErr(true)}
-      style={{ width: 26, height: 26, objectFit: 'contain', filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.15))' }} />
-  )
+  return <MessageCircle size={24} color="#fff" strokeWidth={2.3} />
 }
 
 export default function PantallaNoah({
@@ -31,7 +24,9 @@ export default function PantallaNoah({
   // ── opcionales (no alteran el comportamiento si no se pasan) ──
   eyebrow = '', foto = null, heroEyebrow = '', heroTitulo = '',
 }) {
-  const MAXW = 720
+  // Más ancho en escritorio (aprovecha la pantalla y escala el gráfico SVG, que
+  // crece con su contenedor → letra más grande). En móvil = 100% como antes.
+  const MAXW = 'min(1040px, 100%)'
   return (
     <div style={{
       minHeight: '100vh',
