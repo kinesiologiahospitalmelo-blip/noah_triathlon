@@ -53,8 +53,8 @@ const D = {
   border:   'rgba(41,45,41,0.10)',
   border2:  'rgba(41,45,41,0.16)',
   text:     '#292D29',
-  text2:    '#6E726C',
-  text3:    'rgba(41,45,41,0.40)',
+  text2:    '#4C514B',
+  text3:    'rgba(41,45,41,0.58)',
   hr:    { line: '#E65B45', area: 'rgba(230,91,69,0.08)',  dot: '#E65B45' },
   power: { line: '#E0A43C', area: 'rgba(224,164,60,0.08)', dot: '#E0A43C' },
   pace:  { line: '#4F8CC9', area: 'rgba(79,140,201,0.08)', dot: '#4F8CC9' },
@@ -1061,17 +1061,20 @@ export default function GraficoActividadStreams({
         }
         if (!lista || !lista.length) return null
         return (
-          <div style={{ padding:'10px 16px 12px', borderTop:`1px solid ${D.border}` }}>
-            <div style={{ fontSize:10, fontWeight:600, color:D.text2, textTransform:'uppercase',
-              letterSpacing:'0.06em', marginBottom:8 }}>Zonas</div>
-            <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
-              {lista.map(([z, v]) => (
-                <div key={z} style={{ minWidth:44 }}>
-                  <div style={{ fontSize:11, fontWeight:500, color:D.text2 }}>{z}</div>
-                  <div style={{ fontSize:14, fontWeight:600, letterSpacing:'-0.01em', color:(v._c || D.zone[z]) }}>{Math.round(v.pct)}%</div>
-                  <div style={{ height:3, borderRadius:2, background:(v._c || D.zone[z]), opacity:0.85, marginTop:4 }}/>
-                </div>
-              ))}
+          <div style={{ padding:'12px 16px 14px', borderTop:`1px solid ${D.border}` }}>
+            <div style={{ fontSize:10.5, fontWeight:800, color:D.text, textTransform:'uppercase',
+              letterSpacing:'0.09em', marginBottom:11 }}>Zonas</div>
+            <div style={{ display:'flex', gap:8 }}>
+              {lista.map(([z, v]) => {
+                const col = v._c || D.zone[z]
+                return (
+                  <div key={z} style={{ flex:1, textAlign:'center', minWidth:0 }}>
+                    <div style={{ fontSize:11.5, fontWeight:700, color:D.text2, marginBottom:3 }}>{z}</div>
+                    <div style={{ fontSize:19, fontWeight:800, letterSpacing:'-0.02em', color:col, lineHeight:1 }}>{Math.round(v.pct)}%</div>
+                    <div style={{ height:4, borderRadius:3, background:col, marginTop:7 }}/>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )

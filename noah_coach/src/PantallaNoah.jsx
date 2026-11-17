@@ -37,12 +37,16 @@ export default function PantallaNoah({
       minHeight: '100vh',
       paddingBottom: 'calc(90px + env(safe-area-inset-bottom))',
       color: NOAH.ink, fontFamily: FONT.base,
-      // Profundidad por capas de marfil + luz superior + tintes sutiles de la paleta (sin colores ajenos)
+      // Fondo con capas de color VISIBLES (salvia/coral/azul) para que el vidrio
+      // esmerilado de las tarjetas tenga algo que difuminar y el efecto se note.
+      // Tonos en paleta, más marcados que antes, sobre una base marfil apenas más profunda.
       background: `
-        radial-gradient(130% 58% at 50% -10%, rgba(255,255,255,0.55) 0%, transparent 46%),
-        radial-gradient(92% 50% at 92% -2%, rgba(230,91,69,0.045) 0%, transparent 40%),
-        radial-gradient(84% 46% at 4% 102%, rgba(120,134,107,0.06) 0%, transparent 48%),
-        linear-gradient(180deg, ${NOAH.marfil} 0%, #EFEBE1 100%)`,
+        radial-gradient(120% 55% at 50% -12%, rgba(255,255,255,0.6) 0%, transparent 44%),
+        radial-gradient(70% 48% at 88% 4%, rgba(230,91,69,0.14) 0%, transparent 52%),
+        radial-gradient(64% 44% at 6% 16%, rgba(120,134,107,0.16) 0%, transparent 52%),
+        radial-gradient(80% 50% at 94% 78%, rgba(79,140,201,0.13) 0%, transparent 56%),
+        radial-gradient(72% 46% at 2% 96%, rgba(120,134,107,0.12) 0%, transparent 54%),
+        linear-gradient(180deg, #EFEBE1 0%, #E9E4D8 100%)`,
       backgroundAttachment: 'fixed',
     }}>
       <style>{`.noah-scroll::-webkit-scrollbar{display:none}`}</style>

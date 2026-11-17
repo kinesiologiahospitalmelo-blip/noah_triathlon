@@ -4108,9 +4108,14 @@ function DistribucionEntrenamiento({ atletaId }) {
 // mapa, reserva energética, torque) INTACTOS, enmarcados en tarjetas marfil —
 // cero riesgo de perder función. Nada de lógica ni datos se modifica.
 // ══════════════════════════════════════════════════════════════════════════════
+// Vidrio esmerilado real: superficie marfil translúcida + blur, para que el fondo
+// con color se vea difuminado detrás. Borde claro arriba y sombra suave dan profundidad.
 const o1card = (extra = {}) => ({
-  background: NOAH.surface, border: `1px solid ${NOAH.border}`, borderRadius: 18,
-  boxShadow: '0 1px 2px rgba(41,45,41,0.04), 0 8px 24px -16px rgba(41,45,41,0.18)', ...extra,
+  background: 'linear-gradient(160deg, rgba(251,250,246,0.78), rgba(243,240,232,0.66))',
+  backdropFilter: 'blur(22px) saturate(1.35)', WebkitBackdropFilter: 'blur(22px) saturate(1.35)',
+  border: '1px solid rgba(255,255,255,0.55)', borderRadius: 18,
+  boxShadow: '0 1px 2px rgba(41,45,41,0.04), 0 12px 30px -18px rgba(41,45,41,0.26), inset 0 1px 0 rgba(255,255,255,0.5)',
+  ...extra,
 })
 const o1eyebrow = { fontFamily: FONT.base, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: NOAH.ink45 }
 const DEP_O1 = { running: NOAH.coral, cycling: NOAH.salvia, swimming: NOAH.azul }

@@ -30,10 +30,10 @@ const _routeCache = {}
 const D = {
   card: 'rgba(10,15,30,0.82)', border: 'rgba(255,255,255,0.10)',
   ink: 'rgba(255,255,255,0.95)', ink2: 'rgba(255,255,255,0.62)', ink3: 'rgba(255,255,255,0.38)',
-  violet: '#7C3AED',
+  violet: '#4F8CC9',
 }
 // Colores intensos y saturados — no pasteles
-const SPORT_COLOR = { running: '#7C3AED', cycling: '#EA580C', swimming: '#0EA5E9' }
+const SPORT_COLOR = { running: '#E65B45', cycling: '#78866B', swimming: '#4F8CC9' }
 
 function bearing(a, b) {
   const y = Math.sin((b[0]-a[0])*Math.PI/180) * Math.cos(b[1]*Math.PI/180)
@@ -284,8 +284,8 @@ export default function SeccionRoute({ sesionId, atletaId, sport = 'running', he
             .noah-route-card{ height:var(--noah-route-h); }
             @media (max-width:640px){
               .noah-route-wrap{ padding:0 10px; }
-              .noah-route-card{ height:calc(var(--noah-route-h) * 0.62); border-radius:12px; }
-              .noah-route-ctrl-btn{ width:28px !important; height:28px !important; font-size:12px !important; }
+              .noah-route-card{ height:calc(var(--noah-route-h) * 0.82); border-radius:12px; }
+              .noah-route-ctrl-btn{ width:32px !important; height:32px !important; font-size:14px !important; }
             }`
           document.head.appendChild(st)
         }
@@ -337,8 +337,8 @@ export default function SeccionRoute({ sesionId, atletaId, sport = 'running', he
         <button className="noah-route-ctrl-btn" onClick={() => setShowConfig(v => !v)} title="Elegir métricas del hover"
           style={{ width: 30, height: 30, borderRadius: 8, background: showConfig ? D.violet : D.card, border: `1px solid ${D.border}`, color: '#fff', backdropFilter: 'blur(14px)', cursor: 'pointer', fontSize: 13 }}>⚙</button>
         <div style={{ display: 'flex', background: D.card, border: `1px solid ${D.border}`, borderRadius: 8, padding: 2, backdropFilter: 'blur(14px)' }}>
-          <button onClick={() => is3D && toggle3D()} style={{ border:'none', background: !is3D?D.violet:'transparent', color: !is3D?'#fff':D.ink3, fontSize:10, fontWeight:700, padding:'5px 9px', borderRadius:6, cursor:'pointer' }}>2D</button>
-          <button onClick={() => !is3D && toggle3D()} style={{ border:'none', background: is3D?D.violet:'transparent', color: is3D?'#fff':D.ink3, fontSize:10, fontWeight:700, padding:'5px 9px', borderRadius:6, cursor:'pointer' }}>3D</button>
+          <button onClick={() => is3D && toggle3D()} style={{ border:'none', background: !is3D?D.violet:'transparent', color: !is3D?'#fff':D.ink2, fontSize:12, fontWeight:800, padding:'6px 12px', borderRadius:6, cursor:'pointer', letterSpacing:'0.02em' }}>2D</button>
+          <button onClick={() => !is3D && toggle3D()} style={{ border:'none', background: is3D?D.violet:'transparent', color: is3D?'#fff':D.ink2, fontSize:12, fontWeight:800, padding:'6px 12px', borderRadius:6, cursor:'pointer', letterSpacing:'0.02em' }}>3D</button>
         </div>
       </div>
 
