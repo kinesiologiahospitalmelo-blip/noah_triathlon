@@ -4197,8 +4197,8 @@ function ActividadCardV2({ act, sesionPresc, atletaId }) {
   )
 
   return (
-    <div style={{ ...o1card({ padding: '16px 12px' }) }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+    <div style={{ ...o1card({ padding: '16px 8px' }) }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '0 4px' }}>
         <div style={{ width: 42, height: 42, borderRadius: 12, background: `${depColor}1A`, display: 'grid', placeItems: 'center' }}>
           <s.Icon size={19} color={depColor} />
         </div>
@@ -4211,7 +4211,7 @@ function ActividadCardV2({ act, sesionPresc, atletaId }) {
         </div>
       </div>
 
-      <Panel label="Streams · ritmo, FC y altitud">
+      <Panel label="Streams · ritmo, FC y altitud" pad="12px 2px">
         <GraficoActividad act={act} laps={act.laps || []} sport={sport} lthr={LTHR} sesionId={sid} atletaId={atletaId} css={cssVal} paceUmbral={paceUmbralVal} />
       </Panel>
 

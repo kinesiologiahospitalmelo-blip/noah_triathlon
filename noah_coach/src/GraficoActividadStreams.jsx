@@ -213,6 +213,21 @@ export default function GraficoActividadStreams({
   // Colapsar/expandir el grafico principal para ahorrar espacio -- abierto
   // por defecto, el usuario lo puede cerrar tocando el chevron del header.
   const [chartOpen, setChartOpen]     = useState(true)
+  // ── Ancho REAL del contenedor (fix de raíz): el gráfico se dibuja a los px
+  //    reales en vez de un lienzo fijo de 720, así NO se encoge en mobile y la
+  //    letra se ve a tamaño real (1:1). Se remide ante resize/rotación. ──
+  const wrapRef = useRef(null)
+  const [anchoReal, setAnchoReal] = useState(360)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const medir = () => { const w = el.clientWidth; if (w > 20) setAnchoReal(Math.round(w)) }
+    medir()
+    let ro
+    if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(medir); ro.observe(el) }
+    window.addEventListener('resize', medir)
+    return () => { if (ro) ro.disconnect(); window.removeEventListener('resize', medir) }
+  }, [chartOpen])
   // Un solo canal visible a la vez -- como en Garmin/TrainingPeaks. Antes se
   // mostraban FC + Potencia + Pace superpuestos por default, lo que generaba
   // el efecto "arcoíris" (varias líneas de colores compitiendo en el mismo
@@ -473,8 +488,8 @@ export default function GraficoActividadStreams({
   const altMin  = altVals.length  ? Math.min(...altVals) - 10              : 0
   const altMax  = altVals.length  ? Math.max(...altVals) + 10              : 100
 
-  const W = 720, H = height
-  const PT = 22, PB = 40, PL = 52, PR = 52
+  const W = anchoReal, H = height   // W = ancho real medido (1:1, no se encoge)
+  const PT = 22, PB = 40, PL = 40, PR = 38
   const iW = W - PL - PR
   const iH = H - PT - PB
   const n  = series.length
@@ -711,6 +726,7 @@ export default function GraficoActividadStreams({
           fija en mobile y el grafico quedaba "encajonado" sin usar el ancho
           completo (letterboxing por el viewBox). */}
       {chartOpen && series.length >= 1 ? (
+        <div ref={wrapRef} style={{ width:'100%' }}>
         <svg ref={svgRef} width={W} height={H} viewBox={`0 0 ${W} ${H}`}
           style={{ display:'block', width:'100%', height:'auto', cursor:'crosshair' }}
           onMouseMove={handleMouse} onMouseLeave={() => setHover(null)}>
@@ -1023,6 +1039,7 @@ export default function GraficoActividadStreams({
             )
           })}
         </svg>
+        </div>
       ) : (!chartOpen && series.length >= 1) ? null : (
         <SinGrafico act={act} distKm={distKm} sport={sport} loading={loading}
           streamZonas={streamZonas} lthr={actLthr} sesionId={sesionId}/>
