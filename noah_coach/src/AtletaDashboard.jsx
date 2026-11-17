@@ -1051,46 +1051,46 @@ function NutricionPost({ atletaId, fecha, proxima24h }) {
   if (r.cho_recuperacion_g_total_4h || r.proteina_g_por_toma) secs.push({
     Ic: Flame, color:'#FB923C', label:'Comer en la ventana (0–2 h)',
     body: (<>
-      {r.cho_recuperacion_g_total_4h ? <><b style={{color:'#fff'}}>{r.cho_recuperacion_g_total_4h} g de hidratos</b> en las próximas 4 h</> : null}
+      {r.cho_recuperacion_g_total_4h ? <><b style={{color:'#292D29'}}>{r.cho_recuperacion_g_total_4h} g de hidratos</b> en las próximas 4 h</> : null}
       {(r.cho_recuperacion_g_total_4h && r.proteina_g_por_toma) ? ' + ' : null}
-      {r.proteina_g_por_toma ? <><b style={{color:'#fff'}}>{r.proteina_g_por_toma} g de proteína</b> por toma</> : null}.
+      {r.proteina_g_por_toma ? <><b style={{color:'#292D29'}}>{r.proteina_g_por_toma} g de proteína</b> por toma</> : null}.
       {(fcho || fprot) && <div style={{opacity:0.7, marginTop:2, fontSize:11}}>{[fcho, fprot].filter(Boolean).join('  ·  ')}</div>}
     </>)
   })
   if (rep.liquido_a_reponer_ml || rep.sodio_mg) secs.push({
     Ic: GlassWater, color:'#38BDF8', label:'Hidratación',
     body: (<>
-      Reponé <b style={{color:'#fff'}}>{rep.liquido_a_reponer_ml || '--'} ml</b>{rep.sodio_mg > 0 ? <> + <b style={{color:'#fff'}}>{rep.sodio_mg} mg de sodio</b></> : null} en las próximas horas.
+      Reponé <b style={{color:'#292D29'}}>{rep.liquido_a_reponer_ml || '--'} ml</b>{rep.sodio_mg > 0 ? <> + <b style={{color:'#292D29'}}>{rep.sodio_mg} mg de sodio</b></> : null} en las próximas horas.
       {fele && <div style={{opacity:0.7, marginTop:2, fontSize:11}}>Electrolitos: {fele}</div>}
     </>)
   })
   if (ffru) secs.push({ Ic: Banana, color:'#FACC15', label:'Fruta / snack rápido', body: ffru })
   if (nut.durante?.texto_corto) secs.push({
-    Ic: Zap, color:'#A78BFA', label:'Durante la próxima sesión de este tipo', body: nut.durante.texto_corto
+    Ic: Zap, color:'#78866B', label:'Durante la próxima sesión de este tipo', body: nut.durante.texto_corto
   })
 
   return (
     <div style={{ marginTop:12, padding:'14px 15px', borderRadius:13,
-      background:'linear-gradient(180deg, rgba(56,189,248,0.07), rgba(255,255,255,0.015))',
+      background:'linear-gradient(180deg, rgba(56,189,248,0.07), rgba(251,250,246,0.6))',
       border:'1px solid rgba(56,189,248,0.22)' }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
         <GlassWater size={16} color={NUT_COLOR}/>
-        <span style={{ fontWeight:800, fontSize:13.5, color:'#EAF6FF' }}>Recuperación post-entreno</span>
-        <span style={{ marginLeft:'auto', fontSize:9, opacity:0.55, fontWeight:700, color:'#fff', textTransform:'uppercase', letterSpacing:'0.5px' }}>según lo gastado</span>
+        <span style={{ fontWeight:800, fontSize:13.5, color:'#292D29' }}>Recuperación post-entreno</span>
+        <span style={{ marginLeft:'auto', fontSize:9, opacity:0.55, fontWeight:700, color:'#292D29', textTransform:'uppercase', letterSpacing:'0.5px' }}>según lo gastado</span>
       </div>
       {secs.map((s,i)=>(
-        <div key={i} style={{ display:'flex', gap:10, padding:'10px 0', borderTop:'1px solid rgba(255,255,255,0.07)' }}>
+        <div key={i} style={{ display:'flex', gap:10, padding:'10px 0', borderTop:'1px solid rgba(41,45,41,0.1)' }}>
           <div style={{ width:26, height:26, borderRadius:8, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:`${s.color}1f`, border:`1px solid ${s.color}3a` }}>
             <s.Ic size={14} color={s.color}/>
           </div>
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontSize:9.5, fontWeight:800, color:s.color, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:3 }}>{s.label}</div>
-            <div style={{ fontSize:12, color:'rgba(255,255,255,0.82)', lineHeight:1.5 }}>{s.body}</div>
+            <div style={{ fontSize:12, color:'rgba(41,45,41,0.78)', lineHeight:1.5 }}>{s.body}</div>
           </div>
         </div>
       ))}
       {r.cho_mensaje && (
-        <div style={{ marginTop:9, paddingTop:9, borderTop:'1px solid rgba(255,255,255,0.07)', fontSize:10.5, color:'rgba(255,255,255,0.5)', fontStyle:'italic' }}>{r.cho_mensaje}</div>
+        <div style={{ marginTop:9, paddingTop:9, borderTop:'1px solid rgba(41,45,41,0.1)', fontSize:10.5, color:'rgba(41,45,41,0.5)', fontStyle:'italic' }}>{r.cho_mensaje}</div>
       )}
     </div>
   )
@@ -5625,23 +5625,23 @@ function EnergyReserveTimeline({ atletaId, sesionId, act, sport='running' }) {
     : [['Duración', durMin!=null?fmtDur(durMin):'--'], ['Distancia', distKm!=null?`${distKm.toFixed(1)} km`:'--'], ['Ritmo prom.', avgPace?`${fP(avgPace)}${cfg.paceUnit}`:'--'], ['FC prom.', avgHr!=null?`${avgHr} bpm`:'--']]
 
   return (
-    <div style={{padding:'12px 6px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-      <div style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.35)',
+    <div style={{padding:'12px 6px',borderBottom:'1px solid rgba(41,45,41,0.08)'}}>
+      <div style={{ fontSize:10, fontWeight:700, color:'rgba(41,45,41,0.45)',
         textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8, padding:'0 2px' }}>
         Métricas avanzadas
       </div>
       <button onClick={toggle} style={{
         display:'flex', alignItems:'center', gap:10, width:'100%',
-        padding:'10px 12px', borderRadius:12, fontSize:13, fontWeight:600,
-        background: open ? 'rgba(74,222,128,0.10)' : 'rgba(255,255,255,0.03)',
-        border:`1px solid ${open ? 'rgba(74,222,128,0.35)' : 'rgba(255,255,255,0.07)'}`,
-        color: open ? '#4ADE80' : 'rgba(255,255,255,0.75)',
+        padding:'11px 13px', borderRadius:12, fontSize:13, fontWeight:700,
+        background: open ? 'rgba(120,134,107,0.12)' : '#FBFAF6',
+        border:`1px solid ${open ? 'rgba(120,134,107,0.4)' : 'rgba(41,45,41,0.1)'}`,
+        color: open ? '#5E6B52' : '#292D29',
         cursor:'pointer', transition:'all 0.15s', textAlign:'left',
       }}>
-        <BatteryFull size={15} color={open ? '#4ADE80' : 'rgba(255,255,255,0.4)'}/>
+        <BatteryFull size={15} color={open ? '#78866B' : '#E65B45'}/>
         <span style={{ flex:1 }}>{loading ? 'Calculando...' : 'Reserva energética'}</span>
-        <span style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>Ver análisis</span>
-        <ChevronRight size={14} color="rgba(255,255,255,0.3)"
+        <span style={{ fontSize:10, fontWeight:600, color:'rgba(41,45,41,0.5)' }}>Ver análisis</span>
+        <ChevronRight size={14} color="rgba(41,45,41,0.4)"
           style={{ transform: open ? 'rotate(90deg)' : 'none', transition:'transform 0.2s' }}/>
       </button>
 
@@ -6805,4 +6805,4 @@ function SeccionAsistente({ atletaId, nombre }) {
       </div>
     </div>
   )
-}
+}

@@ -44,34 +44,36 @@ const _streamsModuleCache = {}
 const _streamsPending = {}
 
 // ── Paleta NOAH — análisis deportivo profesional ────────────────────────────
+// Paleta en MARFIL (Opción 1). Series en colores oficiales NOAH; zonas Z1–Z6
+// estándar se mantienen (son funcionales). Solo presentación: no cambia la lógica.
 const D = {
-  bg:       '#080D18',
-  bg2:      '#0B1120',
-  glass:    'rgba(255,255,255,0.03)',
-  border:   'rgba(255,255,255,0.07)',
-  border2:  'rgba(255,255,255,0.13)',
-  text:     '#E2E8F0',
-  text2:    '#94A3B8',
-  text3:    'rgba(255,255,255,0.25)',
-  hr:    { line: '#A78BFA', area: 'rgba(167,139,250,0.04)', dot: '#A78BFA' },
-  power: { line: '#F59E0B', area: 'rgba(245,158,11,0.04)', dot: '#FCD34D' },
-  pace:  { line: '#22D3EE', area: 'rgba(34,211,238,0.04)', dot: '#22D3EE' },
-  cad:   { line: '#34D399', area: 'rgba(52,211,153,0.04)', dot: '#6EE7B7' },
-  alt:   { line: 'rgba(148,163,175,0.45)', area: 'rgba(148,163,175,0.06)' },
-  lthr:  '#F59E0B',
-  grid:  'rgba(255,255,255,0.06)',
-  lapSep:'rgba(255,255,255,0.10)',
-  lapBar:'rgba(255,255,255,0.04)',
-  lapBarHov:'rgba(255,255,255,0.08)',
-  lapBarTop:'rgba(255,255,255,0.15)',
+  bg:       '#FBFAF6',
+  bg2:      '#F3F0E8',
+  glass:    'rgba(41,45,41,0.02)',
+  border:   'rgba(41,45,41,0.10)',
+  border2:  'rgba(41,45,41,0.16)',
+  text:     '#292D29',
+  text2:    '#6E726C',
+  text3:    'rgba(41,45,41,0.40)',
+  hr:    { line: '#E65B45', area: 'rgba(230,91,69,0.08)',  dot: '#E65B45' },
+  power: { line: '#E0A43C', area: 'rgba(224,164,60,0.08)', dot: '#E0A43C' },
+  pace:  { line: '#4F8CC9', area: 'rgba(79,140,201,0.08)', dot: '#4F8CC9' },
+  cad:   { line: '#78866B', area: 'rgba(120,134,107,0.08)',dot: '#78866B' },
+  alt:   { line: 'rgba(41,45,41,0.30)', area: 'rgba(41,45,41,0.05)' },
+  lthr:  '#E65B45',
+  grid:  'rgba(41,45,41,0.07)',
+  lapSep:'rgba(41,45,41,0.12)',
+  lapBar:'rgba(41,45,41,0.03)',
+  lapBarHov:'rgba(41,45,41,0.06)',
+  lapBarTop:'rgba(41,45,41,0.14)',
   zone: {
     Z1: '#6366F1', Z2: '#3B82F6', Z3: '#22C55E',
     Z4: '#EAB308', Z5: '#F97316', Z6: '#EF4444',
   },
   sport: {
-    running:  '#A78BFA',
-    cycling:  '#F59E0B',
-    swimming: '#38BDF8',
+    running:  '#E65B45',
+    cycling:  '#78866B',
+    swimming: '#4F8CC9',
   },
 }
 
@@ -564,11 +566,11 @@ export default function GraficoActividadStreams({
     { key: 'cadence',  label: sport === 'cycling' ? 'Cad rpm' : 'Cad spm',
       color: D.cad.line, show: series.some(s => s.cadence) },
     { key: 'alt',      label: 'Altitud',   color: D.alt.line,   show: altVals.length > 0 },
-    { key: 'temp',     label: 'Temp °C',   color: '#67E8F9',    show: tempVals.length > 0 },
-    { key: 'vert_osc', label: 'Osc.Vert',  color: '#F472B6',    show: vertVals.length > 0 },
-    { key: 'gct',      label: 'GCT',       color: '#FB923C',    show: gctVals.length > 0 },
-    { key: 'stride',   label: 'Zancada',   color: '#A78BFA',    show: stridVals.length > 0 },
-    { key: 'resp',     label: 'Resp',      color: '#67E8F9',    show: respVals.length > 0 },
+    { key: 'temp',     label: 'Temp °C',   color: '#4F8CC9',    show: tempVals.length > 0 },
+    { key: 'vert_osc', label: 'Osc.Vert',  color: '#E65B45',    show: vertVals.length > 0 },
+    { key: 'gct',      label: 'GCT',       color: '#E0A43C',    show: gctVals.length > 0 },
+    { key: 'stride',   label: 'Zancada',   color: '#78866B',    show: stridVals.length > 0 },
+    { key: 'resp',     label: 'Resp',      color: '#4F8CC9',    show: respVals.length > 0 },
   ].filter(c => c.show)
 
   // Si el canal activo no tiene datos disponibles en esta sesión (ej: no
@@ -606,9 +608,9 @@ export default function GraficoActividadStreams({
               {metrics.map((m, i) => (
                 <div key={i} style={{
                   flex: '1 1 calc(33.3% - 8px)', minWidth: 90, maxWidth: 160,
-                  background: 'linear-gradient(165deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
+                  background: 'linear-gradient(165deg, rgba(41,45,41,0.06) 0%, rgba(41,45,41,0.02) 100%)',
                   borderRadius: 10, padding: '10px 12px',
-                  border: '1px solid rgba(255,255,255,0.07)',
+                  border: '1px solid rgba(41,45,41,0.07)',
                   textAlign: 'center',
                 }}>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4, marginBottom:4 }}>
@@ -625,7 +627,7 @@ export default function GraficoActividadStreams({
           <div style={{
             marginTop:8, display:'flex', gap:12, alignItems:'center',
             padding:'5px 12px', borderRadius:8, fontSize:11,
-            background:'rgba(255,255,255,0.05)', border:`1px solid ${D.border2}`,
+            background:'rgba(41,45,41,0.05)', border:`1px solid ${D.border2}`,
           }}>
             <span style={{ color:D.text3, fontSize:10 }}>{fmtTime(hS.t)}</span>
             {(() => {
@@ -777,7 +779,7 @@ export default function GraficoActividadStreams({
                 <g key={i}>
                   {/* Barra con color de zona */}
                   <rect x={x1+0.5} y={blockTop} width={w-1} height={blockH}
-                    fill={zoneCol} opacity={isHov ? 0.85 : (_lapsNorm.length <= 1 ? 0.25 : 0.75)} rx="1"/>
+                    fill={zoneCol} opacity={isHov ? 0.70 : (_lapsNorm.length <= 1 ? 0.18 : 0.52)} rx="1"/>
                   {/* Separador entre laps */}
                   {i > 0 && (
                     <line x1={x1} y1={PT} x2={x1} y2={PT+iH}
@@ -821,7 +823,7 @@ export default function GraficoActividadStreams({
             const yV = v => PT + iH - ((v - vMin) / (vMax - vMin || 1)) * iH
             return <path d={bezierPath(
               series.map((s,i) => s.vert_osc ? [xs(i), yV(s.vert_osc)] : null).filter(Boolean)
-            )} fill="none" stroke="#F472B6" strokeWidth="1" opacity="0.6"
+            )} fill="none" stroke="#E65B45" strokeWidth="1" opacity="0.65"
               clipPath={`url(#clip_${sesionId})`}/>
           })()}
 
@@ -831,7 +833,7 @@ export default function GraficoActividadStreams({
             const yS = v => PT + iH - ((v - sMin) / (sMax - sMin || 1)) * iH
             return <path d={bezierPath(
               series.map((s,i) => s.stride ? [xs(i), yS(s.stride)] : null).filter(Boolean)
-            )} fill="none" stroke="#C084FC" strokeWidth="1" opacity="0.6"
+            )} fill="none" stroke="#78866B" strokeWidth="1" opacity="0.65"
               clipPath={`url(#clip_${sesionId})`}/>
           })()}
 
@@ -841,7 +843,7 @@ export default function GraficoActividadStreams({
             const yT = v => PT + iH - ((v - tMin) / (tMax - tMin || 1)) * iH
             return <path d={bezierPath(
               series.map((s,i) => s.temp != null ? [xs(i), yT(s.temp)] : null).filter(Boolean)
-            )} fill="none" stroke="#67E8F9" strokeWidth="1" opacity="0.6"
+            )} fill="none" stroke="#4F8CC9" strokeWidth="1" opacity="0.65"
               clipPath={`url(#clip_${sesionId})`}/>
           })()}
 
@@ -851,7 +853,7 @@ export default function GraficoActividadStreams({
             const yR = v => PT + iH - ((v - rMin) / (rMax - rMin || 1)) * iH
             return <path d={bezierPath(
               series.map((s,i) => s.resp ? [xs(i), yR(s.resp)] : null).filter(Boolean)
-            )} fill="none" stroke="#FB923C" strokeWidth="1" opacity="0.6"
+            )} fill="none" stroke="#4F8CC9" strokeWidth="1" opacity="0.6"
               clipPath={`url(#clip_${sesionId})`}/>
           })()}
 
@@ -861,7 +863,7 @@ export default function GraficoActividadStreams({
             const yG = v => PT + iH - ((v - gMin) / (gMax - gMin || 1)) * iH
             return <path d={bezierPath(
               series.map((s,i) => s.gct ? [xs(i), yG(s.gct)] : null).filter(Boolean)
-            )} fill="none" stroke="#FB923C" strokeWidth="1" opacity="0.5"
+            )} fill="none" stroke="#E0A43C" strokeWidth="1" opacity="0.6"
               clipPath={`url(#clip_${sesionId})`}/>
           })()}
 
@@ -958,7 +960,7 @@ export default function GraficoActividadStreams({
           {hover != null && hX != null && (
             <>
               <line x1={hX} y1={PT} x2={hX} y2={PT+iH}
-                stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
+                stroke="rgba(41,45,41,0.15)" strokeWidth="1"/>
               {hS?.hr    != null && canalesOn.hr    && yHR(hS.hr)     != null &&
                 <circle cx={hX} cy={yHR(hS.hr)}     r={3} fill={D.hr.dot}    stroke={D.bg} strokeWidth="1.5"/>}
               {hS?.power != null && canalesOn.power && yPow(hS.power)  != null &&
@@ -1143,7 +1145,7 @@ function SinGrafico({ act, distKm, sport, loading, streamZonas, lthr, sesionId }
               <div key={i} style={{
                 flex:1, minWidth:80,
                 background:D.glass, border:`1px solid ${D.border}`,
-                borderTop:`2px solid ${m.c||'rgba(255,255,255,0.15)'}`,
+                borderTop:`2px solid ${m.c||'rgba(41,45,41,0.15)'}`,
                 borderRadius:10, padding:'10px 13px',
               }}>
                 <div style={{ fontSize:10, color:D.text3, textTransform:'uppercase',
@@ -1225,7 +1227,7 @@ function TablaLaps({ laps, sport, lthr, hover, setHover, ftp, paceUmbral, zonasR
               return (
                 <tr key={i} onMouseEnter={()=>setHover?.(i)} onMouseLeave={()=>setHover?.(null)}
                   style={{ background:isH?'rgba(245,158,11,0.06)':'transparent',
-                    borderBottom:`1px solid rgba(255,255,255,0.04)` }}>
+                    borderBottom:`1px solid rgba(41,45,41,0.04)` }}>
                   <td style={{ padding:'5px 8px', color:D.text3, fontWeight:700, textAlign:'left' }}>{l.lap_num||i+1}</td>
                   <td style={{ padding:'5px 8px', color:D.text2, textAlign:'right' }}>{fmtDur(l.duration_min)}</td>
                   <td style={{ padding:'5px 8px', color:D.text2, textAlign:'right' }}>
@@ -1280,15 +1282,15 @@ function TablaLaps({ laps, sport, lthr, hover, setHover, ftp, paceUmbral, zonasR
               : (l.pace ? fmtP(l.pace) : '--')
             return (
               <tr key={i} onMouseEnter={()=>setHover?.(i)} onMouseLeave={()=>setHover?.(null)}
-                style={{ background:isH?'rgba(255,255,255,0.05)':'transparent', cursor:'default' }}>
+                style={{ background:isH?'rgba(41,45,41,0.05)':'transparent', cursor:'default' }}>
                 <td style={{ padding:'3px 7px', color:D.text3, fontWeight:600 }}>{l.lap_num||l.lap||i+1}</td>
-                <td style={{ padding:'3px 7px', color:'rgba(255,255,255,0.6)' }}>
+                <td style={{ padding:'3px 7px', color:'rgba(41,45,41,0.6)' }}>
                   {l.distance_km?`${Math.round(l.distance_km*1000)}m`:'--'}
                 </td>
                 <td style={{ padding:'3px 7px', color:D.text2 }}>{fmtDur(l.duration_min)}</td>
                 <td style={{ padding:'3px 7px', fontWeight:700, color:zc }}>{l.hr_avg?Math.round(l.hr_avg):'--'}</td>
                 <td style={{ padding:'3px 7px', color:D.text3 }}>{l.hr_max?Math.round(l.hr_max):'--'}</td>
-                <td style={{ padding:'3px 7px', color:'rgba(255,255,255,0.55)' }}>{metrica}</td>
+                <td style={{ padding:'3px 7px', color:'rgba(41,45,41,0.55)' }}>{metrica}</td>
                 <td style={{ padding:'3px 7px', color:D.text3 }}>{(l.cadence||l.cadencia)?Math.round(l.cadence||l.cadencia):'--'}</td>
                 <td style={{ padding:'3px 7px' }}>
                   <span style={{ padding:'1px 6px', borderRadius:3, fontSize:9, fontWeight:700,
