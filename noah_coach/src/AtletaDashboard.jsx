@@ -3666,7 +3666,13 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
     .map(s => ({ t: Math.round(s.ts_s / 60), wbal: s.wbal_pct, torque: s.torque }))
 
   return (
-    <div style={{ padding:'12px 6px', borderBottom:`1px solid ${NOAH_C.border}` }}>
+    <div style={{
+      borderRadius: 22, overflow: 'hidden',
+      background: 'linear-gradient(165deg, #1C211C 0%, #13160F 100%)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      boxShadow: '0 22px 48px -18px rgba(41,45,41,0.55), inset 0 1px 0 rgba(255,255,255,0.08)',
+      padding:'16px 14px 18px',
+    }}>
       {/* Métricas avanzadas — antes eran 2 botones grandes con fondo azul
           sólido; ahora son filas de navegación compactas (icono + label +
           chevron), igual criterio visual que el resto del rediseño: sin
@@ -3701,7 +3707,7 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
             {[
               { label:'NP (Potencia Normalizada)', value: metricas?.np_watts ? `${metricas.np_watts}W` : '--', color:'#3B82F6' },
               { label:'Trabajo total', value: metricas?.trabajo_kj ? `${Math.round(metricas.trabajo_kj)}kJ` : '--', color:'#F97316' },
-              { label:'Variability Index', value: metricas?.variability_index ? metricas.variability_index.toFixed(2) : '--', color:'#A855F7' },
+              { label:'Variability Index', value: metricas?.variability_index ? metricas.variability_index.toFixed(2) : '--', color:'#9DB089' },
             ].map(({label,value,color}) => (
               <div key={label} style={{ flex:1, minWidth:0, background:`${color}12`, borderRadius:8,
                 padding:'8px 12px', border:`1px solid ${color}25` }}>
@@ -3753,7 +3759,7 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
                   { label:'Q2 (veneno)', value:`${cuadrantes?.Q2??'--'}%`, color:'#EF4444' },
                   { label:'NME', value:metricas?.nme?metricas.nme.toFixed(1):'--', color:'#3B82F6' },
                   { label:'CP (potencia crítica)', value:metricas?.cp_usado?`${Math.round(metricas.cp_usado)}W`:'--', color:'#F97316' },
-                  { label:"W' (capacidad anaeróbica)", value:metricas?.w_prime_usado?`${Math.round(metricas.w_prime_usado/1000)}kJ`:'--', color:'#A855F7' },
+                  { label:"W' (capacidad anaeróbica)", value:metricas?.w_prime_usado?`${Math.round(metricas.w_prime_usado/1000)}kJ`:'--', color:'#9DB089' },
                 ].map(({ label, value, color }) => (
                   <div key={label} style={{ flex:1, background:`${color}12`, borderRadius:8,
                     padding:'8px 12px', border:`1px solid ${color}25` }}>
@@ -4120,6 +4126,18 @@ const o1card = (extra = {}) => ({
 const o1eyebrow = { fontFamily: FONT.base, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: NOAH.ink45 }
 const DEP_O1 = { running: NOAH.coral, cycling: NOAH.salvia, swimming: NOAH.azul }
 
+// ISLA OSCURA (Opción C): los gráficos científicos de Mi Sesión viven sobre un
+// grafito cálido derivado del Grafito #292D29 de la paleta — marfil y grafito son
+// los dos polos del MISMO sistema. Flotan como islas oscuras sobre el chrome marfil.
+// Mismo estilo que GraficoActividadStreams (isla autónoma) para que todas coincidan.
+const o1dark = (extra = {}) => ({
+  background: 'linear-gradient(165deg, #1C211C 0%, #13160F 100%)',
+  border: '1px solid rgba(255,255,255,0.08)', borderRadius: 22,
+  boxShadow: '0 22px 48px -18px rgba(41,45,41,0.55), inset 0 1px 0 rgba(255,255,255,0.08)',
+  overflow: 'hidden',
+  ...extra,
+})
+
 function EnRediseno({ nombre, onAbrir }) {
   return (
     <div style={{ ...o1card({ padding: '38px 22px', textAlign: 'center' }) }}>
@@ -4212,23 +4230,18 @@ function ActividadCardV2({ act, sesionPresc, atletaId }) {
         </div>
       </div>
 
-      {/* Streams — vidrio directo sobre el fondo, sin título */}
-      <div style={{ ...o1card({ padding: '10px 2px', overflow: 'hidden' }) }}>
-        <GraficoActividad act={act} laps={act.laps || []} sport={sport} lthr={LTHR} sesionId={sid} atletaId={atletaId} css={cssVal} paceUmbral={paceUmbralVal} />
-      </div>
+      {/* Streams — isla oscura propia (se auto-estila), flota directo sin marco */}
+      <GraficoActividad act={act} laps={act.laps || []} sport={sport} lthr={LTHR} sesionId={sid} atletaId={atletaId} css={cssVal} paceUmbral={paceUmbralVal} />
 
       {/* Recorrido GPS — el mapa ya trae su propia superficie, flota directo */}
       <SeccionRoute sesionId={sid} atletaId={atletaId} sport={sport} />
 
-      {/* Reserva energética — flota directo sobre el fondo */}
-      <div style={{ ...o1card({ overflow: 'hidden' }) }}>
-        <EnergyReserveTimeline atletaId={atletaId} sesionId={sid} act={act} sport={sport} />
-      </div>
+      {/* Reserva energética — se auto-gestiona (trigger marfil + panel oscuro propio), flota directa */}
+      <EnergyReserveTimeline atletaId={atletaId} sesionId={sid} act={act} sport={sport} />
 
+      {/* Torque / W'bal (ciclismo) — se auto-gestiona como isla oscura, flota directo */}
       {sport === 'cycling' && (
-        <div style={{ ...o1card({ overflow: 'hidden' }) }}>
-          <TorqueWbalBotones atletaId={atletaId} sesionId={sid} ftp={act.ftp || 200} cadenciaOptima={85} />
-        </div>
+        <TorqueWbalBotones atletaId={atletaId} sesionId={sid} ftp={act.ftp || 200} cadenciaOptima={85} />
       )}
     </div>
   )
