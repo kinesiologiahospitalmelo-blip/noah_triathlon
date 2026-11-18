@@ -808,6 +808,211 @@ function SemanaCompleta({ presc, atletaId, sesionExpandida, setSesionExpandida }
 
 
 
+// ── Esta Semana (v2) — sección autónoma marfil ──────────────────────────────
+const SEM_SP = {
+  running:  { c:'#E65B45', l:'rgba(230,91,69,0.12)',   Icon:IconRun,  short:'RUN',  label:'Running'  },
+  cycling:  { c:'#78866B', l:'rgba(120,134,107,0.12)', Icon:IconBike, short:'BIKE', label:'Ciclismo' },
+  swimming: { c:'#4F8CC9', l:'rgba(79,140,201,0.12)',  Icon:IconSwim, short:'SWIM', label:'Natación' },
+}
+const SEM_EST = {
+  done:    { c:'#4E9E6B', l:'rgba(78,158,107,0.14)', label:'Completada',   icon:CheckCircle2 },
+  miss:    { c:'#E65B45', l:'rgba(230,91,69,0.12)',  label:'No realizada', icon:XCircle },
+  partial: { c:'#E0A43C', l:'rgba(224,164,60,0.14)', label:'Modificada',   icon:AlertTriangle },
+  planned: { c:'rgba(41,45,41,0.45)', l:'rgba(41,45,41,0.06)', label:'Planificada', icon:Minus },
+  rest:    { c:'rgba(41,45,41,0.4)',  l:'rgba(41,45,41,0.05)', label:'Descanso',    icon:Minus },
+}
+function SemSportPill({ sport }) {
+  const s = SEM_SP[sport] || SEM_SP.running
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 9px', borderRadius:7,
+      fontSize:11, fontWeight:800, color:s.c, background:s.l, border:`1px solid ${s.c}33`, whiteSpace:'nowrap' }}>
+      <s.Icon size={13} color={s.c} />{s.short}
+    </span>
+  )
+}
+function SemEstadoPill({ estado }) {
+  const e = SEM_EST[estado] || SEM_EST.planned
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'3px 9px', borderRadius:7,
+      fontSize:10.5, fontWeight:700, color:e.c, background:e.l, border:`1px solid ${e.c}33` }}>
+      <e.icon size={12} color={e.c} />{e.label}
+    </span>
+  )
+}
+function SemSesionCard({ sesion, expandida, onToggle, esHoy, atletaId }) {
+  const estado = getEstado(sesion)
+  const s = SEM_SP[sesion?.sport||'running'] || SEM_SP.running
+  const accent = estado==='done'?SEM_EST.done.c : estado==='miss'?SEM_EST.miss.c : estado==='partial'?SEM_EST.partial.c : esHoy?s.c : 'rgba(41,45,41,0.12)'
+  return (
+    <div style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderLeft:`3px solid ${accent}`,
+      borderRadius:14, boxShadow:NOAH.shadow, overflow:'hidden' }}>
+      <div onClick={onToggle} style={{ padding:'12px 14px', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
+        <div style={{ width:44, height:44, borderRadius:10, flexShrink:0, background:s.l, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2 }}>
+          <s.Icon size={16} color={s.c} />
+          <span style={{ fontSize:8, fontWeight:800, color:s.c, letterSpacing:0.8 }}>{s.short}</span>
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:14, fontWeight:700, color:NOAH.ink, marginBottom:3, lineHeight:1.2 }}>{sesion.nombre}</div>
+          <div style={{ fontSize:11, color:'rgba(41,45,41,0.55)', display:'flex', gap:10, flexWrap:'wrap' }}>
+            {sesion.duracion && <span>⏱ {Math.round(sesion.duracion)} min</span>}
+            {sesion.tss && <span>TSS {sesion.tss}</span>}
+            {sesion.sport==='cycling' && sesion.watts_min ? <span>{sesion.watts_min}–{sesion.watts_max}W</span>
+              : sesion.sport==='swimming' && sesion.pace_ref ? <span>{fmtPace(sesion.pace_ref)}/100m</span>
+              : sesion.pace_ref ? <span>{fmtPace(sesion.pace_ref)}/km</span> : null}
+          </div>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:5, flexShrink:0 }}>
+          <SemSportPill sport={sesion.sport||'running'} />
+          <SemEstadoPill estado={estado} />
+        </div>
+        <span style={{ fontSize:12, color:'rgba(41,45,41,0.4)', transform:expandida?'rotate(180deg)':'none', transition:'transform 0.2s', marginLeft:2 }}>▾</span>
+      </div>
+      {expandida && (
+        <div style={{ borderTop:'1px solid rgba(41,45,41,0.08)', padding:'14px', background:'rgba(243,240,232,0.5)' }}>
+          <WorkoutChart sesion={sesion} atletaId={atletaId} mostrarGrafico={false} />
+          {getDiaKey(sesion.fecha) <= hoyKey() && atletaId && (
+            <div style={{marginTop:14}}>
+              <div style={{height:1,background:'rgba(41,45,41,0.08)',marginBottom:14}}/>
+              <div style={{fontSize:10,fontWeight:700,color:'rgba(41,45,41,0.45)',letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>Lo que hiciste</div>
+              <ActividadRealizada sesionPresc={sesion} atletaId={atletaId} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SemanaSection({ atletaId }) {
+  const id = atletaId || 1
+  const [presc, setPresc] = useState(null)
+  const [actsSemana, setActsSemana] = useState({})
+  const [exp, setExp] = useState(null)
+
+  const hoy = hoyKey()
+  const hoyDate = new Date(hoy+'T12:00:00')
+  const diaSemana = hoyDate.getDay() || 7
+  const lunes = new Date(hoyDate); lunes.setDate(hoyDate.getDate()-diaSemana+1)
+  const domingo = new Date(lunes); domingo.setDate(lunes.getDate()+6)
+  const desdeStr = lunes.toISOString().slice(0,10)
+  const hastaStr = domingo.toISOString().slice(0,10)
+
+  useEffect(() => {
+    if (!id) return
+    axios.get(`${API}/atletas/${id}/prescripcion`).then(r=>setPresc(r.data.data)).catch(()=>{})
+    authFetch(`${API}/atletas/${id}/actividades_rango?desde=${desdeStr}&hasta=${hastaStr}`)
+      .then(r=>r.json()).then(r=>setActsSemana(r.data?.actividades||{})).catch(()=>{})
+  }, [id, desdeStr])
+
+  const sesiones = (presc?.prescripcion?.sesiones || []).filter(s => {
+    const fk = getDiaKey(s.fecha); return fk && fk>=desdeStr && fk<=hastaStr
+  })
+  const porDia = {}
+  sesiones.forEach(s => { const fk=getDiaKey(s.fecha)||'sin-fecha'; (porDia[fk]=porDia[fk]||[]).push(s) })
+  Object.keys(actsSemana).forEach(f => { if(!porDia[f]) porDia[f]=[] })
+  const dias = Object.keys(porDia).sort()
+
+  if (presc && !dias.length) return (
+    <div style={{ textAlign:'center', padding:48, color:'rgba(41,45,41,0.5)', fontSize:14, fontFamily:FONT.base }}>Sin planificación para esta semana</div>
+  )
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16, fontFamily:FONT.base }}>
+      {dias.map(fk => {
+        const sesDia = porDia[fk]
+        const esHoy = fk===hoy
+        const esPasado = fk<hoy
+        const sc0 = SEM_SP[sesDia[0]?.sport||'running'] || SEM_SP.running
+        const fkDate = fk!=='sin-fecha' ? new Date(fk+'T12:00:00') : null
+        const diaNombre = fkDate ? fkDate.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'short'}) : 'Sin fecha'
+        return (
+          <div key={fk}>
+            <div style={{ padding:'4px 2px 8px', display:'flex', alignItems:'center', gap:10,
+              borderBottom:`1px solid ${esHoy?sc0.c+'40':'rgba(41,45,41,0.08)'}` }}>
+              <span style={{ fontSize:11, fontWeight:800, letterSpacing:0.8, textTransform:'uppercase',
+                color:esHoy?sc0.c:esPasado?'rgba(41,45,41,0.4)':'rgba(41,45,41,0.6)' }}>{diaNombre}</span>
+              {esHoy && <span style={{ fontSize:9, fontWeight:800, color:sc0.c, background:sc0.l, borderRadius:99, padding:'2px 8px', border:`1px solid ${sc0.c}33` }}>HOY</span>}
+              <div style={{ flex:1 }} />
+              <span style={{ fontSize:11, color:'rgba(41,45,41,0.4)', fontFamily:FONT.mono }}>TSS {sesDia.reduce((a,s)=>a+(s.tss||0),0)}</span>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:10, marginTop:10 }}>
+              {sesDia.map((s,i)=>(
+                <SemSesionCard key={i} sesion={s} esHoy={esHoy} atletaId={id}
+                  expandida={exp===`${fk}-${i}`} onToggle={()=>setExp(exp===`${fk}-${i}`?null:`${fk}-${i}`)} />
+              ))}
+              {sesDia.length===0 && (actsSemana[fk]||[]).map((act,i)=>{
+                const k=`${fk}-real-${i}`; const ab=exp===k
+                return (
+                  <div key={i} style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderLeft:`3px solid ${SEM_EST.done.c}`, borderRadius:14, boxShadow:NOAH.shadow, overflow:'hidden' }}>
+                    <button onClick={()=>setExp(ab?null:k)} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'12px 14px', border:'none', cursor:'pointer', background:'transparent', color:NOAH.ink, textAlign:'left', fontFamily:FONT.base }}>
+                      <SemSportPill sport={act.sport||'running'} />
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:SEM_EST.done.c, display:'flex', alignItems:'center', gap:6 }}>
+                          <CheckCircle2 size={13}/> {(SEM_SP[act.sport]?.label)||act.sport} · Realizada
+                        </div>
+                      </div>
+                      <span style={{ fontSize:12, color:'rgba(41,45,41,0.4)', transform:ab?'rotate(180deg)':'none', transition:'transform 0.2s' }}>▾</span>
+                    </button>
+                    {ab && (
+                      <div style={{ padding:'14px', background:'rgba(243,240,232,0.5)', borderTop:'1px solid rgba(41,45,41,0.08)' }}>
+                        <ActividadRealizada sesionPresc={{fecha:fk,sport:act.sport}} atletaId={id}/>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+
+      {presc?.prescripcion && (
+        <div style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderRadius:16, boxShadow:NOAH.shadow, padding:'14px 18px', display:'flex', gap:18, alignItems:'center', flexWrap:'wrap' }}>
+          {[['TSS Semana',presc.prescripcion.tss_total,'#E65B45'],['Fase',presc.prescripcion.fase,NOAH.ink],['Generado',presc.prescripcion.fecha_generada,'rgba(41,45,41,0.4)']].map(([l,v,col])=>(
+            <div key={l}>
+              <div style={{ fontSize:9, color:'rgba(41,45,41,0.45)', fontWeight:700, textTransform:'uppercase', letterSpacing:1.2, marginBottom:4 }}>{l}</div>
+              <div style={{ fontSize:20, fontWeight:800, color:col, fontFamily:FONT.mono }}>{v}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {presc?.cerebro?.sistemas && (
+        <div style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderRadius:16, boxShadow:NOAH.shadow, padding:'16px 18px' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <div style={{ fontSize:10, color:'#4F8CC9', fontWeight:800, letterSpacing:1.4, textTransform:'uppercase' }}>🧠 Cerebro NOAH</div>
+            {presc.cerebro.readiness && (() => {
+              const rd = presc.cerebro.readiness
+              const col = rd==='alto'?'#4E9E6B':rd==='medio'?'#E0A43C':'#E65B45'
+              return <div style={{ fontSize:10, fontWeight:800, padding:'3px 10px', borderRadius:99, background:`${col}1f`, color:col, border:`1px solid ${col}3a` }}>Readiness: {rd}</div>
+            })()}
+          </div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:presc.cerebro.limitante?12:0 }}>
+            {Object.entries(presc.cerebro.sistemas).map(([sys,val])=>{
+              const col = val>=80?'#4E9E6B':val>=60?'#E0A43C':'#E65B45'
+              return (
+                <div key={sys} style={{ flex:'1 1 80px', textAlign:'center', padding:'9px 4px', borderRadius:12, background:'rgba(243,240,232,0.6)', border:'1px solid rgba(41,45,41,0.07)' }}>
+                  <div style={{ fontSize:8, color:'rgba(41,45,41,0.45)', fontWeight:700, textTransform:'uppercase', marginBottom:4 }}>{sys}</div>
+                  <div style={{ fontSize:18, fontWeight:800, color:col, fontFamily:FONT.mono }}>{typeof val==='number'?val:'--'}</div>
+                </div>
+              )
+            })}
+          </div>
+          {presc.cerebro.limitante && (
+            <div style={{ fontSize:11, color:'rgba(41,45,41,0.7)', lineHeight:1.6 }}>
+              <strong style={{ color:'#E65B45' }}>Limitante:</strong> {presc.cerebro.limitante}
+              {presc.cerebro.foco && <span> · <strong style={{ color:'#4F8CC9' }}>Foco:</strong> {presc.cerebro.foco}</span>}
+            </div>
+          )}
+          {presc.cerebro.explicacion && (
+            <div style={{ fontSize:10, color:'rgba(41,45,41,0.45)', marginTop:6, lineHeight:1.5 }}>{presc.cerebro.explicacion}</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Curva de Periodización (vista atleta — simplificada) ──────────────────────
 function CurvaPeriodizacionAtleta({ atletaId }) {
   const [data, setData] = useState(null)
@@ -2914,7 +3119,14 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
       .catch(() => { setActsMes({}); setCargando(false) })
   }, [atletaId, mesOffset])
 
-  const SC = { running: NOAH_C.run, cycling: NOAH_C.bike, swimming: NOAH_C.swim }
+  const [prescInt, setPrescInt] = useState(null)
+  useEffect(() => {
+    if (presc || !atletaId) return
+    axios.get(`${API}/atletas/${atletaId}/prescripcion`).then(r=>setPrescInt(r.data.data)).catch(()=>{})
+  }, [atletaId, presc])
+  const prescUse = presc || prescInt
+  const SC = { running: '#E65B45', cycling: '#78866B', swimming: '#4F8CC9' }
+  const CAL_INK = '#292D29', CAL_AZUL = '#4F8CC9'
   const DIAS = ['D','L','M','M','J','V','S']
 
   const dow = (f) => new Date(f+'T12:00:00').getDay()
@@ -2928,29 +3140,29 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
   const semanas = Array.from({length:grilla.length/7}, (_,i) => grilla.slice(i*7,i*7+7))
 
   return (
-    <div style={{ background:'#111118', borderRadius:14, overflow:'hidden' }}>
+    <div style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderRadius:16, boxShadow:NOAH.shadow, overflow:'hidden', fontFamily:FONT.base }}>
 
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', padding:'14px 16px', gap:12 }}>
         <button onClick={() => setMesOffset(m => m-1)} style={{
-          background:'transparent', border:'none', color:'#60A5FA', fontSize:18, cursor:'pointer', padding:'4px 8px',
+          background:'transparent', border:'none', color:CAL_AZUL, fontSize:18, cursor:'pointer', padding:'4px 8px',
         }}>‹</button>
-        <div style={{ flex:1, textAlign:'center', fontSize:15, fontWeight:700, color:'rgba(255,255,255,0.9)',
+        <div style={{ flex:1, textAlign:'center', fontSize:15, fontWeight:800, color:CAL_INK,
           textTransform:'capitalize' }}>{nombreMes}</div>
         <button onClick={() => setMesOffset(m => m+1)} style={{
-          background:'transparent', border:'none', color:'#60A5FA', fontSize:18, cursor:'pointer', padding:'4px 8px',
+          background:'transparent', border:'none', color:CAL_AZUL, fontSize:18, cursor:'pointer', padding:'4px 8px',
         }}>›</button>
       </div>
 
       {/* Días de la semana */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', padding:'0 8px 6px' }}>
         {DIAS.map((d,i) => (
-          <div key={i} style={{ textAlign:'center', fontSize:11, fontWeight:600,
-            color:'rgba(255,255,255,0.4)', padding:'2px 0' }}>{d}</div>
+          <div key={i} style={{ textAlign:'center', fontSize:11, fontWeight:700,
+            color:'rgba(41,45,41,0.4)', padding:'2px 0' }}>{d}</div>
         ))}
       </div>
 
-      {cargando && <div style={{ padding:30, textAlign:'center', color:'rgba(255,255,255,0.3)', fontSize:12 }}>Cargando...</div>}
+      {cargando && <div style={{ padding:30, textAlign:'center', color:'rgba(41,45,41,0.35)', fontSize:12 }}>Cargando...</div>}
 
       {/* Semanas */}
       {!cargando && semanas.map((sem, si) => (
@@ -2974,29 +3186,29 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
 
             return (
               <div key={di} onClick={() => setDiaDetalle(selec ? null : fecha)} style={{
-                minHeight: 72, padding:'4px 3px', borderRadius:6, cursor:'pointer',
-                background: selec ? 'rgba(96,165,250,0.12)' : esHoy ? 'rgba(96,165,250,0.06)' : '#1A1A24',
-                border: esHoy ? '1px solid rgba(96,165,250,0.4)' : selec ? '1px solid rgba(96,165,250,0.3)' : '1px solid rgba(255,255,255,0.04)',
+                minHeight: 72, padding:'4px 3px', borderRadius:10, cursor:'pointer',
+                background: selec ? 'rgba(79,140,201,0.14)' : esHoy ? 'rgba(79,140,201,0.07)' : 'rgba(41,45,41,0.03)',
+                border: esHoy ? '1px solid rgba(79,140,201,0.45)' : selec ? '1px solid rgba(79,140,201,0.35)' : '1px solid rgba(41,45,41,0.06)',
                 transition: 'all 0.15s',
               }}>
                 {/* Número del día */}
-                <div style={{ fontSize:12, fontWeight: esHoy ? 800 : 500, marginBottom:4,
-                  color: esHoy ? '#60A5FA' : fecha > hoy ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.75)',
+                <div style={{ fontSize:12, fontWeight: esHoy ? 800 : 600, marginBottom:4,
+                  color: esHoy ? CAL_AZUL : fecha > hoy ? 'rgba(41,45,41,0.3)' : 'rgba(41,45,41,0.75)',
                   textAlign:'center',
                 }}>{num}</div>
 
                 {/* Barras de actividades por deporte (estilo Garmin) */}
                 <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
                   {Object.entries(deportes).map(([sp, data]) => {
-                    const color = SC[sp] || '#94A3B8'
+                    const color = SC[sp] || '#78866B'
                     const intense = data.tss > 60
                     return (
                       <div key={sp} style={{
                         height: intense ? 6 : 4,
                         borderRadius: 2,
                         background: color,
-                        opacity: intense ? 0.95 : 0.7,
-                        boxShadow: intense ? `0 0 4px ${color}66` : 'none',
+                        opacity: intense ? 0.95 : 0.55,
+                        boxShadow: intense ? `0 0 4px ${color}55` : 'none',
                       }} />
                     )
                   })}
@@ -3010,22 +3222,22 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
       {/* Detalle día */}
       {diaDetalle && (() => {
         const acts = actsMes[diaDetalle] || []
-        const sesiones = presc?.prescripcion?.sesiones || []
+        const sesiones = prescUse?.prescripcion?.sesiones || []
         const pres = sesiones.filter(s => getDiaKey(s.fecha) === diaDetalle)
         const label = new Date(diaDetalle+'T12:00:00').toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'})
 
         return (
-          <div style={{ margin:'4px 8px 8px', padding:'12px', borderRadius:10,
-            background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ fontSize:12, fontWeight:700, color:'#60A5FA',
+          <div style={{ margin:'4px 10px 10px', padding:'12px 14px', borderRadius:12,
+            background:'rgba(243,240,232,0.7)', border:'1px solid rgba(41,45,41,0.08)' }}>
+            <div style={{ fontSize:12, fontWeight:800, color:CAL_AZUL,
               marginBottom:10, textTransform:'capitalize' }}>{label}</div>
 
             {acts.length === 0 && pres.length === 0 && (
-              <div style={{ fontSize:12, color:'rgba(255,255,255,0.3)' }}>Sin actividad</div>
+              <div style={{ fontSize:12, color:'rgba(41,45,41,0.4)' }}>Sin actividad</div>
             )}
 
             {acts.map((a, i) => {
-              const col = SC[a.sport] || '#94A3B8'
+              const col = SC[a.sport] || '#78866B'
               const dk = (a.distance_km > 500 ? a.distance_km/1000 : a.distance_km)?.toFixed(1)
               const sid = a.sesion_id || a.id
               const abierta = actExpandida === sid
@@ -3033,18 +3245,18 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
                 <div key={i}>
                   <div onClick={() => setActExpandida(abierta ? null : sid)}
                     style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', cursor:'pointer',
-                    borderBottom: i < acts.length-1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                    borderBottom: i < acts.length-1 ? '1px solid rgba(41,45,41,0.07)' : 'none' }}>
                     <div style={{ width:4, height:28, borderRadius:2, background:col }} />
                     <div style={{ flex:1 }}>
-                      <div style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.85)', display:'flex', alignItems:'center', gap:6 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:CAL_INK, display:'flex', alignItems:'center', gap:6 }}>
                         <SportIcon sport={a.sport} size={13} color={col} />
                         {a.sport === 'running' ? 'Run' : a.sport === 'cycling' ? 'Bike' : 'Swim'}
                       </div>
-                      <div style={{ fontSize:10, color:'rgba(255,255,255,0.45)', marginTop:2 }}>
+                      <div style={{ fontSize:10, color:'rgba(41,45,41,0.5)', marginTop:2 }}>
                       {Math.round(a.duration_min || 0)}min · {dk}km · TSS {Math.round(a.tss_total || 0)}
                       </div>
                     </div>
-                    <ChevronDown size={16} color="rgba(255,255,255,0.3)"
+                    <ChevronDown size={16} color="rgba(41,45,41,0.3)"
                       style={{ transform: abierta ? 'rotate(180deg)' : 'none', transition:'transform 0.2s' }} />
                   </div>
                   {abierta && (
@@ -3058,13 +3270,13 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
             })}
 
             {pres.filter(s => !acts.some(a => a.sport === s.sport)).map((s, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', opacity:0.5 }}>
-                <div style={{ width:4, height:28, borderRadius:2, background:SC[s.sport]||'#94A3B8', opacity:0.4 }} />
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', opacity:0.65 }}>
+                <div style={{ width:4, height:28, borderRadius:2, background:SC[s.sport]||'#78866B', opacity:0.5 }} />
                 <div>
-                  <div style={{ fontSize:11, fontWeight:600, color:'rgba(255,255,255,0.5)' }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:'rgba(41,45,41,0.55)' }}>
                     {s.nombre || s.sport}
                   </div>
-                  <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>Planificado · {Math.round(s.duracion)}min</div>
+                  <div style={{ fontSize:10, color:'rgba(41,45,41,0.4)' }}>Planificado · {Math.round(s.duracion)}min</div>
                 </div>
               </div>
             ))}
@@ -3121,12 +3333,12 @@ function ModeloBanisterAtleta({ atletaId }) {
 
   // ── Paleta brillante (prompt Parte 2) ────────────────────────────────────
   const P = {
-    ctl:    '#7C6CFF',   // violeta eléctrico
-    atl:    '#FF5C7A',   // coral
-    tsb:    '#2DE3A7',   // verde menta
-    tsb_bg: 'rgba(45,227,167,0.08)',
+    ctl:    '#4F8CC9',   // azul (fitness/CTL)
+    atl:    '#E65B45',   // coral (fatiga/ATL)
+    tsb:    '#78866B',   // salvia (forma/TSB)
+    tsb_bg: 'rgba(120,134,107,0.10)',
     fases: {
-      A:    'rgba(99,102,241,0.10)',   // violeta
+      A:    'rgba(79,140,201,0.10)',   // azul
       T:    'rgba(251,191,36,0.10)',   // ámbar
       R:    'rgba(239,68,68,0.10)',    // rojo
       Taper:'rgba(16,185,129,0.10)',  // verde
@@ -3138,7 +3350,7 @@ function ModeloBanisterAtleta({ atletaId }) {
     carreras: { A:'#EF4444', B:'#F59E0B', C:'#6366F1', D:'#6B7280' },
   }
 
-  const SPORT_C = { running:NOAH_C.accent, cycling:NOAH_C.bike, swimming:NOAH_C.success }
+  const SPORT_C = { running:'#E65B45', cycling:'#78866B', swimming:'#4F8CC9' }
   const hist  = d.hist || [], proy = d.proy || []
   const todos = [...hist, ...proy]
   if (!todos.length) return null
@@ -3274,8 +3486,8 @@ function ModeloBanisterAtleta({ atletaId }) {
         </span>
         <div style={{
           padding:'3px 10px', borderRadius:99, fontSize:10, fontWeight:700,
-          background:`rgba(124,108,255,0.15)`, color:P.ctl,
-          border:`1px solid rgba(124,108,255,0.3)`,
+          background:`rgba(79,140,201,0.15)`, color:P.ctl,
+          border:`1px solid rgba(79,140,201,0.3)`,
         }}>
           {faseLabel}
         </div>
@@ -4416,9 +4628,24 @@ function GrupoEntreno({ atletaId, presc, goNav, onInicio, onAsistente, abrir }) 
     <PantallaNoah title="Entreno" onBack={onInicio} navActivo="entreno" onNav={goNav} onAsistente={onAsistente} subtabs={subtabs} subActivo={sub} onSub={setSub}
       foto="/assets/hero_entreno.jpg" heroEyebrow="Entrenamiento" heroTitulo="Tu sesión de hoy">
       {sub === 'hoy' && <SesionDelDiaV2 atletaId={atletaId} presc={presc} />}
-      {sub === 'semana' && <EnRediseno nombre="Esta Semana" onAbrir={() => abrir('semana')} />}
-      {sub === 'calendario' && <EnRediseno nombre="Calendario" onAbrir={() => abrir('calendario')} />}
-      {sub === 'plan' && <EnRediseno nombre="Planificación" onAbrir={() => abrir('periodizacion')} />}
+      {sub === 'semana' && <SemanaSection atletaId={atletaId} />}
+      {sub === 'calendario' && <CalendarioMensual atletaId={atletaId} />}
+      {sub === 'plan' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+          <div>
+            <div style={{ fontSize:16, fontWeight:800, color:NOAH.ink, display:'flex', alignItems:'center', gap:8, fontFamily:FONT.base }}>
+              <TrendingUp size={17} color={NOAH.coral}/> Planificación A/T/R/Taper
+            </div>
+            <div style={{ fontSize:13, color:NOAH.ink70, marginTop:4, fontFamily:FONT.base }}>Tu curva de CTL proyectada hacia la carrera.</div>
+          </div>
+          <div style={{ ...o1dark({ padding:'18px 8px' }) }}>
+            <ModeloBanisterAtleta atletaId={atletaId} />
+          </div>
+          <div style={{ ...o1dark({ padding:'16px 14px' }) }}>
+            <ProyeccionMultideporte atletaId={atletaId} />
+          </div>
+        </div>
+      )}
     </PantallaNoah>
   )
 }
@@ -5560,9 +5787,9 @@ function ProyeccionMultideporte({ atletaId }) {
   )
 
   const DEPORTES = [
-    {key:'running',  label:'🏃 Running',  color:NOAH_C.run  || '#8B5CF6'},
-    {key:'cycling',  label:'🚴 Ciclismo', color:NOAH_C.bike || '#38BDF8'},
-    {key:'swimming', label:'🏊 Natación', color:NOAH_C.swim || '#34D399'},
+    {key:'running',  label:'🏃 Running',  color:'#E65B45'},
+    {key:'cycling',  label:'🚴 Ciclismo', color:'#78866B'},
+    {key:'swimming', label:'🏊 Natación', color:'#4F8CC9'},
   ]
   const conDatos = DEPORTES.filter(d => data[d.key])
   if (conDatos.length === 0) return null
