@@ -1550,6 +1550,44 @@ function MiSesion({ presc, atletaId }) {
 }
 
 // ── Zonas tables ──────────────────────────────────────────────────────────────
+// Colores de zona estándar (fisiológicos) — se mantienen; solo el texto pasa a grafito.
+const ZONA_COLS = ['#6366F1','#3B82F6','#22C55E','#EAB308','#F97316','#EF4444']
+const Z_INK = '#292D29', Z_INK2 = 'rgba(41,45,41,0.58)', Z_INK3 = 'rgba(41,45,41,0.5)', Z_BORDER = 'rgba(41,45,41,0.08)'
+
+function ZonaRow({ z, zColor, sub, right, rightSub }) {
+  return (
+    <div style={{
+      padding:'13px 16px', borderBottom:`1px solid ${Z_BORDER}`,
+      display:'flex', justifyContent:'space-between', alignItems:'center',
+      borderLeft:`4px solid ${zColor}`, background:`${zColor}12`,
+    }}>
+      <div>
+        <span style={{fontWeight:800, color:zColor, marginRight:8, fontSize:14}}>{z.zona}</span>
+        <span style={{fontWeight:600, color:Z_INK}}>{z.nombre}</span>
+        {sub != null && <div style={{fontSize:11, color:Z_INK2, marginTop:3}}>{sub}</div>}
+      </div>
+      <div style={{textAlign:'right'}}>
+        <div style={{fontSize:14, fontWeight:700, color:zColor}}>{right || '--'}</div>
+        {rightSub != null && <div style={{fontSize:11, color:Z_INK3}}>{rightSub}</div>}
+      </div>
+    </div>
+  )
+}
+
+function ZonaRec({ rec }) {
+  if (!rec) return null
+  return (
+    <div style={{
+      padding:'10px 14px', borderRadius:10, marginBottom:12,
+      background:`${rec.color}12`, border:`1px solid ${rec.color}30`,
+      display:'flex', alignItems:'center', gap:8,
+    }}>
+      <div style={{width:8,height:8,borderRadius:'50%',background:rec.color,flexShrink:0}}/>
+      <span style={{fontSize:12,color:Z_INK2}}>{rec.msg}</span>
+    </div>
+  )
+}
+
 function ZonasRunningTable({ zonas, lthr }) {
   const _raw = zonas?.zonas || zonas?.data?.zonas || zonas
   const lista = Array.isArray(_raw)
@@ -1560,44 +1598,22 @@ function ZonasRunningTable({ zonas, lthr }) {
   const rec = zonas?.recomendacion || zonas?.data?.recomendacion
 
   if (!lista?.length) return (
-    <div style={{color:NOAH_C.ink3,fontSize:12,padding:'12px 0'}}>
+    <div style={{color:Z_INK3,fontSize:12,padding:'12px 0'}}>
       Sin datos de zonas running
-      {!lthr && <div style={{fontSize:11,color:NOAH_C.ink4,marginTop:4}}>Configurá el LTHR en el perfil del atleta</div>}
+      {!lthr && <div style={{fontSize:11,color:'rgba(41,45,41,0.4)',marginTop:4}}>Configurá el LTHR en el perfil del atleta</div>}
     </div>
   )
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:0}}>
-      {rec && (
-        <div style={{
-          padding:'10px 14px', borderRadius:8, marginBottom:12,
-          background:`${rec.color}12`, border:`1px solid ${rec.color}30`,
-          display:'flex', alignItems:'center', gap:8
-        }}>
-          <div style={{width:8,height:8,borderRadius:'50%',background:rec.color,flexShrink:0}}/>
-          <span style={{fontSize:12,color:NOAH_C.ink3}}>{rec.msg}</span>
-        </div>
-      )}
+      <ZonaRec rec={rec} />
       {lista.map((z, i) => {
-        const zColor = z.color || NOAH_C.run
+        const zColor = z.color || ZONA_COLS[i] || '#E65B45'
         const pace_rango = z.pace_rango || (z.pace_min && z.pace_max ? `${z.pace_min} – ${z.pace_max} /km` : null)
         return (
-          <div key={i} style={{
-            padding:'13px 16px', borderBottom:`1px solid ${NOAH_C.border}`,
-            display:'flex', justifyContent:'space-between', alignItems:'center',
-            borderLeft:`4px solid ${zColor}`,
-            background:`${zColor}12`,
-          }}>
-            <div>
-              <span style={{fontWeight:800, color:zColor, marginRight:8, fontSize:14}}>{z.zona||`Z${i+1}`}</span>
-              <span style={{fontWeight:600, color:'rgba(255,255,255,0.9)'}}>{z.nombre}</span>
-              <div style={{fontSize:11, color:'rgba(255,255,255,0.5)', marginTop:3}}>VO2: {z.vo2_pct} · Lactato: {z.lactato}</div>
-            </div>
-            <div style={{textAlign:'right'}}>
-              <div style={{fontSize:14, fontWeight:700, color:zColor}}>{pace_rango || '--'}</div>
-              <div style={{fontSize:11, color:NOAH_C.ink3}}>HR {z.hr_min||'--'}–{z.hr_max||'--'} bpm</div>
-            </div>
-          </div>
+          <ZonaRow key={i} z={{...z, zona: z.zona || `Z${i+1}`}} zColor={zColor}
+            sub={`VO2: ${z.vo2_pct} · Lactato: ${z.lactato}`}
+            right={pace_rango} rightSub={`HR ${z.hr_min||'--'}–${z.hr_max||'--'} bpm`} />
         )
       })}
     </div>
@@ -1614,40 +1630,18 @@ function ZonasCyclingTable({ zonas }) {
   const rec = zonas?.recomendacion || zonas?.data?.recomendacion
 
   if (!lista?.length) return (
-    <div style={{color:NOAH_C.ink3,fontSize:12,padding:'12px 0'}}>Sin datos de zonas ciclismo</div>
+    <div style={{color:Z_INK3,fontSize:12,padding:'12px 0'}}>Sin datos de zonas ciclismo</div>
   )
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:0}}>
-      {rec && (
-        <div style={{
-          padding:'10px 14px', borderRadius:8, marginBottom:12,
-          background:`${rec.color}12`, border:`1px solid ${rec.color}30`,
-          display:'flex', alignItems:'center', gap:8
-        }}>
-          <div style={{width:8,height:8,borderRadius:'50%',background:rec.color,flexShrink:0}}/>
-          <span style={{fontSize:12,color:NOAH_C.ink3}}>{rec.msg}</span>
-        </div>
-      )}
+      <ZonaRec rec={rec} />
       {lista.map((z, i) => {
-        const zColor = z.color || NOAH_C.bike
+        const zColor = z.color || ZONA_COLS[i] || '#78866B'
         return (
-          <div key={i} style={{
-            padding:'13px 16px', borderBottom:`1px solid ${NOAH_C.border}`,
-            display:'flex', justifyContent:'space-between', alignItems:'center',
-            borderLeft:`4px solid ${zColor}`,
-            background:`${zColor}12`,
-          }}>
-            <div>
-              <span style={{fontWeight:800, color:zColor, marginRight:8, fontSize:14}}>{z.zona||`Z${i+1}`}</span>
-              <span style={{fontWeight:600, color:'rgba(255,255,255,0.9)'}}>{z.nombre}</span>
-              <div style={{fontSize:11, color:'rgba(255,255,255,0.5)', marginTop:3}}>{z.pct_ftp}</div>
-            </div>
-            <div style={{textAlign:'right'}}>
-              <div style={{fontSize:14, fontWeight:700, color:zColor}}>{z.w_rango||'--'}</div>
-              <div style={{fontSize:11, color:NOAH_C.ink3}}>HR {z.hr_min||'--'}–{z.hr_max||'--'} · {z.wkg_min||'--'} W/kg</div>
-            </div>
-          </div>
+          <ZonaRow key={i} z={{...z, zona: z.zona || `Z${i+1}`}} zColor={zColor}
+            sub={z.pct_ftp}
+            right={z.w_rango} rightSub={`HR ${z.hr_min||'--'}–${z.hr_max||'--'} · ${z.wkg_min||'--'} W/kg`} />
         )
       })}
     </div>
@@ -1657,31 +1651,17 @@ function ZonasCyclingTable({ zonas }) {
 function ZonasSwimTable({ zonas }) {
   const _raw = zonas?.zonas || zonas?.data?.zonas || zonas
   const lista = Array.isArray(_raw) ? _raw : (_raw && typeof _raw === "object") ? Object.entries(_raw).map(([zona,d])=>({zona,...d})) : null
-  if (!lista?.length) return <div style={{color:NOAH_C.ink3,fontSize:12,padding:'12px 0'}}>Sin datos de zonas natación</div>
+  if (!lista?.length) return <div style={{color:Z_INK3,fontSize:12,padding:'12px 0'}}>Sin datos de zonas natación</div>
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:0}}>
       {lista.map((z,i)=>{
-        const ZCOLS = ['#6366F1','#3B82F6','#22C55E','#EAB308','#F97316','#EF4444']; const zColor = z.color || ZCOLS[i] || NOAH_C.swim
+        const zColor = z.color || ZONA_COLS[i] || '#4F8CC9'
+        const right = z.pace_rango || ((z.pace_100m_min||z.pace_min) ? `${z.pace_100m_min||z.pace_min} – ${z.pace_100m_max||z.pace_max}` : null)
         return (
-        <div key={i} style={{
-          padding:'13px 16px', borderBottom:`1px solid ${NOAH_C.border}`,
-          display:'flex', justifyContent:'space-between', alignItems:'center',
-          borderLeft:`4px solid ${zColor}`,
-          background:`${zColor}12`,
-        }}>
-          <div>
-            <span style={{fontWeight:800, color:zColor, marginRight:8, fontSize:14}}>{z.zona}</span>
-            <span style={{fontWeight:600, color:'rgba(255,255,255,0.9)'}}>{z.nombre}</span>
-            <div style={{fontSize:11, color:'rgba(255,255,255,0.5)', marginTop:3}}>{z.descripcion}</div>
-          </div>
-          <div style={{textAlign:'right'}}>
-            <div style={{fontSize:14, fontWeight:700, color:zColor}}>
-              {z.pace_rango || ((z.pace_100m_min||z.pace_min) ? `${z.pace_100m_min||z.pace_min} – ${z.pace_100m_max||z.pace_max}` : '--')}
-            </div>
-            <div style={{fontSize:11, color:NOAH_C.ink3}}>HR {z.hr_min||'--'}–{z.hr_max||'--'} bpm</div>
-          </div>
-        </div>
+          <ZonaRow key={i} z={z} zColor={zColor}
+            sub={z.descripcion}
+            right={right} rightSub={`HR ${z.hr_min||'--'}–${z.hr_max||'--'} bpm`} />
         )
       })}
     </div>
@@ -1690,6 +1670,96 @@ function ZonasSwimTable({ zonas }) {
 
 
 
+
+// ── Mis Zonas (v2) — sección autónoma, trae sus propios datos ───────────────
+function SeccionZonas({ atletaId }) {
+  const id = atletaId || 1
+  const [atleta, setAtleta]   = useState(null)
+  const [zRun, setZRun]       = useState(null)
+  const [zBike, setZBike]     = useState(null)
+  const [zSwim, setZSwim]     = useState(null)
+  const [estado, setEstado]   = useState(null)
+  const [sub, setSub]         = useState('running')
+
+  useEffect(() => {
+    if (!id) return
+    axios.get(`${API}/atletas/${id}`).then(r => setAtleta(r.data.data)).catch(()=>{})
+    axios.get(`${API}/atletas/${id}/zonas/running`).then(r=>setZRun(r.data.data)).catch(()=>{})
+    axios.get(`${API}/atletas/${id}/zonas/cycling`).then(r=>setZBike(r.data.data)).catch(()=>{})
+    axios.get(`${API}/atletas/${id}/zonas/swimming`).then(r=>setZSwim(r.data.data)).catch(()=>{})
+    axios.get(`${API}/atletas/${id}/estado`).then(r=>setEstado(r.data.data)).catch(()=>{})
+  }, [id])
+
+  const SP = {
+    running:  { label:'Running',  color:'#E65B45', light:'rgba(230,91,69,0.12)',   Icon:IconRun },
+    cycling:  { label:'Ciclismo', color:'#78866B', light:'rgba(120,134,107,0.12)', Icon:IconBike },
+    swimming: { label:'Natación', color:'#4F8CC9', light:'rgba(79,140,201,0.12)',  Icon:IconSwim },
+  }
+  const sp = SP[sub]
+  const css = zSwim?.css
+  const umbral = {
+    running:  atleta?.lthr_run != null ? <>LTHR <b style={{color:SP.running.color}}>{atleta.lthr_run}</b> bpm</> : null,
+    cycling:  zBike?.ftp != null ? <>FTP <b style={{color:SP.cycling.color}}>{zBike.ftp}</b> W</> : null,
+    swimming: css ? <>CSS <b style={{color:SP.swimming.color}}>{`${Math.floor(css)}:${String(Math.round((css%1)*60)).padStart(2,'0')}`}</b> /100m</> : null,
+  }[sub]
+
+  // Banner adaptativo según TSB (misma lógica), colores v2
+  const tsb = estado?.estado?.tsb
+  let banner = null
+  if (tsb != null) {
+    if (tsb > 10) banner = { color:'#78866B', icon:CheckCircle2, msg:`Forma óptima (TSB ${tsb?.toFixed(1)}) — Podés entrenar en zonas altas con seguridad.` }
+    else if (tsb < -20) banner = { color:'#E65B45', icon:AlertTriangle, msg:`Alta fatiga acumulada (TSB ${tsb?.toFixed(1)}) — Priorizá Z1-Z2. Evitá umbrales y VO2max.` }
+    else if (tsb < -10) banner = { color:'#E0A43C', icon:Zap, msg:`En carga (TSB ${tsb?.toFixed(1)}) — Tolerás Z3-Z4 pero moderá el volumen en Z5-Z6.` }
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14, fontFamily:FONT.base }}>
+      {banner && (
+        <div style={{ padding:'11px 15px', borderRadius:14, background:`${banner.color}16`,
+          border:`1px solid ${banner.color}3a`, display:'flex', alignItems:'center', gap:10 }}>
+          <banner.icon size={20} color={banner.color} style={{flexShrink:0}}/>
+          <div>
+            <div style={{fontSize:12,fontWeight:800,color:banner.color,marginBottom:2}}>Recomendación según tu estado</div>
+            <div style={{fontSize:12,color:'rgba(41,45,41,0.7)'}}>{banner.msg}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Selector de deporte — chips flotando */}
+      <div style={{ display:'flex', gap:8 }}>
+        {Object.entries(SP).map(([id2, s]) => {
+          const sel = sub===id2
+          return (
+            <button key={id2} onClick={()=>setSub(id2)} style={{
+              padding:'8px 16px', fontSize:12, fontWeight:sel?800:600, fontFamily:FONT.base,
+              color:sel?s.color:'rgba(41,45,41,0.5)', background:sel?s.light:'rgba(251,250,246,0.7)',
+              border:`1.5px solid ${sel?s.color+'55':'rgba(41,45,41,0.1)'}`, borderRadius:999,
+              cursor:'pointer', display:'flex', alignItems:'center', gap:6, transition:'all 0.15s' }}>
+              <s.Icon size={14} color={s.color} />
+              {s.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Tarjeta marfil con la tabla de zonas del deporte activo */}
+      <div style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderRadius:16,
+        boxShadow:NOAH.shadow, overflow:'hidden' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+          padding:'15px 16px', borderBottom:`1px solid rgba(41,45,41,0.07)` }}>
+          <div style={{ display:'flex', alignItems:'center', gap:9 }}>
+            <sp.Icon size={18} color={sp.color} />
+            <span style={{ fontSize:16, fontWeight:800, color:NOAH.ink }}>Zonas {sp.label}</span>
+          </div>
+          {umbral && <div style={{ fontSize:13, color:'rgba(41,45,41,0.5)' }}>{umbral}</div>}
+        </div>
+        {sub==='running'  && <ZonasRunningTable zonas={zRun} lthr={atleta?.lthr_run} />}
+        {sub==='cycling'  && <ZonasCyclingTable zonas={zBike} />}
+        {sub==='swimming' && <ZonasSwimTable zonas={zSwim} />}
+      </div>
+    </div>
+  )
+}
 
 // ── HANNA LIFE — Gráfico de vitalidad autonómica ────────────────────────────
 function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
@@ -4360,7 +4430,7 @@ function GrupoRendimiento({ atletaId, goNav, onInicio, onAsistente, abrir }) {
     <PantallaNoah title="Análisis" onBack={onInicio} navActivo="analisis" onNav={goNav} onAsistente={onAsistente} subtabs={subtabs} subActivo={sub} onSub={setSub}
       foto="/assets/hero_analisis.jpg" heroEyebrow="Rendimiento" heroTitulo="Tu estado de hoy">
       {sub === 'bio' && <SeccionAnalisis atletaId={atletaId} />}
-      {sub === 'zonas' && <EnRediseno nombre="Mis Zonas" onAbrir={() => abrir('zonas')} />}
+      {sub === 'zonas' && <SeccionZonas atletaId={atletaId} />}
       {sub === 'tests' && <EnRediseno nombre="Tests" onAbrir={() => abrir('tests')} />}
       {sub === 'tecnica' && <EnRediseno nombre="Técnica" onAbrir={() => abrir('tecnica')} />}
     </PantallaNoah>
