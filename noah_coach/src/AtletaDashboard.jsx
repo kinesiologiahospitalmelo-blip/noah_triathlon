@@ -1009,6 +1009,7 @@ function SesionRealizada({ sesionReal, sesionPresc, sport }) {
 // ── Vista de actividad realizada — estilo Garmin/TrainingPeaks ───────────────
 function NutricionPost({ atletaId, fecha, proxima24h }) {
   const [nut, setNut] = useState(null)
+  const [abierto, setAbierto] = useState(false)
 
   useEffect(() => {
     if (!atletaId || !fecha) return
@@ -1049,7 +1050,7 @@ function NutricionPost({ atletaId, fecha, proxima24h }) {
 
   const secs = []
   if (r.cho_recuperacion_g_total_4h || r.proteina_g_por_toma) secs.push({
-    Ic: Flame, color:'#FB923C', label:'Comer en la ventana (0–2 h)',
+    Ic: Flame, color:NOAH.salvia, label:'Comer en la ventana (0–2 h)',
     body: (<>
       {r.cho_recuperacion_g_total_4h ? <><b style={{color:'#292D29'}}>{r.cho_recuperacion_g_total_4h} g de hidratos</b> en las próximas 4 h</> : null}
       {(r.cho_recuperacion_g_total_4h && r.proteina_g_por_toma) ? ' + ' : null}
@@ -1058,39 +1059,52 @@ function NutricionPost({ atletaId, fecha, proxima24h }) {
     </>)
   })
   if (rep.liquido_a_reponer_ml || rep.sodio_mg) secs.push({
-    Ic: GlassWater, color:'#38BDF8', label:'Hidratación',
+    Ic: GlassWater, color:NOAH.azul, label:'Hidratación',
     body: (<>
       Reponé <b style={{color:'#292D29'}}>{rep.liquido_a_reponer_ml || '--'} ml</b>{rep.sodio_mg > 0 ? <> + <b style={{color:'#292D29'}}>{rep.sodio_mg} mg de sodio</b></> : null} en las próximas horas.
       {fele && <div style={{opacity:0.7, marginTop:2, fontSize:11}}>Electrolitos: {fele}</div>}
     </>)
   })
-  if (ffru) secs.push({ Ic: Banana, color:'#FACC15', label:'Fruta / snack rápido', body: ffru })
+  if (ffru) secs.push({ Ic: Banana, color:NOAH.salvia, label:'Fruta / snack rápido', body: ffru })
   if (nut.durante?.texto_corto) secs.push({
     Ic: Zap, color:'#78866B', label:'Durante la próxima sesión de este tipo', body: nut.durante.texto_corto
   })
 
   return (
-    <div style={{ marginTop:12, padding:'14px 15px', borderRadius:13,
-      background:'linear-gradient(180deg, rgba(56,189,248,0.07), rgba(251,250,246,0.6))',
-      border:'1px solid rgba(56,189,248,0.22)' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-        <GlassWater size={16} color={NUT_COLOR}/>
-        <span style={{ fontWeight:800, fontSize:13.5, color:'#292D29' }}>Recuperación post-entreno</span>
-        <span style={{ marginLeft:'auto', fontSize:9, opacity:0.55, fontWeight:700, color:'#292D29', textTransform:'uppercase', letterSpacing:'0.5px' }}>según lo gastado</span>
-      </div>
-      {secs.map((s,i)=>(
-        <div key={i} style={{ display:'flex', gap:10, padding:'10px 0', borderTop:'1px solid rgba(41,45,41,0.1)' }}>
-          <div style={{ width:26, height:26, borderRadius:8, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:`${s.color}1f`, border:`1px solid ${s.color}3a` }}>
-            <s.Ic size={14} color={s.color}/>
-          </div>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:9.5, fontWeight:800, color:s.color, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:3 }}>{s.label}</div>
-            <div style={{ fontSize:12, color:'rgba(41,45,41,0.78)', lineHeight:1.5 }}>{s.body}</div>
-          </div>
+    <div style={{ marginTop:12, borderRadius:16, overflow:'hidden',
+      background:NOAH.surface, border:`1px solid ${NOAH.border}`, boxShadow:NOAH.shadow }}>
+      {/* Header — desplegable (colapsado por defecto) */}
+      <button onClick={()=>setAbierto(o=>!o)} style={{
+        display:'flex', alignItems:'center', gap:10, width:'100%',
+        padding:'13px 15px', background:'transparent', border:'none',
+        cursor:'pointer', textAlign:'left', fontFamily:FONT.base }}>
+        <div style={{ width:30, height:30, borderRadius:9, flexShrink:0, display:'grid', placeItems:'center',
+          background:`${NOAH.salvia}1A`, border:`1px solid ${NOAH.salvia}33` }}>
+          <GlassWater size={16} color={NOAH.salvia}/>
         </div>
-      ))}
-      {r.cho_mensaje && (
-        <div style={{ marginTop:9, paddingTop:9, borderTop:'1px solid rgba(41,45,41,0.1)', fontSize:10.5, color:'rgba(41,45,41,0.5)', fontStyle:'italic' }}>{r.cho_mensaje}</div>
+        <span style={{ fontWeight:800, fontSize:13.5, color:NOAH.ink }}>Recuperación post-entreno</span>
+        <span style={{ marginLeft:'auto', fontSize:9, fontWeight:700, color:NOAH.ink45, textTransform:'uppercase', letterSpacing:'0.5px' }}>según lo gastado</span>
+        <ChevronRight size={16} color={NOAH.ink45}
+          style={{ transform: abierto ? 'rotate(90deg)' : 'none', transition:'transform 0.2s', flexShrink:0 }}/>
+      </button>
+
+      {abierto && (
+        <div style={{ padding:'0 15px 12px' }}>
+          {secs.map((s,i)=>(
+            <div key={i} style={{ display:'flex', gap:10, padding:'10px 0', borderTop:`1px solid ${NOAH.borderSoft}` }}>
+              <div style={{ width:26, height:26, borderRadius:8, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:`${s.color}1f`, border:`1px solid ${s.color}3a` }}>
+                <s.Ic size={14} color={s.color}/>
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:9.5, fontWeight:800, color:s.color, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:3 }}>{s.label}</div>
+                <div style={{ fontSize:12, color:NOAH.ink70, lineHeight:1.5 }}>{s.body}</div>
+              </div>
+            </div>
+          ))}
+          {r.cho_mensaje && (
+            <div style={{ marginTop:9, paddingTop:9, borderTop:`1px solid ${NOAH.borderSoft}`, fontSize:10.5, color:NOAH.ink45, fontStyle:'italic' }}>{r.cho_mensaje}</div>
+          )}
+        </div>
       )}
     </div>
   )
@@ -3673,14 +3687,7 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
       boxShadow: '0 22px 48px -18px rgba(41,45,41,0.55), inset 0 1px 0 rgba(255,255,255,0.08)',
       padding:'16px 14px 18px',
     }}>
-      {/* Métricas avanzadas — antes eran 2 botones grandes con fondo azul
-          sólido; ahora son filas de navegación compactas (icono + label +
-          chevron), igual criterio visual que el resto del rediseño: sin
-          "botones gigantes", solo la fila activa se resalta. */}
-      <div style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.35)',
-        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8, padding:'0 2px' }}>
-        Métricas avanzadas
-      </div>
+      {/* Sin título: la isla oscura flota sola (filas de navegación compactas). */}
       <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom: vista ? 14 : 0 }}>
         {[['torque', Zap, 'Torque']].map(([v, Icon, label]) => (
           <button key={v} onClick={() => toggle(v)} style={{
@@ -5645,31 +5652,31 @@ function EnergyReserveTimeline({ atletaId, sesionId, act, sport='running' }) {
     : [['Duración', durMin!=null?fmtDur(durMin):'--'], ['Distancia', distKm!=null?`${distKm.toFixed(1)} km`:'--'], ['Ritmo prom.', avgPace?`${fP(avgPace)}${cfg.paceUnit}`:'--'], ['FC prom.', avgHr!=null?`${avgHr} bpm`:'--']]
 
   return (
-    <div style={{padding:'12px 6px',borderBottom:'1px solid rgba(41,45,41,0.08)'}}>
-      <div style={{ fontSize:10, fontWeight:700, color:'rgba(41,45,41,0.45)',
-        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8, padding:'0 2px' }}>
-        Métricas avanzadas
-      </div>
+    <div style={{
+      borderRadius: 22, overflow: 'hidden',
+      background: 'linear-gradient(165deg, #1C211C 0%, #13160F 100%)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      boxShadow: '0 22px 48px -18px rgba(41,45,41,0.55), inset 0 1px 0 rgba(255,255,255,0.08)',
+      padding:'14px',
+    }}>
+      {/* Sin título: isla oscura que flota sola. */}
       <button onClick={toggle} style={{
         display:'flex', alignItems:'center', gap:10, width:'100%',
         padding:'11px 13px', borderRadius:12, fontSize:13, fontWeight:700,
-        background: open ? 'rgba(120,134,107,0.12)' : '#FBFAF6',
-        border:`1px solid ${open ? 'rgba(120,134,107,0.4)' : 'rgba(41,45,41,0.1)'}`,
-        color: open ? '#5E6B52' : '#292D29',
+        background: open ? 'rgba(120,134,107,0.16)' : 'rgba(255,255,255,0.03)',
+        border:`1px solid ${open ? 'rgba(120,134,107,0.45)' : 'rgba(255,255,255,0.07)'}`,
+        color: open ? '#C5D1B8' : 'rgba(255,255,255,0.85)',
         cursor:'pointer', transition:'all 0.15s', textAlign:'left',
       }}>
-        <BatteryFull size={15} color={open ? '#78866B' : '#E65B45'}/>
+        <BatteryFull size={15} color={open ? '#9DB089' : '#E65B45'}/>
         <span style={{ flex:1 }}>{loading ? 'Calculando...' : 'Reserva energética'}</span>
-        <span style={{ fontSize:10, fontWeight:600, color:'rgba(41,45,41,0.5)' }}>Ver análisis</span>
-        <ChevronRight size={14} color="rgba(41,45,41,0.4)"
+        <span style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.4)' }}>Ver análisis</span>
+        <ChevronRight size={14} color="rgba(255,255,255,0.4)"
           style={{ transform: open ? 'rotate(90deg)' : 'none', transition:'transform 0.2s' }}/>
       </button>
 
       {open && data && disponible && (
-        <div style={{marginTop:14, borderRadius:18, padding:'20px 18px',
-          background:`radial-gradient(130% 90% at 15% 0%, rgba(45,226,240,0.06), transparent 55%), radial-gradient(120% 90% at 100% 0%, rgba(244,114,182,0.06), transparent 55%), ${ER_C.bg}`,
-          border:'1px solid rgba(255,255,255,0.09)',
-          boxShadow:'0 40px 90px -45px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.05)'}}>
+        <div style={{marginTop:14, padding:'2px'}}>
           <style>{`
             .er-main{display:flex;flex-direction:column;gap:14px}
             .er-chart{width:100%}
@@ -5691,8 +5698,7 @@ function EnergyReserveTimeline({ atletaId, sesionId, act, sport='running' }) {
               <BatteryFull size={20} color={SER[0].color}/>
             </div>
             <div>
-              <div style={{fontSize:9.5,color:'rgba(255,255,255,0.4)',letterSpacing:'1.2px',textTransform:'uppercase',fontWeight:800}}>Métricas avanzadas</div>
-              <div style={{fontSize:20,fontWeight:800,color:'#F3F4F6',letterSpacing:'-0.4px',marginTop:1}}>Reserva energética</div>
+              <div style={{fontSize:20,fontWeight:800,color:'#F3F4F6',letterSpacing:'-0.4px'}}>Reserva energética</div>
               <div style={{fontSize:11.5,color:'rgba(255,255,255,0.45)',marginTop:2,fontWeight:500}}>{cfg.subt}</div>
             </div>
           </div>
