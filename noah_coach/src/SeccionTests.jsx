@@ -1,5 +1,6 @@
 // SeccionTests.jsx — NOA Tests de Umbral v2 — Carrusel 3D Glassmorphism
 import { useState, useEffect, useRef } from 'react'
+import { Footprints, Bike as BikeIcon, Waves, Gauge, Zap, Wind, Flag, FlaskConical, Trash2, Plus } from 'lucide-react'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
 // como ya funcionaba. En Vercel (1 sola dirección para front y backend)
@@ -32,48 +33,43 @@ const TIPO_TEST = {
   umbral_run: {
     label: 'Umbral Running',
     short: 'LTHR RUN',
-    icon: '🏃',
-    bg: 'https://images.unsplash.com/photo-1571008887538-b36bb32f4571?w=600&q=80',
-    gradient: 'linear-gradient(135deg,#1a0533 0%,#4c1d95 60%,#7c3aed 100%)',
-    accent: '#A78BFA',
-    dark: '#4c1d95',
+    Icon: Footprints,
+    gradient: 'linear-gradient(135deg,#1a0d0a 0%,#8f3524 60%,#E65B45 100%)',
+    accent: '#F3A595',
+    dark: '#8f3524',
     campos: ['pace_umbral','velocidad_umbral','hr_umbral','vo2est','rpe','potencia','notas'],
   },
   umbral_bike: {
     label: 'Umbral Ciclismo',
     short: 'FTP BIKE',
-    icon: '🚴',
-    bg: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&q=80',
-    gradient: 'linear-gradient(135deg,#1a2e05 0%,#4d7c0f 60%,#84cc16 100%)',
-    accent: '#BEF264',
-    dark: '#4d7c0f',
+    Icon: BikeIcon,
+    gradient: 'linear-gradient(135deg,#12160f 0%,#4a5540 60%,#78866B 100%)',
+    accent: '#9DB089',
+    dark: '#4a5540',
     campos: ['potencia_ftp','velocidad','cadencia','hr_umbral','rpe','vo2est','wkg','notas'],
   },
   umbral_swim: {
     label: 'Umbral Natación',
     short: 'CSS SWIM',
-    icon: '🏊',
-    bg: 'https://images.unsplash.com/photo-1530549387789-4c1017266635?w=600&q=80',
-    gradient: 'linear-gradient(135deg,#0a1628 0%,#0369a1 60%,#38bdf8 100%)',
-    accent: '#7DD3FC',
-    dark: '#0369a1',
+    Icon: Waves,
+    gradient: 'linear-gradient(135deg,#0a1420 0%,#2c5578 60%,#4F8CC9 100%)',
+    accent: '#9EC4E8',
+    dark: '#2c5578',
     campos: ['distancia_protocolo','tiempo_total','css_calculado','hr_umbral','rpe','notas'],
   },
   potencia_run: {
     label: 'Potencia Aeróbica',
     short: 'VAM RUN',
-    icon: '⚡',
-    bg: 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=600&q=80',
-    gradient: 'linear-gradient(135deg,#1c0a0a 0%,#9f1239 60%,#fb7185 100%)',
-    accent: '#FDA4AF',
-    dark: '#9f1239',
+    Icon: Gauge,
+    gradient: 'linear-gradient(135deg,#1a0d0a 0%,#8f3524 60%,#E65B45 100%)',
+    accent: '#F3A595',
+    dark: '#8f3524',
     campos: ['velocidad_max','distancia','tiempo','hr_max','rpe','notas'],
   },
   potencia_bike: {
     label: 'Sprint / Potencia',
     short: 'PWR BIKE',
-    icon: '💥',
-    bg: 'https://images.unsplash.com/photo-1541625602330-2277a4c46182?w=600&q=80',
+    Icon: Zap,
     gradient: 'linear-gradient(135deg,#1c1a00 0%,#d97706 60%,#fcd34d 100%)',
     accent: '#FDE68A',
     dark: '#d97706',
@@ -82,18 +78,16 @@ const TIPO_TEST = {
   potencia_swim: {
     label: 'Sprint Natación',
     short: 'SPR SWIM',
-    icon: '💨',
-    bg: 'https://images.unsplash.com/photo-1600679472829-3044539ce8ed?w=600&q=80',
-    gradient: 'linear-gradient(135deg,#0c1445 0%,#1e3a5f 60%,#06b6d4 100%)',
-    accent: '#67E8F9',
-    dark: '#1e3a5f',
+    Icon: Wind,
+    gradient: 'linear-gradient(135deg,#0a1420 0%,#2c5578 60%,#4F8CC9 100%)',
+    accent: '#9EC4E8',
+    dark: '#2c5578',
     campos: ['distancia','tiempo','hr_max','rpe','notas'],
   },
   record_carrera: {
     label: 'Récord en Carrera',
     short: 'RACE PR',
-    icon: '🏁',
-    bg: 'https://images.unsplash.com/photo-1452626038306-9aae5e071dd3?w=600&q=80',
+    Icon: Flag,
     gradient: 'linear-gradient(135deg,#0f0f0f 0%,#1f2937 60%,#374151 100%)',
     accent: '#FCD34D',
     dark: '#1f2937',
@@ -223,28 +217,26 @@ function ModalTest({ test, atletaId, onClose, onGuardado }) {
 
         {/* Header imagen + glassmorphism */}
         <div style={{
-          height:160, position:'relative', overflow:'hidden',
+          minHeight:150, position:'relative', overflow:'hidden',
           background:tipo.gradient,
         }}>
           <div style={{
             position:'absolute',inset:0,
-            backgroundImage:`url(${tipo.bg})`,
-            backgroundSize:'cover',backgroundPosition:'center',
-            opacity:0.35,
+            background:`linear-gradient(to bottom, ${tipo.dark}66 0%, rgba(13,17,23,0.96) 100%)`,
           }}/>
-          <div style={{
-            position:'absolute',inset:0,
-            background:`linear-gradient(to bottom, ${tipo.dark}99 0%, rgba(13,17,23,0.95) 100%)`,
-          }}/>
-          <div style={{position:'relative',zIndex:1,padding:'20px 24px',height:'100%',display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
+          <div style={{position:'relative',zIndex:1,padding:'20px 24px',height:'100%',display:'flex',flexDirection:'column',justifyContent:'space-between',gap:16}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
               <div>
                 <div style={{fontSize:10,fontWeight:800,color:tipo.accent,
-                  textTransform:'uppercase',letterSpacing:2.5,marginBottom:8}}>
-                  {esNuevo ? '+ Nuevo test' : 'Editar test'}
+                  textTransform:'uppercase',letterSpacing:2.5,marginBottom:10}}>
+                  {esNuevo ? 'Nuevo test' : 'Editar test'}
                 </div>
-                <div style={{fontSize:26,fontWeight:900,color:'#fff',lineHeight:1}}>
-                  {tipo.icon} {tipo.label}
+                <div style={{display:'flex',alignItems:'center',gap:11}}>
+                  <div style={{width:44,height:44,borderRadius:13,flexShrink:0,display:'grid',placeItems:'center',
+                    background:`${tipo.accent}22`,border:`1px solid ${tipo.accent}45`}}>
+                    <tipo.Icon size={22} color={tipo.accent} />
+                  </div>
+                  <div style={{fontSize:24,fontWeight:900,color:'#fff',lineHeight:1}}>{tipo.label}</div>
                 </div>
               </div>
               <button onClick={onClose} className="glass-btn" style={{
@@ -393,48 +385,29 @@ function TestCard({ test, onEdit, onDelete, isCenter }) {
       }}
       onClick={()=>onEdit(test)}>
 
-      {/* Imagen + overlay */}
-      <div style={{height:140,position:'relative',overflow:'hidden'}}>
-        <div style={{
-          position:'absolute',inset:0,
-          backgroundImage:`url(${tipo.bg})`,
-          backgroundSize:'cover',backgroundPosition:'center',
-          transition:'transform 0.4s ease',
-        }}/>
-        <div style={{
-          position:'absolute',inset:0,
-          background:`linear-gradient(to bottom, ${tipo.dark}88 0%, rgba(13,17,23,0.97) 100%)`,
-        }}/>
-        {/* Badge tipo */}
-        <div style={{
-          position:'absolute',top:12,left:12,
-          padding:'4px 11px',borderRadius:99,
-          background:'rgba(0,0,0,0.6)',
-          backdropFilter:'blur(12px)',
-          border:`1px solid ${tipo.accent}50`,
-          fontSize:9,fontWeight:800,color:tipo.accent,
-          textTransform:'uppercase',letterSpacing:1.5,
-          zIndex:1,
-        }}>{tipo.short}</div>
-        {/* Fecha */}
-        <div style={{
-          position:'absolute',top:12,right:12,
-          fontSize:9,color:'rgba(255,255,255,0.5)',
-          zIndex:1,
-        }}>{fmtFecha(test.fecha)}</div>
-        {/* Título */}
-        <div style={{
-          position:'absolute',bottom:12,left:14,right:14,
-          zIndex:1,
-        }}>
-          <div style={{fontSize:18,fontWeight:900,color:'#fff',lineHeight:1}}>
-            {tipo.icon} {tipo.label}
+      {/* Header premium — gradiente de deporte + icono lucide (sin fotos externas) */}
+      <div style={{ position:'relative', overflow:'hidden', padding:'14px 16px 16px',
+        background:`linear-gradient(145deg, ${tipo.dark} 0%, rgba(13,17,23,0.55) 100%)` }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+          <div style={{
+            padding:'4px 11px', borderRadius:99,
+            background:'rgba(0,0,0,0.3)', border:`1px solid ${tipo.accent}50`,
+            fontSize:9, fontWeight:800, color:tipo.accent,
+            textTransform:'uppercase', letterSpacing:1.5,
+          }}>{tipo.short}</div>
+          <div style={{ fontSize:9, color:'rgba(255,255,255,0.5)' }}>{fmtFecha(test.fecha)}</div>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:11 }}>
+          <div style={{ width:42, height:42, borderRadius:13, flexShrink:0, display:'grid', placeItems:'center',
+            background:`${tipo.accent}1f`, border:`1px solid ${tipo.accent}42` }}>
+            <tipo.Icon size={21} color={tipo.accent} />
           </div>
-          {test.protocolo && (
-            <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginTop:3}}>
-              {test.protocolo}
-            </div>
-          )}
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:17, fontWeight:900, color:'#fff', lineHeight:1.1 }}>{tipo.label}</div>
+            {test.protocolo && (
+              <div style={{ fontSize:10, color:'rgba(255,255,255,0.45)', marginTop:3 }}>{test.protocolo}</div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -489,7 +462,7 @@ function TestCard({ test, onEdit, onDelete, isCenter }) {
             background:confirmDel?'rgba(239,68,68,0.15)':'transparent',
             color:confirmDel?'#EF4444':'rgba(255,255,255,0.2)',
             transition:'all 0.2s',
-          }}>{confirmDel?'¿Confirmar?':'🗑'}</button>
+          }}>{confirmDel?'¿Confirmar?':<Trash2 size={12} />}</button>
         </div>
       </div>
     </div>
@@ -546,24 +519,19 @@ export default function SeccionTests({ atletaId, modoAtleta = false }) {
       <style>{STYLES}</style>
       <div style={{display:'flex',flexDirection:'column',gap:20}}>
 
-        {/* Header */}
+        {/* Fila de acción — el título vive en el hero de la pantalla */}
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
-          <div>
-            <div style={{fontSize:17,fontWeight:900,color:'#E6EDF3',marginBottom:2,letterSpacing:-0.3}}>
-              🔬 Tests de Umbral
-            </div>
-            <div style={{fontSize:11,color:'rgba(255,255,255,0.3)'}}>
-              {tests.length} tests registrados
-            </div>
+          <div style={{fontSize:12,fontWeight:700,color:'rgba(41,45,41,0.55)',display:'flex',alignItems:'center',gap:7}}>
+            <FlaskConical size={15} color="#E65B45" /> {tests.length} tests registrados
           </div>
           <button onClick={()=>setModal('nuevo')} className="glass-btn" style={{
             padding:'9px 20px',borderRadius:12,
-            border:'1px solid rgba(139,92,246,0.4)',
-            background:'rgba(139,92,246,0.15)',
+            border:'1px solid rgba(230,91,69,0.4)',
+            background:'rgba(230,91,69,0.12)',
             backdropFilter:'blur(12px)',
-            color:'#A78BFA',cursor:'pointer',
+            color:'#CF4A36',cursor:'pointer',
             fontSize:13,fontWeight:700,
-            boxShadow:'0 4px 20px rgba(139,92,246,0.2)',
+            boxShadow:'0 4px 20px rgba(230,91,69,0.18)',
           }}>+ Registrar test</button>
         </div>
 
@@ -585,13 +553,7 @@ export default function SeccionTests({ atletaId, modoAtleta = false }) {
               }}>
                 <div style={{
                   position:'absolute',inset:0,
-                  backgroundImage:`url(${cfg.bg})`,
-                  backgroundSize:'cover',backgroundPosition:'center',
-                  opacity:0.08,
-                }}/>
-                <div style={{
-                  position:'absolute',inset:0,
-                  background:`linear-gradient(135deg,${cfg.dark}cc,transparent)`,
+                  background:`linear-gradient(135deg,${cfg.dark}dd,${cfg.dark}55 70%,transparent)`,
                 }}/>
                 <div style={{position:'relative',zIndex:1}}>
                   <div style={{fontSize:9,fontWeight:800,color:cfg.accent,
@@ -609,11 +571,11 @@ export default function SeccionTests({ atletaId, modoAtleta = false }) {
             ) : (
               <div key={i} style={{
                 borderRadius:14,padding:'16px 18px',
-                background:'rgba(255,255,255,0.02)',
-                border:'1px dashed rgba(255,255,255,0.07)',
+                background:'rgba(41,45,41,0.03)',
+                border:'1px dashed rgba(41,45,41,0.12)',
                 display:'flex',alignItems:'center',justifyContent:'center',
               }}>
-                <div style={{fontSize:11,color:'rgba(255,255,255,0.15)'}}>Sin test</div>
+                <div style={{fontSize:11,color:'rgba(41,45,41,0.3)'}}>Sin test</div>
               </div>
             ))}
           </div>
@@ -625,11 +587,12 @@ export default function SeccionTests({ atletaId, modoAtleta = false }) {
           <div ref={trackRef} className="carousel-track" style={{
             display:'flex',gap:16,
             overflowX:'auto',
-            padding:'20px 40px 24px',
+            padding:'20px calc(50% - 130px) 24px',
             alignItems:'center',
+            scrollSnapType:'x mandatory',
           }}>
             {loading && (
-              <div style={{color:'rgba(255,255,255,0.25)',fontSize:13,padding:'40px 0',width:'100%',textAlign:'center'}}>
+              <div style={{color:'rgba(41,45,41,0.4)',fontSize:13,padding:'40px 0',width:'100%',textAlign:'center'}}>
                 Cargando tests...
               </div>
             )}
@@ -637,18 +600,18 @@ export default function SeccionTests({ atletaId, modoAtleta = false }) {
             {!loading && ordenados.length === 0 && (
               <div style={{
                 width:260,height:220,borderRadius:20,flexShrink:0,
-                border:'2px dashed rgba(255,255,255,0.08)',
-                background:'rgba(255,255,255,0.015)',
+                border:'2px dashed rgba(41,45,41,0.12)',
+                background:'rgba(41,45,41,0.02)',
                 display:'flex',flexDirection:'column',
                 alignItems:'center',justifyContent:'center',gap:10,
               }}>
-                <div style={{fontSize:36,opacity:0.3}}>🔬</div>
-                <div style={{fontSize:12,color:'rgba(255,255,255,0.2)'}}>Sin tests</div>
+                <FlaskConical size={36} color="rgba(41,45,41,0.25)" />
+                <div style={{fontSize:12,color:'rgba(41,45,41,0.3)'}}>Sin tests</div>
               </div>
             )}
 
             {!loading && ordenados.map((t,i) => (
-              <div key={t.id} onClick={()=>goTo(i)} style={{flexShrink:0}}>
+              <div key={t.id} onClick={()=>goTo(i)} style={{flexShrink:0,scrollSnapAlign:'center'}}>
                 <TestCard
                   test={t}
                   onEdit={t=>setModal(t)}
@@ -662,22 +625,21 @@ export default function SeccionTests({ atletaId, modoAtleta = false }) {
             {!loading && (
               <div onClick={()=>setModal('nuevo')} className="test-card-wrap" style={{
                 flexShrink:0,width:260,height:280,borderRadius:20,
-                cursor:'pointer',
-                border:'2px dashed rgba(139,92,246,0.2)',
-                background:'rgba(139,92,246,0.03)',
+                cursor:'pointer',scrollSnapAlign:'center',
+                border:'2px dashed rgba(230,91,69,0.25)',
+                background:'rgba(230,91,69,0.04)',
                 backdropFilter:'blur(12px)',
                 display:'flex',flexDirection:'column',
                 alignItems:'center',justifyContent:'center',gap:12,
               }}>
                 <div style={{
                   width:52,height:52,borderRadius:16,
-                  background:'rgba(139,92,246,0.12)',
-                  border:'1px solid rgba(139,92,246,0.25)',
+                  background:'rgba(230,91,69,0.12)',
+                  border:'1px solid rgba(230,91,69,0.25)',
                   display:'flex',alignItems:'center',justifyContent:'center',
-                  fontSize:26,
-                  boxShadow:'0 4px 20px rgba(139,92,246,0.15)',
-                }}>+</div>
-                <div style={{fontSize:12,fontWeight:700,color:'rgba(139,92,246,0.6)'}}>
+                  boxShadow:'0 4px 20px rgba(230,91,69,0.15)',
+                }}><Plus size={26} color="#E65B45" /></div>
+                <div style={{fontSize:12,fontWeight:700,color:'#CF4A36'}}>
                   Nuevo test
                 </div>
               </div>
@@ -690,18 +652,18 @@ export default function SeccionTests({ atletaId, modoAtleta = false }) {
               <button onClick={()=>goTo(activeIdx-1)} className="glass-btn" style={{
                 position:'absolute',left:0,top:'50%',transform:'translateY(-50%)',
                 zIndex:10,width:36,height:36,borderRadius:'50%',
-                background:'rgba(13,17,23,0.9)',
-                border:'1px solid rgba(255,255,255,0.12)',
-                color:'#fff',cursor:'pointer',fontSize:18,
+                background:'rgba(251,250,246,0.92)',
+                border:'1px solid rgba(41,45,41,0.14)',
+                color:'#292D29',cursor:'pointer',fontSize:18,
                 display:'flex',alignItems:'center',justifyContent:'center',
                 backdropFilter:'blur(12px)',
               }}>‹</button>
               <button onClick={()=>goTo(activeIdx+1)} className="glass-btn" style={{
                 position:'absolute',right:0,top:'50%',transform:'translateY(-50%)',
                 zIndex:10,width:36,height:36,borderRadius:'50%',
-                background:'rgba(13,17,23,0.9)',
-                border:'1px solid rgba(255,255,255,0.12)',
-                color:'#fff',cursor:'pointer',fontSize:18,
+                background:'rgba(251,250,246,0.92)',
+                border:'1px solid rgba(41,45,41,0.14)',
+                color:'#292D29',cursor:'pointer',fontSize:18,
                 display:'flex',alignItems:'center',justifyContent:'center',
                 backdropFilter:'blur(12px)',
               }}>›</button>
@@ -715,7 +677,7 @@ export default function SeccionTests({ atletaId, modoAtleta = false }) {
                 <button key={i} onClick={()=>goTo(i)} style={{
                   width: i===activeIdx ? 20 : 6,
                   height:6,borderRadius:99,border:'none',cursor:'pointer',
-                  background: i===activeIdx ? '#8B5CF6' : 'rgba(255,255,255,0.15)',
+                  background: i===activeIdx ? '#E65B45' : 'rgba(41,45,41,0.18)',
                   transition:'all 0.3s ease',padding:0,
                 }}/>
               ))}

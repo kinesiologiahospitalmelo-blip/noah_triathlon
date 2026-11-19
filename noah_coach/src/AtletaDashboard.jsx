@@ -19,7 +19,7 @@ import { Heart,
   Target, Flag, FlaskConical, CheckCircle2, XCircle, AlertTriangle, Zap, Ruler,
   HeartPulse, Flame, Activity, RotateCw, Satellite, ClipboardList, User, BatteryFull,
   BatteryLow, Moon, GlassWater, Brain, ChevronLeft, ChevronRight, Banana, Minus, Check, Scale, LogOut,
-  UserCircle, MessageCircle, Send, ChevronDown, Home } from 'lucide-react'
+  UserCircle, MessageCircle, Send, ChevronDown, Home, Clock } from 'lucide-react'
 import InicioHome from './InicioHome'
 import PantallaNoah from './PantallaNoah'
 import SeccionAnalisis from './SeccionAnalisis'
@@ -622,7 +622,7 @@ function SesionCard({ sesion, expandida, onToggle, esHoy, atletaId }) {
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontSize:14, fontWeight:600, color:NOAH_C.ink, marginBottom:3, lineHeight:1.2 }}>{sesion.nombre}</div>
           <div style={{ fontSize:11, color:NOAH_C.ink3, display:'flex', gap:10, flexWrap:'wrap' }}>
-            {sesion.duracion && <span>⏱ {Math.round(sesion.duracion)} min</span>}
+            {sesion.duracion && <span style={{display:'inline-flex',alignItems:'center',gap:3}}><Clock size={11} /> {Math.round(sesion.duracion)} min</span>}
             {sesion.tss && <span>TSS {sesion.tss}</span>}
             {sesion.sport==='cycling' && sesion.watts_min ? <span>{sesion.watts_min}–{sesion.watts_max}W</span>
               : sesion.sport==='swimming' && sesion.pace_ref ? <span>{fmtPace(sesion.pace_ref)}/100m</span>
@@ -854,7 +854,7 @@ function SemSesionCard({ sesion, expandida, onToggle, esHoy, atletaId }) {
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontSize:14, fontWeight:700, color:NOAH.ink, marginBottom:3, lineHeight:1.2 }}>{sesion.nombre}</div>
           <div style={{ fontSize:11, color:'rgba(41,45,41,0.55)', display:'flex', gap:10, flexWrap:'wrap' }}>
-            {sesion.duracion && <span>⏱ {Math.round(sesion.duracion)} min</span>}
+            {sesion.duracion && <span style={{display:'inline-flex',alignItems:'center',gap:3}}><Clock size={11} /> {Math.round(sesion.duracion)} min</span>}
             {sesion.tss && <span>TSS {sesion.tss}</span>}
             {sesion.sport==='cycling' && sesion.watts_min ? <span>{sesion.watts_min}–{sesion.watts_max}W</span>
               : sesion.sport==='swimming' && sesion.pace_ref ? <span>{fmtPace(sesion.pace_ref)}/100m</span>
@@ -980,7 +980,7 @@ function SemanaSection({ atletaId }) {
       {presc?.cerebro?.sistemas && (
         <div style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderRadius:16, boxShadow:NOAH.shadow, padding:'16px 18px' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
-            <div style={{ fontSize:10, color:'#4F8CC9', fontWeight:800, letterSpacing:1.4, textTransform:'uppercase' }}>🧠 Cerebro NOAH</div>
+            <div style={{ fontSize:10, color:'#4F8CC9', fontWeight:800, letterSpacing:1.4, textTransform:'uppercase', display:'flex', alignItems:'center', gap:6 }}><Brain size={13} color="#4F8CC9" /> Cerebro NOAH</div>
             {presc.cerebro.readiness && (() => {
               const rd = presc.cerebro.readiness
               const col = rd==='alto'?'#4E9E6B':rd==='medio'?'#E0A43C':'#E65B45'
@@ -4144,9 +4144,9 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
               {metricas?.vaciados_criticos > 0 && (
                 <div style={{ marginTop:8, padding:'8px 12px', borderRadius:8,
                   background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)',
-                  fontSize:11, color:'#FCA5A5' }}>
-                  ⚡ {metricas.vaciados_criticos} vaciado{metricas.vaciados_criticos>1?'s':''} crítico{metricas.vaciados_criticos>1?'s':''} — 
-                  {cuadrantes?.Q2 > 15 ? ` Elevá la cadencia, pasaste ${cuadrantes.Q2}% en Q2.` : ' Revisá los picos de esfuerzo.'}
+                  fontSize:11, color:'#FCA5A5', display:'flex', alignItems:'flex-start', gap:6 }}>
+                  <Zap size={13} style={{flexShrink:0,marginTop:1}} /><span>{metricas.vaciados_criticos} vaciado{metricas.vaciados_criticos>1?'s':''} crítico{metricas.vaciados_criticos>1?'s':''} —
+                  {cuadrantes?.Q2 > 15 ? ` Elevá la cadencia, pasaste ${cuadrantes.Q2}% en Q2.` : ' Revisá los picos de esfuerzo.'}</span>
                 </div>
               )}
               {metricas?.vaciados_criticos === 0 && (
@@ -4653,12 +4653,20 @@ function GrupoEntreno({ atletaId, presc, goNav, onInicio, onAsistente, abrir }) 
 function GrupoRendimiento({ atletaId, goNav, onInicio, onAsistente, abrir }) {
   const [sub, setSub] = useState('bio')
   const subtabs = [{ id: 'bio', label: 'Biomarcadores' }, { id: 'zonas', label: 'Zonas' }, { id: 'tests', label: 'Tests' }, { id: 'tecnica', label: 'Técnica' }]
+  // Hero por sub-pestaña: foto propia (de nuestros assets) + título relevante.
+  const HEROES = {
+    bio:     { foto: '/assets/hero_analisis.jpg', eyebrow: 'Rendimiento', titulo: 'Tu estado de hoy' },
+    zonas:   { foto: '/assets/hero_entreno.jpg',  eyebrow: 'Zonas',        titulo: 'Tus rangos de entrenamiento' },
+    tests:   { foto: '/assets/hero_perfil.jpg',   eyebrow: 'Evaluaciones', titulo: 'Tests de umbral' },
+    tecnica: { foto: '/assets/hero_analisis.jpg', eyebrow: 'Técnica',      titulo: 'Tu biomecánica' },
+  }
+  const h = HEROES[sub] || HEROES.bio
   return (
     <PantallaNoah title="Análisis" onBack={onInicio} navActivo="analisis" onNav={goNav} onAsistente={onAsistente} subtabs={subtabs} subActivo={sub} onSub={setSub}
-      foto="/assets/hero_analisis.jpg" heroEyebrow="Rendimiento" heroTitulo="Tu estado de hoy">
+      foto={h.foto} heroEyebrow={h.eyebrow} heroTitulo={h.titulo}>
       {sub === 'bio' && <SeccionAnalisis atletaId={atletaId} />}
       {sub === 'zonas' && <SeccionZonas atletaId={atletaId} />}
-      {sub === 'tests' && <EnRediseno nombre="Tests" onAbrir={() => abrir('tests')} />}
+      {sub === 'tests' && <SeccionTests atletaId={atletaId} modoAtleta={true} />}
       {sub === 'tecnica' && <EnRediseno nombre="Técnica" onAbrir={() => abrir('tecnica')} />}
     </PantallaNoah>
   )
@@ -4667,12 +4675,18 @@ function GrupoRendimiento({ atletaId, goNav, onInicio, onAsistente, abrir }) {
 function GrupoPerfil({ atletaId, goNav, onInicio, onAsistente, abrir }) {
   const [sub, setSub] = useState('perfil')
   const subtabs = [{ id: 'perfil', label: 'Perfil' }, { id: 'race', label: 'Race' }, { id: 'twin', label: 'Mi Twin' }]
+  const HEROES = {
+    perfil: { foto: '/assets/hero_perfil.jpg',  eyebrow: 'Perfil',      titulo: 'Tu cuenta' },
+    race:   { foto: '/assets/hero_entreno.jpg', eyebrow: 'Competición', titulo: 'Tus carreras' },
+    twin:   { foto: '/assets/hero_analisis.jpg',eyebrow: 'Digital Twin', titulo: 'Tu gemelo de datos' },
+  }
+  const h = HEROES[sub] || HEROES.perfil
   return (
     <PantallaNoah title="Perfil" onBack={onInicio} navActivo="perfil" onNav={goNav} onAsistente={onAsistente} subtabs={subtabs} subActivo={sub} onSub={setSub}
-      foto="/assets/hero_perfil.jpg" heroEyebrow="Perfil" heroTitulo="Tu cuenta">
+      foto={h.foto} heroEyebrow={h.eyebrow} heroTitulo={h.titulo}>
       {sub === 'perfil' && <EnRediseno nombre="Perfil" onAbrir={() => abrir('perfil')} />}
-      {sub === 'race' && <EnRediseno nombre="Race" onAbrir={() => abrir('race')} />}
-      {sub === 'twin' && <EnRediseno nombre="Mi Twin" onAbrir={() => abrir('twin')} />}
+      {sub === 'race' && <SeccionRace atletaId={atletaId} modoAtleta={true} />}
+      {sub === 'twin' && <div style={{ ...o1dark({ padding:'16px 14px' }) }}><TwinAtleta atletaId={atletaId} /></div>}
     </PantallaNoah>
   )
 }
@@ -5787,9 +5801,9 @@ function ProyeccionMultideporte({ atletaId }) {
   )
 
   const DEPORTES = [
-    {key:'running',  label:'🏃 Running',  color:'#E65B45'},
-    {key:'cycling',  label:'🚴 Ciclismo', color:'#78866B'},
-    {key:'swimming', label:'🏊 Natación', color:'#4F8CC9'},
+    {key:'running',  label:'Running',  color:'#E65B45'},
+    {key:'cycling',  label:'Ciclismo', color:'#78866B'},
+    {key:'swimming', label:'Natación', color:'#4F8CC9'},
   ]
   const conDatos = DEPORTES.filter(d => data[d.key])
   if (conDatos.length === 0) return null
