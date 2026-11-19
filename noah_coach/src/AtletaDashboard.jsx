@@ -6211,18 +6211,20 @@ function EnergyReserveTimeline({ atletaId, sesionId, act, sport='running' }) {
 // (campo.disponible === false, o no existe granularidad para una
 // visualización -- ej. heatmap diario), se muestra un estado "NOAH está
 // aprendiendo" en vez de "no hay suficientes datos".
+// Paleta v2 oficial sobre isla grafito (perfil = tablero de datos premium del
+// atleta, mismo lenguaje de islas oscuras que Mi Sesión / Técnica).
 const GE = {
-  bg:     '#05070D',
-  glass:  '#0B1220',
-  green:  '#22E6B8',
-  cyan:   '#00D4FF',
-  glow:   '#8EF7D7',
-  text:   '#FFFFFF',
-  text2:  '#93A4B8',
-  text3:  'rgba(147,164,184,0.55)',
-  danger: '#FF6B6B',
-  warn:   '#FFC857',
-  border: 'rgba(142,247,215,0.14)',
+  bg:     '#13160F',
+  glass:  '#1C211C',
+  green:  '#9DB089',   // salvia (favorable / protagonista)
+  cyan:   '#4F8CC9',   // azul (secundario)
+  glow:   '#B8C7A8',   // salvia claro (acento suave)
+  text:   '#F3F0E8',   // marfil
+  text2:  'rgba(243,240,232,0.60)',
+  text3:  'rgba(243,240,232,0.40)',
+  danger: '#E65B45',   // coral (alerta)
+  warn:   '#E0A43C',   // ámbar (atención)
+  border: 'rgba(255,255,255,0.09)',
 }
 
 function SeccionPerfil({ atletaId }) {
@@ -6279,8 +6281,7 @@ function SeccionPerfil({ atletaId }) {
   const Panel = ({ children, span, style, i=0 }) => (
     <div style={{
       gridColumn: span || 'auto',
-      background: 'linear-gradient(160deg, rgba(255,255,255,0.035), rgba(11,18,32,0.55))',
-      backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+      background: 'linear-gradient(165deg, #1C211C, #13160F)',
       border: `1px solid ${GE.border}`, borderRadius: 28,
       padding: '22px 22px 20px', position: 'relative', overflow: 'hidden',
       boxShadow: '0 10px 34px -14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04)',
@@ -6507,13 +6508,13 @@ function SeccionPerfil({ atletaId }) {
             {!editando ? (
               <button onClick={()=>setEditando(true)} style={{
                 padding:'5px 14px', borderRadius:20, border:`1px solid ${GE.border}`,
-                background:'rgba(142,247,215,0.08)', color:GE.glow, fontSize:11, fontWeight:600, cursor:'pointer' }}>
-                {guardadoF ? '✓ Guardado' : 'Editar'}
+                background:'rgba(157,176,137,0.12)', color:GE.glow, fontSize:11, fontWeight:600, cursor:'pointer' }}>
+                {guardadoF ? 'Guardado' : 'Editar'}
               </button>
             ) : (
               <button onClick={guardarFisico} disabled={guardandoF} style={{
                 padding:'5px 14px', borderRadius:20, border:'none',
-                background:GE.glow, color:'#05070D', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                background:GE.glow, color:'#13160F', fontSize:11, fontWeight:700, cursor:'pointer' }}>
                 {guardandoF ? 'Guardando...' : 'Guardar'}
               </button>
             )}
@@ -6548,7 +6549,7 @@ function SeccionPerfil({ atletaId }) {
 
         <Panel style={{ textAlign:'center', padding:'36px 24px' }}>
           <div className="ge-breathe" style={{ display:'inline-flex', width:52, height:52, borderRadius:'50%',
-            background:'rgba(142,247,215,0.12)', alignItems:'center', justifyContent:'center', marginBottom:14 }}>
+            background:'rgba(157,176,137,0.14)', alignItems:'center', justifyContent:'center', marginBottom:14 }}>
             <Brain size={26} color={GE.glow}/>
           </div>
           <div style={{ fontSize:16, fontWeight:700, color:GE.text }}>NOAH está aprendiendo</div>
@@ -6589,13 +6590,13 @@ function SeccionPerfil({ atletaId }) {
             {!editando ? (
               <button onClick={()=>setEditando(true)} style={{
                 padding:'5px 14px', borderRadius:20, border:`1px solid ${GE.border}`,
-                background:'rgba(142,247,215,0.08)', color:GE.glow, fontSize:11, fontWeight:600, cursor:'pointer' }}>
-                {guardadoF ? '✓ Guardado' : 'Editar'}
+                background:'rgba(157,176,137,0.12)', color:GE.glow, fontSize:11, fontWeight:600, cursor:'pointer' }}>
+                {guardadoF ? 'Guardado' : 'Editar'}
               </button>
             ) : (
               <button onClick={guardarFisico} disabled={guardandoF} style={{
                 padding:'5px 14px', borderRadius:20, border:'none',
-                background:GE.glow, color:'#05070D', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                background:GE.glow, color:'#13160F', fontSize:11, fontWeight:700, cursor:'pointer' }}>
                 {guardandoF ? 'Guardando...' : 'Guardar'}
               </button>
             )}
@@ -6765,7 +6766,7 @@ function SeccionPerfil({ atletaId }) {
           <PanelTitle Icon={Brain}>Lo que NOAH detectó</PanelTitle>
           {(() => {
             const candidatos = [
-              punto_quiebre_tsb?.disponible && { Icon:Zap, label:'TSB sensible', color:'#A855F7',
+              punto_quiebre_tsb?.disponible && { Icon:Zap, label:'TSB sensible', color:'#4F8CC9',
                 value:`${punto_quiebre_tsb.cambio_eficiencia_por_10_tsb_pct}%`, sub:'por -10 TSB',
                 nota:'Cuánto cae su eficiencia (ritmo/esfuerzo) por cada 10 puntos que baja el TSB. Le dice qué tan sensible es SU cuerpo a la fatiga acumulada.' },
               firma_recuperacion?.disponible && { Icon:Moon, label:'HRV nocturno', color:GE.cyan,
@@ -6786,7 +6787,7 @@ function SeccionPerfil({ atletaId }) {
               rendimiento_por_dia?.disponible && { Icon:CalendarDays, label:'Mejor día', color:GE.green,
                 value:rendimiento_por_dia.mejor_dia, sub:'a igual fatiga',
                 nota:'En qué día de la semana rinde mejor, comparando solo momentos con el mismo nivel de fatiga — útil para poner ahí las sesiones clave (series, fondo largo).' },
-              progreso_tecnico?.disponible && { Icon:TrendingUp, label:'Eficiencia técnica', color:'#A855F7',
+              progreso_tecnico?.disponible && { Icon:TrendingUp, label:'Eficiencia técnica', color:'#4F8CC9',
                 value:progreso_tecnico.tendencia_eficiencia, sub:'running, últimos meses',
                 nota:'Tendencia del ritmo por latido de corazón en running. Si mejora, corre más rápido con el mismo esfuerzo cardíaco — la señal más confiable de progreso aeróbico real.' },
               umbral_tss_tecnica?.disponible && { Icon:Zap, label:'Técnica bajo carga', color:GE.warn,
