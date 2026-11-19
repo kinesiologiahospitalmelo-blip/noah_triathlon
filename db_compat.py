@@ -17,6 +17,43 @@ código SQLite original.
 """
 
 
+def _coerce_params(params):
+    """
+    Convierte escalares de NumPy a tipos nativos de Python antes de pasarlos
+    a psycopg2.
+
+    Por qué: algunos valores que llegan a la DB se calculan con pandas/numpy
+    (p. ej. hrv_ratio = hrv / baseline, donde baseline es un .mean()). Eso
+    produce un numpy.float64, que es subclase de float pero NO tiene adaptador
+    propio en psycopg2. Con NumPy 2.x su repr pasó a ser 'np.float64(1.656)',
+    y ese texto terminaba incrustado en el SQL → Postgres lo leía como
+    'esquema.función' y fallaba con «schema "np" does not exist», abortando la
+    transacción (y de ahí la cascada de "connection already closed").
+
+    .item() devuelve el equivalente nativo (float/int/bool) del escalar numpy.
+    Los tipos nativos de Python pasan intactos. No cambia ningún valor, solo su
+    tipo de Python.
+    """
+    if not params:
+        return params
+    try:
+        import numpy as _np
+    except Exception:
+        return params
+
+    def _one(v):
+        if isinstance(v, _np.generic):
+            return v.item()
+        return v
+
+    if isinstance(params, (list, tuple)):
+        coerced = [_one(v) for v in params]
+        return type(params)(coerced) if isinstance(params, tuple) else coerced
+    if isinstance(params, dict):
+        return {k: _one(v) for k, v in params.items()}
+    return params
+
+
 class _ResultadoExecute:
     """
     Envuelve el cursor psycopg2 que devuelve conn.execute(), para que el
@@ -64,7 +101,7 @@ class ConexionCompat:
 
     def execute(self, query, params=None):
         cur = self._conn.cursor()
-        cur.execute(query, params)
+        cur.execute(query, _coerce_params(params))
         return _ResultadoExecute(cur)
 
     def cursor(self):
