@@ -493,7 +493,10 @@ def descargar_bio(client, fecha_str: str, atleta_id: int,
                 if len(df) >= 3:
                     baseline = df['hrv_rmssd'].dropna().tail(7).mean()
                     if baseline and not pd.isna(baseline):
-                        hrv_ratio = round(hrv_ms / baseline, 3)
+                        # float() explícito: baseline es un numpy.float64 (viene de
+                        # .mean() de pandas); sin castear, hrv_ratio queda numpy y
+                        # rompe el INSERT (ver _coerce_params en db_compat.py).
+                        hrv_ratio = round(float(hrv_ms) / float(baseline), 3)
                         hrv_flag  = 'verde' if hrv_ratio >= 1.05 else 'amarillo' if hrv_ratio >= 0.95 else 'rojo'
             except Exception: pass
         hrv_final    = hrv_ms or resultado.get('hrv_rmssd_estimado')
