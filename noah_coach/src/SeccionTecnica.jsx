@@ -8,12 +8,12 @@
 //              evolución y consistencia. No se inventan curvas de segundo a segundo.
 // Datos: /tecnica (tarjetas, índice, evolución, comparación) + /tecnica_lab (series).
 // Base de conocimiento: tecnica_fuentes.json.
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ScatterChart, Scatter, ZAxis, ReferenceLine, ReferenceArea, BarChart, Bar, Cell,
 } from 'recharts'
-import { ChevronDown, Check, Info, ChevronRight } from 'lucide-react'
+import { ChevronDown, Check, Info, ChevronRight, RotateCcw } from 'lucide-react'
 import fuentes from './tecnica_fuentes.json'
 
 const esLocal = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
@@ -967,6 +967,205 @@ function SwimFreqAmplitud({ largos }) {
 }
 
 
+// ════════ MOMENTOS — animaciones cortas de curvas (técnica) ════════
+// Combos de TÉCNICA confirmadas (2 por deporte). Las claves existen en las
+// filas muestra-a-muestra (construirFilas); natación usa las curvas por largo.
+const COMBOS_MOMENTOS = {
+  running: [
+    { id: 'gct_cad', titulo: 'La pisada', s: [['gct', 'Contacto', 'ms', C.blue], ['cadence', 'Cadencia', 'spm', C.sage]] },
+    { id: 'vo_vel',  titulo: 'El rebote',  s: [['vo', 'Oscilación', 'cm', C.sage], ['kmh', 'Velocidad', 'km/h', C.blue]] },
+  ],
+  cycling: [
+    { id: 'torq_sm', titulo: 'Redondez del pedaleo', s: [['torque', 'Torque efectivo', '%', C.blue], ['pedal', 'Suavidad', '%', C.sage]] },
+    { id: 'cad_pow', titulo: 'Estilo de pedaleo',     s: [['cadence', 'Cadencia', 'rpm', C.sage], ['power', 'Potencia', 'W', C.blue]] },
+  ],
+  swimming: [
+    { id: 'rate_dps',   titulo: 'Frecuencia × amplitud', s: [['paladas', 'Brazadas/largo', '', C.blue], ['dps', 'Dist/brazada', 'm', C.sage]] },
+    { id: 'swolf_pace', titulo: 'Eficiencia del gesto',  s: [['swolf', 'SWOLF', '', C.sage], ['pace', 'Ritmo', '', C.blue]] },
+  ],
+}
+const M_MOMENTO = 180
+
+function _downsample(arr, m) {
+  if (arr.length <= m) return arr.slice()
+  const out = [], step = arr.length / m
+  for (let i = 0; i < m; i++) {
+    const seg = arr.slice(Math.floor(i * step), Math.floor((i + 1) * step)).filter(x => x != null && isFinite(x))
+    out.push(seg.length ? seg.reduce((a, b) => a + b, 0) / seg.length : null)
+  }
+  return out
+}
+function _meanMom(a) { const v = a.filter(x => x != null && isFinite(x)); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null }
+
+function prepararMomento(filas, combo, t0, t1, duracionMs = 7000) {
+  const win = filas.filter(r => r.t >= t0 && r.t <= t1)
+  const series = combo.s.map(([key, label, unit, color]) => {
+    const valores = _downsample(win.map(r => r[key]), M_MOMENTO)
+    const vv = valores.filter(x => x != null && isFinite(x))
+    return { key, label, unit, color, valores, dominio: vv.length ? [Math.min(...vv), Math.max(...vv)] : [0, 1] }
+  })
+  const trailColor = win.some(r => r.hr != null) ? { por: 'hr', valores: _downsample(win.map(r => r.hr), M_MOMENTO) } : null
+  return { id: combo.id, titulo: combo.titulo, duracionMs, t0, t1, series, trailColor }
+}
+
+function _fallbackTercios(filas, combo) {
+  const ts = filas.map(r => r.t).filter(x => x != null)
+  if (!ts.length) return []
+  const t0 = Math.min(...ts), t1 = Math.max(...ts), d = (t1 - t0) / 3
+  return [['Inicio', t0, t0 + d], ['Media', t0 + d, t0 + 2 * d], ['Final', t0 + 2 * d, t1]].map(([lbl, a, b]) => {
+    const m = prepararMomento(filas, combo, a, b)
+    m.id = `${combo.id}_${lbl}`
+    m.titulo = `${combo.titulo} · ${lbl}`
+    m.explicacion = 'Comparación de evolución: el mismo gesto al inicio, a la mitad y al final de la sesión.'
+    return m
+  })
+}
+
+// Detector: busca, por cada combo, la ventana donde el gesto más se desvía del
+// inicio de la sesión; si ninguna supera el umbral de relevancia, cae al modo
+// inicio/media/final para comparar evolución.
+function detectarMomentos(filas, sport) {
+  const combos = COMBOS_MOMENTOS[sport] || []
+  if (!combos.length) return []
+  if (filas.length < 24) return _fallbackTercios(filas, combos[0])
+  const ts = filas.map(r => r.t).filter(x => x != null)
+  const t0 = Math.min(...ts), t1 = Math.max(...ts), dur = t1 - t0
+  if (dur <= 0) return _fallbackTercios(filas, combos[0])
+  const NW = 12, wl = dur / NW
+  const baseWin = filas.filter(r => r.t <= t0 + dur * 0.25)
+  const cand = []
+  for (const combo of combos) {
+    const keys = combo.s.map(c => c[0])
+    const base = keys.map(k => _meanMom(baseWin.map(r => r[k])))
+    if (base.some(b => b == null)) continue
+    let best = null
+    for (let w = 0; w < NW; w++) {
+      const a = t0 + w * wl, b = a + wl
+      const win = filas.filter(r => r.t >= a && r.t < b)
+      if (win.length < 4) continue
+      const score = keys.reduce((s, k, ki) => {
+        const mn = _meanMom(win.map(r => r[k]))
+        return s + ((mn == null || !base[ki]) ? 0 : Math.abs((mn - base[ki]) / base[ki]) * 100)
+      }, 0)
+      if (!best || score > best.score) best = { score, a, b }
+    }
+    if (best) cand.push({ combo, ...best })
+  }
+  const RELEV = 6
+  const rel = cand.filter(c => c.score >= RELEV).sort((x, y) => y.score - x.score).slice(0, 3)
+  if (!rel.length) return _fallbackTercios(filas, combos[0])
+  return rel.map(c => {
+    const a = Math.max(t0, c.a - wl * 0.5), b = Math.min(t1, c.b + wl * 0.5)
+    const m = prepararMomento(filas, c.combo, a, b)
+    m.explicacion = `Acá es donde el gesto más cambió respecto al inicio de la sesión (desvío combinado ${Math.round(c.score)}%).`
+    return m
+  })
+}
+function detectarMomentosSwim(largos) {
+  const L = (largos || []).filter(x => x != null)
+  if (L.length < 6) return []
+  const filas = L.map((l, i) => ({ t: i, paladas: l.paladas, dps: l.dps, swolf: l.swolf, pace: l.pace, hr: l.hr }))
+  return detectarMomentos(filas, 'swimming')
+}
+
+function hrColorMom(hr) {
+  if (hr == null) return C.sage
+  if (hr < 140) return C.green
+  if (hr < 165) return C.amber
+  return C.red
+}
+
+// Canvas 2D + requestAnimationFrame: la curva se dibuja progresivamente de
+// izquierda a derecha dejando estela; cabeza con glow; una serie se puede
+// pintar por zona de FC. El readout de valores se escribe directo al DOM
+// (sin setState) para no re-renderizar React a 60fps.
+function CurvaAnimada({ momento, playing = true }) {
+  const canvasRef = useRef(null), readoutRef = useRef(null), rafRef = useRef(0)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !momento) return
+    const ctx = canvas.getContext('2d')
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const cssW = canvas.clientWidth, cssH = canvas.clientHeight
+    if (!cssW) return
+    canvas.width = cssW * dpr; canvas.height = cssH * dpr; ctx.scale(dpr, dpr)
+    const P = 16, W = cssW - P * 2, H = cssH - P * 2, M = momento.series[0].valores.length
+    const xy = momento.series.map(s => {
+      const [mn, mx] = s.dominio, rg = (mx - mn) || 1
+      return s.valores.map((v, i) => ({ x: P + (i / (M - 1)) * W, y: v == null ? null : P + H - ((v - mn) / rg) * H }))
+    })
+    const trail = momento.trailColor ? momento.trailColor.valores.map(hrColorMom) : null
+    const EASE = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const draw = (idx) => {
+      ctx.clearRect(0, 0, cssW, cssH)
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1
+      for (let g = 1; g < 4; g++) { const y = P + H * g / 4; ctx.beginPath(); ctx.moveTo(P, y); ctx.lineTo(P + W, y); ctx.stroke() }
+      momento.series.forEach((s, si) => {
+        const pts = xy[si]; ctx.lineWidth = 2.6; ctx.lineJoin = 'round'; ctx.lineCap = 'round'
+        for (let i = 1; i <= idx; i++) {
+          if (pts[i - 1].y == null || pts[i].y == null) continue
+          ctx.strokeStyle = (trail && si === 0) ? trail[i] : s.color
+          ctx.beginPath(); ctx.moveTo(pts[i - 1].x, pts[i - 1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke()
+        }
+        const head = pts[Math.min(idx, M - 1)]
+        if (head && head.y != null) {
+          ctx.fillStyle = (trail && si === 0) ? trail[Math.min(idx, M - 1)] : s.color
+          ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 10
+          ctx.beginPath(); ctx.arc(head.x, head.y, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0
+        }
+      })
+      if (readoutRef.current) readoutRef.current.textContent = momento.series.map(s => {
+        const v = s.valores[Math.min(idx, M - 1)]; return `${s.label} ${v == null ? '—' : Math.round(v)} ${s.unit}`.trim()
+      }).join('   ·   ')
+    }
+    if (reduce || !playing) { draw(M - 1); return }
+    let start = null; const durA = momento.duracionMs || 7000
+    const tick = (tsN) => { if (start == null) start = tsN; const p = Math.min(1, (tsN - start) / durA); draw(Math.floor(EASE(p) * (M - 1))); if (p < 1) rafRef.current = requestAnimationFrame(tick) }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [momento, playing])
+  return <div>
+    <canvas ref={canvasRef} style={{ width: '100%', height: 200, display: 'block' }} />
+    <div ref={readoutRef} style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: C.ink, marginTop: 10, minHeight: 17 }} />
+  </div>
+}
+
+function SlideMomento({ momento, activo }) {
+  const [run, setRun] = useState(0)
+  useEffect(() => { if (activo) setRun(r => r + 1) }, [activo])
+  return <Glass>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+      <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: C.sage }}>{momento.titulo}</span>
+      <button onClick={() => setRun(r => r + 1)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 999, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.dim, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}><RotateCcw size={12} />Repetir</button>
+    </div>
+    <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', margin: '2px 0 8px' }}>
+      {momento.series.map((s, i) => {
+        const esFC = momento.trailColor && i === 0
+        return <span key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: C.dim }}>
+          <span style={{ width: 16, height: 4, borderRadius: 2, background: esFC ? 'linear-gradient(90deg,#5FA574,#E0A43C,#E65B45)' : s.color }} />
+          {s.label}{esFC ? ' · color = FC' : ''}
+        </span>
+      })}
+    </div>
+    <CurvaAnimada key={run} momento={momento} playing={activo} />
+    {momento.explicacion && <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginTop: 10 }}>{momento.explicacion}</div>}
+  </Glass>
+}
+function MomentosCarrusel({ momentos }) {
+  const [activo, setActivo] = useState(0)
+  if (!momentos || !momentos.length) return null
+  return <div>
+    <div onScroll={e => { const el = e.currentTarget; setActivo(Math.round(el.scrollLeft / (el.clientWidth * 0.9 + 12))) }}
+      style={{ display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', gap: 12, paddingBottom: 4, WebkitOverflowScrolling: 'touch' }}>
+      {momentos.map((m, i) => <div key={m.id + '_' + i} style={{ flex: '0 0 90%', scrollSnapAlign: 'center' }}><SlideMomento momento={m} activo={i === activo} /></div>)}
+    </div>
+    {momentos.length > 1 && <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 8 }}>
+      {momentos.map((_, i) => <span key={i} style={{ width: 6, height: 6, borderRadius: 9, background: i === activo ? C.sage : 'rgba(255,255,255,0.18)', transition: 'background .2s' }} />)}
+    </div>}
+  </div>
+}
+
 export default function SeccionTecnica({ atletaId }) {
   const [sport, setSport] = useState('running')
   const [sesionId, setSesionId] = useState(null)
@@ -1009,6 +1208,8 @@ export default function SeccionTecnica({ atletaId }) {
   const aPedaleo = useMemo(() => (hayLab && sport === 'cycling') ? genPedaleo(filas) : null, [filas, hayLab, sport])
   const aCambios = useMemo(() => (hayLab && !esNado) ? genCambios(filas, sport) : null, [filas, hayLab, sport, esNado])
   const semanal = Semanal({ spark: d.sparkline, sport, sel: evolSel, setSel: setEvolSel })
+  const momentos = useMemo(() => (hayLab && !esNado) ? detectarMomentos(filas, sport) : [], [filas, hayLab, sport, esNado])
+  const momentosSwim = useMemo(() => (esNado && d.curva_sesion && Array.isArray(d.curva_sesion.largos)) ? detectarMomentosSwim(d.curva_sesion.largos) : [], [esNado, d.curva_sesion])
 
   const panelsApoyo = [
     { key: 'gct', label: 'Tiempo de contacto', unit: 'ms', color: C.cian },
@@ -1094,6 +1295,13 @@ export default function SeccionTecnica({ atletaId }) {
 
           {/* ───────── NATACIÓN (datos por largo) ───────── */}
           {esNado && <>
+            {momentosSwim.length > 0 && (
+              <div>
+                <TituloSeccion>Momentos de la sesión</TituloSeccion>
+                <div style={{ marginTop: 10 }}><MomentosCarrusel momentos={momentosSwim} /></div>
+              </div>
+            )}
+
             {estilos.length > 0 && (
               <div>
                 <TituloSeccion>Tus estilos</TituloSeccion>
@@ -1131,6 +1339,13 @@ export default function SeccionTecnica({ atletaId }) {
 
           {/* ───────── RUNNING / CICLISMO ───────── */}
           {!esNado && <>
+            {momentos.length > 0 && (
+              <div>
+                <TituloSeccion>Momentos de la sesión</TituloSeccion>
+                <div style={{ marginTop: 10 }}><MomentosCarrusel momentos={momentos} /></div>
+              </div>
+            )}
+
             {clavesMetricas.length > 0 && (
               <div>
                 <TituloSeccion>Estado técnico · semáforo</TituloSeccion>
