@@ -4650,8 +4650,8 @@ function GrupoEntreno({ atletaId, presc, goNav, onInicio, onAsistente, abrir }) 
   )
 }
 
-function GrupoRendimiento({ atletaId, goNav, onInicio, onAsistente, abrir }) {
-  const [sub, setSub] = useState('bio')
+function GrupoRendimiento({ atletaId, goNav, onInicio, onAsistente, abrir, initialSub }) {
+  const [sub, setSub] = useState(['bio', 'zonas', 'tests', 'tecnica'].includes(initialSub) ? initialSub : 'bio')
   const subtabs = [{ id: 'bio', label: 'Biomarcadores' }, { id: 'zonas', label: 'Zonas' }, { id: 'tests', label: 'Tests' }, { id: 'tecnica', label: 'Técnica' }]
   // Hero por sub-pestaña: foto propia (de nuestros assets) + título relevante.
   const HEROES = {
@@ -4667,13 +4667,13 @@ function GrupoRendimiento({ atletaId, goNav, onInicio, onAsistente, abrir }) {
       {sub === 'bio' && <SeccionAnalisis atletaId={atletaId} />}
       {sub === 'zonas' && <SeccionZonas atletaId={atletaId} />}
       {sub === 'tests' && <SeccionTests atletaId={atletaId} modoAtleta={true} />}
-      {sub === 'tecnica' && <EnRediseno nombre="Técnica" onAbrir={() => abrir('tecnica')} />}
+      {sub === 'tecnica' && <SeccionTecnica atletaId={atletaId} />}
     </PantallaNoah>
   )
 }
 
-function GrupoPerfil({ atletaId, goNav, onInicio, onAsistente, abrir }) {
-  const [sub, setSub] = useState('perfil')
+function GrupoPerfil({ atletaId, goNav, onInicio, onAsistente, abrir, initialSub }) {
+  const [sub, setSub] = useState(['perfil', 'race', 'twin'].includes(initialSub) ? initialSub : 'perfil')
   const subtabs = [{ id: 'perfil', label: 'Perfil' }, { id: 'race', label: 'Race' }, { id: 'twin', label: 'Mi Twin' }]
   const HEROES = {
     perfil: { foto: '/assets/hero_perfil.jpg',  eyebrow: 'Perfil',      titulo: 'Tu cuenta' },
@@ -4684,7 +4684,7 @@ function GrupoPerfil({ atletaId, goNav, onInicio, onAsistente, abrir }) {
   return (
     <PantallaNoah title="Perfil" onBack={onInicio} navActivo="perfil" onNav={goNav} onAsistente={onAsistente} subtabs={subtabs} subActivo={sub} onSub={setSub}
       foto={h.foto} heroEyebrow={h.eyebrow} heroTitulo={h.titulo}>
-      {sub === 'perfil' && <EnRediseno nombre="Perfil" onAbrir={() => abrir('perfil')} />}
+      {sub === 'perfil' && <SeccionPerfil atletaId={atletaId} />}
       {sub === 'race' && <SeccionRace atletaId={atletaId} modoAtleta={true} />}
       {sub === 'twin' && <div style={{ ...o1dark({ padding:'16px 14px' }) }}><TwinAtleta atletaId={atletaId} /></div>}
     </PantallaNoah>
@@ -4701,6 +4701,7 @@ export default function AtletaDashboard({ atletaId }) {
   const [health, setHealth]       = useState(null)
   const [diag, setDiag]           = useState(null)
   const [tab, setTab]             = useState('inicio')
+  const [accesoSub, setAccesoSub] = useState(null)   // subtab inicial al entrar por accesos de Inicio
   const [verPerfilV1, setVerPerfilV1] = useState(false) // "abrir versión actual" del Perfil
   const [activeTabIdx, setActiveTabIdx] = useState(0)
   const tabsTrackRef = useRef(null)
@@ -4861,7 +4862,7 @@ export default function AtletaDashboard({ atletaId }) {
   ].filter(t => t.show)
 
   // ── Pantallas interiores rediseñadas: cada una independiente, en su cáscara ──
-  const goNav = (idN) => { setVerPerfilV1(false); setTab({ inicio: 'inicio', entreno: 'entreno', analisis: 'analisis', perfil: 'perfil' }[idN] || 'inicio') }
+  const goNav = (idN) => { setVerPerfilV1(false); setAccesoSub(null); setTab({ inicio: 'inicio', entreno: 'entreno', analisis: 'analisis', perfil: 'perfil' }[idN] || 'inicio') }
   if (tab === 'fuel') {
     return (
       <PantallaNoah title="Nutrición" onBack={() => setTab('inicio')}
@@ -4878,13 +4879,13 @@ export default function AtletaDashboard({ atletaId }) {
   }
   // ── Grupo ANÁLISIS (Biomarcadores / Zonas / Tests / Técnica) ──
   if (tab === 'analisis' || tab === 'metricas') {
-    return <GrupoRendimiento atletaId={id} goNav={goNav}
+    return <GrupoRendimiento atletaId={id} goNav={goNav} initialSub={accesoSub}
       onInicio={() => setTab('inicio')} onAsistente={() => setTab('asistente')} abrir={setTab} />
   }
   // ── Grupo PERFIL (Perfil / Race / Mi Twin). "Abrir versión actual" del Perfil
   //    levanta el flag para caer a la pantalla real (logout/ajustes) sin loop. ──
   if (tab === 'perfil' && !verPerfilV1) {
-    return <GrupoPerfil atletaId={id} goNav={goNav}
+    return <GrupoPerfil atletaId={id} goNav={goNav} initialSub={accesoSub}
       onInicio={() => { setVerPerfilV1(false); setTab('inicio') }} onAsistente={() => setTab('asistente')}
       abrir={(t) => { if (t === 'perfil') setVerPerfilV1(true); else setTab(t) }} />
   }
@@ -4906,8 +4907,11 @@ export default function AtletaDashboard({ atletaId }) {
       sueno: hoyH.hanna_scores?.sueno ?? null,
       riesgo_viral: hoyH.riesgo_viral ?? null,
     } : null
-    const goAcceso = (idA) => setTab({ entrenamiento:'entreno', analisis:'analisis', evaluaciones:'tests', competicion:'race', bienestar:'fuel', twin:'twin' }[idA] || 'entreno')
-    const goNav    = (idN) => { setVerPerfilV1(false); setTab({ inicio:'inicio', entreno:'entreno', analisis:'analisis', perfil:'perfil' }[idN] || 'inicio') }
+    const goAcceso = (idA) => {
+      const m = { entrenamiento:['entreno',null], analisis:['analisis','bio'], evaluaciones:['analisis','tests'], tecnica:['analisis','tecnica'], competicion:['perfil','race'], twin:['perfil','twin'], bienestar:['fuel',null] }[idA] || ['entreno', null]
+      setVerPerfilV1(false); setAccesoSub(m[1]); setTab(m[0])
+    }
+    const goNav    = (idN) => { setVerPerfilV1(false); setAccesoSub(null); setTab({ inicio:'inicio', entreno:'entreno', analisis:'analisis', perfil:'perfil' }[idN] || 'inicio') }
     return <InicioHome
       atleta={{ nombre: atleta?.nombre, foto: atleta?.foto }}
       semana={semana} hanna={hannaProp}
