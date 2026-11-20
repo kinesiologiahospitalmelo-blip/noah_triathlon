@@ -1942,6 +1942,24 @@ def post_registro_fuerza(atleta_id):
         return error(str(e))
 
 
+# ─── CALIBRACIÓN: percepción (check-in) vs HANNA ──────────────────────────────
+@app.route('/api/atletas/<int:atleta_id>/calibracion', methods=['GET'])
+@requiere_login
+def get_calibracion_atleta(atleta_id):
+    """Compara el check-in subjetivo con lo que marcó HANNA (aprendizaje)."""
+    conn = get_conn()
+    try:
+        from noah_calibracion import get_calibracion
+        data = get_calibracion(conn, atleta_id)
+        conn.close()
+        return ok(data)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        import traceback; traceback.print_exc()
+        return error(str(e))
+
+
 # ─── FOTO DE PERFIL DEL ATLETA ────────────────────────────────────────────────
 def _init_foto_table():
     try:
