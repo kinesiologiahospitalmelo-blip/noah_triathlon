@@ -1942,6 +1942,85 @@ def post_registro_fuerza(atleta_id):
         return error(str(e))
 
 
+# ─── FOTO DE PERFIL DEL ATLETA ────────────────────────────────────────────────
+def _init_foto_table():
+    try:
+        conn = get_conn()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS atleta_foto (
+                atleta_id   INTEGER PRIMARY KEY,
+                data_url    TEXT,
+                updated_at  TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        conn.commit(); conn.close()
+    except Exception as e:
+        print(f"[foto] init tabla: {e}")
+
+_init_foto_table()
+
+
+@app.route('/api/atletas/<int:atleta_id>/foto', methods=['GET'])
+@requiere_login
+def get_atleta_foto(atleta_id):
+    """Devuelve la foto del atleta como data URL (o null si no tiene)."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT data_url FROM atleta_foto WHERE atleta_id=%s",
+                           (atleta_id,)).fetchone()
+        conn.close()
+        return ok({'foto': row[0] if row else None})
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        return error(str(e))
+
+
+@app.route('/api/atletas/<int:atleta_id>/foto', methods=['POST'])
+@requiere_login
+def post_atleta_foto(atleta_id):
+    """Guarda la foto (data URL JPEG ya redimensionada en el cliente)."""
+    conn = get_conn()
+    try:
+        d = request.get_json(force=True, silent=True) or {}
+        data_url = d.get('data_url')
+        if not data_url or not data_url.startswith('data:image/'):
+            conn.close(); return error('data_url inválida')
+        if len(data_url) > 900_000:   # ~650KB de imagen; el cliente ya achica
+            conn.close(); return error('La imagen es muy grande')
+        conn.execute("""
+            INSERT INTO atleta_foto (atleta_id, data_url, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (atleta_id) DO UPDATE
+              SET data_url=EXCLUDED.data_url, updated_at=NOW()
+        """, (atleta_id, data_url))
+        conn.commit(); conn.close()
+        return ok({'ok': True})
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        return error(str(e))
+
+
+# ─── EFICIENCIA METABÓLICA / VO2max ───────────────────────────────────────────
+@app.route('/api/atletas/<int:atleta_id>/vo2', methods=['GET'])
+@requiere_login
+def get_vo2(atleta_id):
+    """Tendencia de VO2max correlacionada con biomarcadores + training_status."""
+    conn = get_conn()
+    try:
+        from noah_vo2 import get_vo2_analisis
+        dias = int(request.args.get('dias', 120))
+        data = get_vo2_analisis(conn, atleta_id, dias=dias)
+        conn.close()
+        return ok(data)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        import traceback; traceback.print_exc()
+        return error(str(e))
+
+
 # ─── CICLO MENSTRUAL (atletas femeninas) ──────────────────────────────────────
 @app.route('/api/atletas/<int:atleta_id>/ciclo_menstrual', methods=['GET'])
 @requiere_login
