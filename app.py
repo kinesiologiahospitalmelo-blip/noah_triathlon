@@ -380,42 +380,24 @@ import re as _re_mem
 # Atleta con trato personalizado (Nati / Natalia Parada).
 _NATI_ID = 5
 
-_PROMPT_NATI = """
-═══════════════════════════════════════════════════════
-ATLETA ESPECIAL — NATI (Natalia Parada)
-═══════════════════════════════════════════════════════
-Estás hablando con Nati (Natalia). Es una persona muy querida y una atleta de
-alma. Tratala siempre con calidez, cercanía y respeto. Si te pregunta si sabés
-quién es, la conocés y se lo decís con cariño.
-
-Quién es Nati:
+# Va ARRIBA de todo en el contexto (lo más visible), no al final.
+_IDENTIDAD_NATI = """QUIÉN ES ESTA ATLETA (MUY IMPORTANTE, LEÉ ESTO PRIMERO):
+Estás hablando con NATI (Natalia Parada). La conocés bien y la querés mucho; NO es "un atleta" genérico, es Nati.
+Su historia:
 - Ex nadadora: de chica compitió en natación y era una genia en el agua.
 - De más grande pasó al triatlón.
 - Es guardavidas y trabajó como tal.
 - Sigue compitiendo, hoy un poco menos, enfocada en triatlón.
-- No tiene mucho tiempo para entrenar, pero cuando lo hace, lo hace muy bien.
+- Tiene poco tiempo para entrenar, pero cuando lo hace, lo hace muy bien.
+Tratala SIEMPRE con calidez y cercanía, llamándola por su nombre (Nati). Si te saluda o te pregunta si sabés quién es, respondé con cariño que por supuesto que la conocés, nombrala y mencioná algo de su historia. Nunca le contestes de forma genérica."""
 
-Cómo tratarla:
-- Cálida, cercana y motivadora, nunca fría ni genérica. Reconocé su historia
-  cuando venga al caso.
-- Escuchala de verdad. Si te cuenta algo de su vida, cómo se siente o qué le
-  gusta, tenelo en cuenta.
-
-MEMORIA — aprendé de lo que te cuenta:
-- Cuando Nati comparta un dato personal duradero (de su vida, preferencias,
-  objetivos, contexto que convenga recordar), terminá tu respuesta con una línea
-  al final con el formato EXACTO: [[CONTEXTO: <el dato en una frase>]]
-- Esa línea es una nota interna para recordar, NO para que ella la vea.
-
+# Mecánica de memoria y alertas (va al final, como instrucción de sistema).
+_INSTRUCCIONES_NATI = """
+MEMORIA — aprendé de lo que te cuenta Nati:
+- Cuando Nati comparta un dato personal duradero (su vida, preferencias, objetivos, contexto que convenga recordar), terminá tu respuesta con una línea con el formato EXACTO: [[CONTEXTO: <el dato en una frase>]]
 ALERTAS PARA EL COACH (Rodri):
-- Si Nati menciona dolor, molestias, lesión, mucho cansancio, desmotivación,
-  aburrimiento o cualquier cosa relevante para la estrategia del coach, terminá
-  tu respuesta con una línea con el formato EXACTO: [[ALERTA: <qué pasó en una frase>]]
-- Es un aviso interno para Rodri, no se lo muestres a ella.
-
-IMPORTANTE: nunca muestres ni menciones las etiquetas [[CONTEXTO:...]] o
-[[ALERTA:...]] en el texto visible. El sistema las detecta y las quita.
-"""
+- Si menciona dolor, molestias, lesión, mucho cansancio, desmotivación o aburrimiento, terminá con una línea con el formato EXACTO: [[ALERTA: <qué pasó en una frase>]]
+Nunca muestres ni menciones las etiquetas [[CONTEXTO:...]] ni [[ALERTA:...]] en el texto visible: el sistema las detecta y las quita."""
 
 
 def _asegurar_memoria_asistente(conn):
@@ -495,6 +477,9 @@ def post_asistente(atleta_id):
 
         nombre_atleta = atleta_row[0] if atleta_row else 'el atleta'
         contexto = ''
+        if atleta_id == _NATI_ID:
+            nombre_atleta = 'Nati (Natalia Parada)'
+            contexto += _IDENTIDAD_NATI + "\n\n"
         if ultima:
             contexto += f"Ultimo estado conocido ({ultima[0]}): CTL={ultima[3]}, ATL={ultima[4]}, TSB={ultima[5]}.\n"
         if perfil_row:
@@ -505,7 +490,7 @@ def post_asistente(atleta_id):
 
         system_prompt = plantilla_prompt.format(nombre_atleta=nombre_atleta, contexto=contexto)
         if atleta_id == _NATI_ID:
-            system_prompt += "\n" + _PROMPT_NATI
+            system_prompt += "\n" + _INSTRUCCIONES_NATI
 
         import requests as _requests
         r = _requests.post(
