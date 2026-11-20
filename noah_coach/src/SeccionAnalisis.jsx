@@ -386,6 +386,16 @@ export default function SeccionAnalisis({ atletaId }) {
   const trend = (ctl0 != null && ctl1 != null && ctl0 !== 0) ? Math.round(((ctl1 - ctl0) / ctl0) * 100) : null
 
   const hoy = hanna?.hanna_hoy || {}
+  // Fecha del dato de biomarcadores más reciente (el backend completa cada
+  // métrica con su último valor disponible + '_fecha'): así avisamos si es de
+  // hoy o de un día anterior, en vez de mostrar un dato stale como actual.
+  const _hoyISO = new Date().toISOString().slice(0, 10)
+  const _fechasBio = ['bb_fecha', 'sleep_fecha', 'stress_fecha', 'hrv_fecha', 'hr_reposo_fecha']
+    .map(k => hoy?.[k]).filter(Boolean).sort()
+  const bioFecha = _fechasBio.length ? _fechasBio[_fechasBio.length - 1] : null
+  const bioFechaLabel = bioFecha
+    ? (bioFecha === _hoyISO ? 'actualizado hoy' : `último dato: ${bioFecha.slice(8, 10)}/${bioFecha.slice(5, 7)}`)
+    : null
   const hLife = e.hanna_life ?? hoy.hanna_life
   const hNivel = e.hanna_nivel ?? hoy.hanna_nivel
   const hrvSerie = (hanna?.puntos || []).filter(p => p.hrv != null).slice(-dias).map((p, i) => ({ i, hrv: p.hrv }))
@@ -545,7 +555,10 @@ export default function SeccionAnalisis({ atletaId }) {
         </div>
 
         {/* ───── D. BIOMARCADORES (visualizaciones diferenciadas) ───── */}
-        <div style={{ fontFamily: F, fontSize: 14, fontWeight: 800, letterSpacing: -0.2, color: NOAH.ink, padding: '0 4px', marginBottom: 10 }}>Biomarcadores</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: '0 4px', marginBottom: 10 }}>
+          <span style={{ fontFamily: F, fontSize: 14, fontWeight: 800, letterSpacing: -0.2, color: NOAH.ink }}>Biomarcadores</span>
+          {bioFechaLabel && <span style={{ fontFamily: F, fontSize: 10.5, color: NOAH.ink45 }}>{bioFechaLabel}</span>}
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
           <MiniRing Icon={Battery} label="Body Batt." value={bb != null ? Math.round(bb) : null} max={100} unit="/100" color={colBB} delay={0} />
           <MiniRing Icon={Activity} label="Recovery" value={rc != null ? Math.round(rc) : null} max={100} unit="/100" color={colRC} delay={60} />
