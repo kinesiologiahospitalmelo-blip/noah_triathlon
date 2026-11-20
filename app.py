@@ -4891,6 +4891,22 @@ def get_hanna_life(atleta_id):
         except Exception:
             hanna_hoy = puntos[-1] if puntos else {}
 
+        # Completar con el ÚLTIMO valor disponible por métrica. Hoy casi siempre
+        # viene incompleto (Garmin procesa sueño/HRV al día siguiente), así que
+        # para cada biomarcador tomamos el último día con dato y guardamos de qué
+        # fecha es (campo + '_fecha'), para no mostrar vacío ni un dato stale sin
+        # avisar.
+        if puntos:
+            if not isinstance(hanna_hoy, dict):
+                hanna_hoy = {}
+            for campo in ('hanna_life', 'riesgo_viral', 'hrv', 'bb', 'stress', 'sleep', 'hr_reposo'):
+                if hanna_hoy.get(campo) is None:
+                    for p in reversed(puntos):
+                        if p.get(campo) is not None:
+                            hanna_hoy[campo] = p[campo]
+                            hanna_hoy[campo + '_fecha'] = p['fecha']
+                            break
+
         conn.close()
         return ok(_limpiar_nan({
             'puntos':    puntos,
