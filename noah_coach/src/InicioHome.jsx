@@ -10,6 +10,7 @@ import {
   BatteryFull, BatteryLow, Zap, RefreshCw,
 } from 'lucide-react'
 import { NOAH, DEPORTE, SERIES, FONT } from './noahTheme'
+import LogoIso from './LogoIso'
 
 // Semáforo (tonos del estilo nuevo)
 const SEMA = { ok: '#35C07A', warn: '#E8A24B', bad: '#E2726E' } // verde hoy · naranja ayer · rojo hace días
@@ -220,7 +221,7 @@ export default function InicioHome({
           </div>
 
           <div style={{ position: 'absolute', top: 18, left: 20, display: 'flex', alignItems: 'center', gap: 9 }}>
-            <img src={logo} alt="NOAH" style={{ width: 34, height: 34, borderRadius: 10, objectFit: 'cover', boxShadow: NOAH.shadow }} />
+            <LogoIso size={34} radius={10} style={{ boxShadow: NOAH.shadow }} />
             <span style={{ fontFamily: FONT.base, fontWeight: 700, fontSize: 20, letterSpacing: -0.3, color: NOAH.grafito }}>noah<span style={{ color: NOAH.azul }}>°</span></span>
           </div>
 

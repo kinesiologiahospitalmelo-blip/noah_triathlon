@@ -4,6 +4,7 @@
 // Props existentes preservadas; se agregan opcionales (foto, eyebrow) sin cambiar comportamiento.
 import { ArrowLeft, Home, Dumbbell, BarChart3, User, MessageCircle } from 'lucide-react'
 import { NOAH, FONT } from './noahTheme'
+import LogoIso from './LogoIso'
 
 const NAV_DEFAULT = [
   { id: 'inicio', label: 'Inicio', Icon: Home },
@@ -67,9 +68,7 @@ export default function PantallaNoah({
             <h1 style={{ margin: 0, fontFamily: FONT.base, fontSize: 19, fontWeight: 800, letterSpacing: -0.5, color: NOAH.grafito, lineHeight: 1.12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h1>
           </div>
           {action}
-          <img src="/assets/noah_logo_icono_negro.png" alt="" aria-hidden="true"
-            onError={e => { e.currentTarget.style.display = 'none' }}
-            style={{ width: 22, height: 22, objectFit: 'contain', opacity: 0.45, flex: '0 0 auto' }} />
+          <LogoIso size={26} radius={7} style={{ opacity: 0.92 }} />
         </div>
       </header>
 
