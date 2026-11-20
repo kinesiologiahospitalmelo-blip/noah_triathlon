@@ -499,11 +499,16 @@ def descargar_bio(client, fecha_str: str, atleta_id: int,
                         hrv_ratio = round(float(hrv_ms) / float(baseline), 3)
                         hrv_flag  = 'verde' if hrv_ratio >= 1.05 else 'amarillo' if hrv_ratio >= 0.95 else 'rojo'
             except Exception: pass
-        hrv_final    = hrv_ms or resultado.get('hrv_rmssd_estimado')
-        es_estimado  = (not hrv_ms) and bool(resultado.get('hrv_rmssd_estimado'))
+        hrv_est      = resultado.get('hrv_rmssd_estimado')
+        es_estimado  = (not hrv_ms) and bool(hrv_est)
         try:
             db.agregar_sleep(atleta_id, {
-                'fecha': fecha_str, 'hrv_rmssd': hrv_final, 'hrv_ratio': hrv_ratio,
+                # hrv_rmssd = SOLO lectura REAL. El estimado va a su columna
+                # propia (hrv_estimado_valor) para no contaminar la serie real
+                # ni el baseline del riesgo viral. hanna_life ya hace
+                # combine_first(hrv_rmssd, hrv_estimado_valor).
+                'fecha': fecha_str, 'hrv_rmssd': hrv_ms, 'hrv_ratio': hrv_ratio,
+                'hrv_estimado_valor': hrv_est if es_estimado else None,
                 'hrv_flag': hrv_flag, 'hrv_estimado': 1 if es_estimado else 0,
                 'stress_avg': resultado.get('stress_avg'), 'sleep_stress': resultado.get('sleep_stress'),
                 'body_battery': resultado.get('body_battery'), 'sleep_h': resultado.get('sleep_h'),
