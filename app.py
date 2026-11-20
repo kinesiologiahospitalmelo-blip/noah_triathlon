@@ -375,6 +375,89 @@ _RESPUESTA_AMIGABLE_SI_FALLA = (
     "momento, o si sigue sin andar, avisale a tu entrenador."
 )
 
+import re as _re_mem
+
+# Atleta con trato personalizado (Nati / Natalia Parada).
+_NATI_ID = 5
+
+_PROMPT_NATI = """
+═══════════════════════════════════════════════════════
+ATLETA ESPECIAL — NATI (Natalia Parada)
+═══════════════════════════════════════════════════════
+Estás hablando con Nati (Natalia). Es una persona muy querida y una atleta de
+alma. Tratala siempre con calidez, cercanía y respeto. Si te pregunta si sabés
+quién es, la conocés y se lo decís con cariño.
+
+Quién es Nati:
+- Ex nadadora: de chica compitió en natación y era una genia en el agua.
+- De más grande pasó al triatlón.
+- Es guardavidas y trabajó como tal.
+- Sigue compitiendo, hoy un poco menos, enfocada en triatlón.
+- No tiene mucho tiempo para entrenar, pero cuando lo hace, lo hace muy bien.
+
+Cómo tratarla:
+- Cálida, cercana y motivadora, nunca fría ni genérica. Reconocé su historia
+  cuando venga al caso.
+- Escuchala de verdad. Si te cuenta algo de su vida, cómo se siente o qué le
+  gusta, tenelo en cuenta.
+
+MEMORIA — aprendé de lo que te cuenta:
+- Cuando Nati comparta un dato personal duradero (de su vida, preferencias,
+  objetivos, contexto que convenga recordar), terminá tu respuesta con una línea
+  al final con el formato EXACTO: [[CONTEXTO: <el dato en una frase>]]
+- Esa línea es una nota interna para recordar, NO para que ella la vea.
+
+ALERTAS PARA EL COACH (Rodri):
+- Si Nati menciona dolor, molestias, lesión, mucho cansancio, desmotivación,
+  aburrimiento o cualquier cosa relevante para la estrategia del coach, terminá
+  tu respuesta con una línea con el formato EXACTO: [[ALERTA: <qué pasó en una frase>]]
+- Es un aviso interno para Rodri, no se lo muestres a ella.
+
+IMPORTANTE: nunca muestres ni menciones las etiquetas [[CONTEXTO:...]] o
+[[ALERTA:...]] en el texto visible. El sistema las detecta y las quita.
+"""
+
+
+def _asegurar_memoria_asistente(conn):
+    """Tabla donde el asistente guarda lo que aprende del atleta (contexto) y
+    las alertas para el coach (dolor, desmotivación, etc.)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS asistente_memoria (
+            id SERIAL PRIMARY KEY,
+            atleta_id INTEGER NOT NULL,
+            tipo VARCHAR(20) NOT NULL,
+            texto TEXT NOT NULL,
+            visto BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+
+
+def _memorias_contexto(conn, atleta_id, limit=20):
+    try:
+        rows = conn.execute(
+            "SELECT texto FROM asistente_memoria WHERE atleta_id=%s AND tipo='contexto' "
+            "ORDER BY created_at DESC LIMIT %s",
+            (atleta_id, limit)).fetchall()
+        return [r[0] for r in rows]
+    except Exception:
+        return []
+
+
+def _extraer_y_limpiar(respuesta):
+    """Saca las etiquetas [[CONTEXTO:...]] / [[ALERTA:...]] del texto visible y
+    las devuelve como notas (tipo, texto) para guardar."""
+    notas = []
+    for tipo, pat in (('contexto', r'\[\[\s*CONTEXTO\s*:\s*(.+?)\]\]'),
+                      ('alerta_coach', r'\[\[\s*ALERTA\s*:\s*(.+?)\]\]')):
+        for m in _re_mem.findall(pat, respuesta, flags=_re_mem.IGNORECASE | _re_mem.DOTALL):
+            t = m.strip()
+            if t:
+                notas.append((tipo, t))
+    limpio = _re_mem.sub(r'\[\[\s*(?:CONTEXTO|ALERTA)\s*:.*?\]\]', '', respuesta,
+                         flags=_re_mem.IGNORECASE | _re_mem.DOTALL).strip()
+    return limpio, notas
+
 
 @app.route('/api/atletas/<int:atleta_id>/asistente', methods=['POST'])
 @requiere_login
@@ -401,6 +484,13 @@ def post_asistente(atleta_id):
             SELECT fecha, sport, tss_total, ctl, atl, tsb FROM sesiones
             WHERE atleta_id=%s AND ctl IS NOT NULL ORDER BY fecha DESC LIMIT 1
         """, (atleta_id,)).fetchone()
+        try:
+            _asegurar_memoria_asistente(conn)
+            conn.commit()
+        except Exception:
+            try: conn.rollback()
+            except Exception: pass
+        memorias = _memorias_contexto(conn, atleta_id)
         conn.close()
 
         nombre_atleta = atleta_row[0] if atleta_row else 'el atleta'
@@ -409,8 +499,13 @@ def post_asistente(atleta_id):
             contexto += f"Ultimo estado conocido ({ultima[0]}): CTL={ultima[3]}, ATL={ultima[4]}, TSB={ultima[5]}.\n"
         if perfil_row:
             contexto += f"Perfil calculado de este atleta (JSON, usar solo lo relevante a la pregunta):\n{perfil_row[0][:1500]}\n"
+        if memorias:
+            contexto += ("Lo que ya sabés de este atleta (de charlas anteriores, usalo con naturalidad):\n"
+                         + "\n".join(f"- {x}" for x in memorias) + "\n")
 
         system_prompt = plantilla_prompt.format(nombre_atleta=nombre_atleta, contexto=contexto)
+        if atleta_id == _NATI_ID:
+            system_prompt += "\n" + _PROMPT_NATI
 
         import requests as _requests
         r = _requests.post(
@@ -439,6 +534,24 @@ def post_asistente(atleta_id):
         respuesta = r.json()['choices'][0]['message']['content']
         if not respuesta or not respuesta.strip():
             return ok({'respuesta': _RESPUESTA_AMIGABLE_SI_FALLA})
+
+        # Nati: aprender contexto y levantar alertas para el coach desde las
+        # etiquetas ocultas, y quitarlas del texto visible.
+        if atleta_id == _NATI_ID:
+            respuesta, notas = _extraer_y_limpiar(respuesta)
+            if notas:
+                try:
+                    c2 = get_conn()
+                    _asegurar_memoria_asistente(c2)
+                    for tipo, texto in notas:
+                        c2.execute(
+                            "INSERT INTO asistente_memoria (atleta_id, tipo, texto) VALUES (%s,%s,%s)",
+                            (atleta_id, tipo, texto[:500]))
+                    c2.commit(); c2.close()
+                except Exception as _e:
+                    print(f"[asistente] no se pudo guardar memoria: {_e}")
+            if not respuesta.strip():
+                respuesta = "Dale, con gusto. ¿Querés que te cuente algo puntual de tus datos?"
 
         return ok({'respuesta': respuesta})
 
