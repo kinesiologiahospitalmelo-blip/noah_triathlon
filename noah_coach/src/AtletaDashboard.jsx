@@ -4915,14 +4915,17 @@ export default function AtletaDashboard({ atletaId }) {
       setVerPerfilV1(false); setAccesoSub(m[1]); setTab(m[0])
     }
     const goNav    = (idN) => { setVerPerfilV1(false); setAccesoSub(null); setTab({ inicio:'inicio', entreno:'entreno', analisis:'analisis', perfil:'perfil' }[idN] || 'inicio') }
-    return <InicioHome
-      atleta={{ nombre: atleta?.nombre, foto: atleta?.foto }}
-      semana={semana} hanna={hannaProp}
-      syncStatus={syncStatus} bioLoading={syncBioLoading} actLoading={syncLoading}
-      onSyncBio={handleSyncBio} onSyncAct={handleSyncAct}
-      onAcceso={goAcceso} onNav={goNav} navActivo="inicio"
-      onAsistente={() => setTab('asistente')} onSubirFoto={() => setTab('perfil')}
-    />
+    return <>
+      <AlertaPopup atletaId={id} />
+      <InicioHome
+        atleta={{ nombre: atleta?.nombre, foto: atleta?.foto }}
+        semana={semana} hanna={hannaProp}
+        syncStatus={syncStatus} bioLoading={syncBioLoading} actLoading={syncLoading}
+        onSyncBio={handleSyncBio} onSyncAct={handleSyncAct}
+        onAcceso={goAcceso} onNav={goNav} navActivo="inicio"
+        onAsistente={() => setTab('asistente')} onSubirFoto={() => setTab('perfil')}
+      />
+    </>
   }
 
   return (

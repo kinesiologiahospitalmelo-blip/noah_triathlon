@@ -11,6 +11,7 @@ import {
   Gauge, Scale, Waves, ShieldAlert, BatteryFull, BatteryLow, Thermometer,
 } from 'lucide-react'
 import { NOAH, FONT } from './noahTheme'
+import AlertasCard from './AlertasCard'
 // Foto editorial — importada desde src/assets (donde ya está subida en el repo).
 import heroImg from './assets/analisis_hero.jpg'
 function FotoHero() {
@@ -445,6 +446,10 @@ export default function SeccionAnalisis({ atletaId }) {
           </div>
         </div>
       </section>
+
+      <div style={{ padding: '14px 12px 0' }}>
+        <AlertasCard atletaId={atletaId} />
+      </div>
 
       <div style={{ padding: '14px 12px 0' }}>
         {/* ───── B. CARGA Y FORMA ───── */}
