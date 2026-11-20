@@ -117,7 +117,7 @@ def _score_spo2(spo2: float) -> float:
 def _score_fallback_zscore(val: float, media: float, std: float,
                             direccion: int = 1) -> float:
     """Fallback cuando no hay percentiles — z-score con sigmoide."""
-    if not std or std <= 0:
+    if val is None or media is None or not std or std <= 0:
         return 50.0
     z = (val - media) / std * direccion
     return round(100.0 / (1.0 + math.exp(-1.2 * z)), 1)
@@ -225,7 +225,7 @@ def calcular_estado_autonomico(
     # ── Sueño calidad: deep + REM (peso 10%) ──────────────────────────────────
     if sleep_h and sleep_h > 0 and (deep_h is not None or rem_h is not None):
         calidad = ((deep_h or 0) + (rem_h or 0)) / sleep_h
-        ref_cal = baseline.get('sleep_calidad_media', 0.28) if tiene_baseline else 0.28
+        ref_cal = (baseline.get('sleep_calidad_media') or 0.28) if tiene_baseline else 0.28
         std_cal = 0.08  # std típico de calidad sueño
         s = _score_fallback_zscore(calidad, ref_cal, std_cal, 1)
         scores['sueno_cal'] = round(s, 1)
