@@ -996,70 +996,85 @@ function _downsample(arr, m) {
   return out
 }
 function _meanMom(a) { const v = a.filter(x => x != null && isFinite(x)); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null }
+// Media móvil suave (preserva nulls) para que las curvas se vean fluidas y no escalonadas.
+function _smooth(arr, k = 3) {
+  return arr.map((v, i) => {
+    if (v == null) return null
+    let s = 0, n = 0
+    for (let j = i - k; j <= i + k; j++) { const x = arr[j]; if (x != null && isFinite(x)) { s += x; n++ } }
+    return n ? s / n : v
+  })
+}
 
-function prepararMomento(filas, combo, t0, t1, duracionMs = 7000) {
+function prepararMomento(filas, combo, t0, t1, duracionMs = 14000) {
   const win = filas.filter(r => r.t >= t0 && r.t <= t1)
   const series = combo.s.map(([key, label, unit, color]) => {
-    const valores = _downsample(win.map(r => r[key]), M_MOMENTO)
+    const crudo = _downsample(win.map(r => r[key]), M_MOMENTO)
+    const valores = _smooth(crudo, 3)
     const vv = valores.filter(x => x != null && isFinite(x))
     return { key, label, unit, color, valores, dominio: vv.length ? [Math.min(...vv), Math.max(...vv)] : [0, 1] }
   })
-  const trailColor = win.some(r => r.hr != null) ? { por: 'hr', valores: _downsample(win.map(r => r.hr), M_MOMENTO) } : null
-  return { id: combo.id, titulo: combo.titulo, duracionMs, t0, t1, series, trailColor }
+  return { id: combo.id, titulo: combo.titulo, duracionMs, t0, t1, series }
 }
 
-function _fallbackTercios(filas, combo) {
-  const ts = filas.map(r => r.t).filter(x => x != null)
-  if (!ts.length) return []
-  const t0 = Math.min(...ts), t1 = Math.max(...ts), d = (t1 - t0) / 3
-  return [['Inicio', t0, t0 + d], ['Media', t0 + d, t0 + 2 * d], ['Final', t0 + 2 * d, t1]].map(([lbl, a, b]) => {
-    const m = prepararMomento(filas, combo, a, b)
-    m.id = `${combo.id}_${lbl}`
-    m.titulo = `${combo.titulo} · ${lbl}`
-    m.explicacion = 'Comparación de evolución: el mismo gesto al inicio, a la mitad y al final de la sesión.'
-    return m
-  })
+// Lecturas en lenguaje claro por combo (qué significa el cruce de las 2 métricas)
+const LECTURA_MOM = {
+  gct_cad:    'Más contacto con el suelo y menos cadencia suelen marcar fatiga en la pisada.',
+  vo_vel:     'Si el rebote sube sin que suba la velocidad, estás gastando energía de más.',
+  torq_sm:    'Un pedaleo que pierde torque y suavidad se vuelve menos eficiente.',
+  cad_pow:    'El cruce de cadencia y potencia muestra si vas más a fuerza o a agilidad.',
+  rate_dps:   'Si sube la frecuencia pero baja la distancia por brazada, perdés eficiencia.',
+  swolf_pace: 'El SWOLF resume cuánto te cuesta cada largo a esa velocidad.',
+}
+function _explicarMom(combo, base, winMeans) {
+  const partes = combo.s.map(([, label], i) => {
+    const b = base[i], m = winMeans[i]
+    if (b == null || m == null || !isFinite(b) || !b) return null
+    const d = ((m - b) / b) * 100
+    const dir = Math.abs(d) < 1.5 ? 'se mantuvo' : (d > 0 ? `subió ${Math.round(Math.abs(d))}%` : `bajó ${Math.round(Math.abs(d))}%`)
+    return `${label.toLowerCase()} ${dir}`
+  }).filter(Boolean)
+  const frase = partes.length ? `En este tramo tu ${partes.join(' y tu ')}. ` : ''
+  return (frase + (LECTURA_MOM[combo.id] || '')).trim()
 }
 
-// Detector: busca, por cada combo, la ventana donde el gesto más se desvía del
-// inicio de la sesión; si ninguna supera el umbral de relevancia, cae al modo
-// inicio/media/final para comparar evolución.
+// Un momento por cada combo (siempre los 2 del deporte), centrado en la ventana
+// donde el gesto más se desvía del arranque, ampliada a ~1/3 de la sesión para
+// ver la variación con contexto.
 function detectarMomentos(filas, sport) {
   const combos = COMBOS_MOMENTOS[sport] || []
   if (!combos.length) return []
-  if (filas.length < 24) return _fallbackTercios(filas, combos[0])
   const ts = filas.map(r => r.t).filter(x => x != null)
+  if (ts.length < 8) return []
   const t0 = Math.min(...ts), t1 = Math.max(...ts), dur = t1 - t0
-  if (dur <= 0) return _fallbackTercios(filas, combos[0])
+  if (dur <= 0) return []
   const NW = 12, wl = dur / NW
   const baseWin = filas.filter(r => r.t <= t0 + dur * 0.25)
-  const cand = []
+  const out = []
   for (const combo of combos) {
     const keys = combo.s.map(c => c[0])
     const base = keys.map(k => _meanMom(baseWin.map(r => r[k])))
-    if (base.some(b => b == null)) continue
-    let best = null
+    if (base.every(b => b == null)) continue
+    let best = { score: -1, a: t0, b: Math.min(t1, t0 + wl) }
     for (let w = 0; w < NW; w++) {
       const a = t0 + w * wl, b = a + wl
       const win = filas.filter(r => r.t >= a && r.t < b)
-      if (win.length < 4) continue
+      if (win.length < 3) continue
       const score = keys.reduce((s, k, ki) => {
         const mn = _meanMom(win.map(r => r[k]))
         return s + ((mn == null || !base[ki]) ? 0 : Math.abs((mn - base[ki]) / base[ki]) * 100)
       }, 0)
-      if (!best || score > best.score) best = { score, a, b }
+      if (score > best.score) best = { score, a, b }
     }
-    if (best) cand.push({ combo, ...best })
+    const c = (best.a + best.b) / 2, half = Math.max(wl * 1.5, dur / 6)
+    const a = Math.max(t0, c - half), b = Math.min(t1, c + half)
+    const m = prepararMomento(filas, combo, a, b)
+    if (!m.series.some(s => s.valores.some(v => v != null))) continue
+    const winMeans = keys.map(k => _meanMom(filas.filter(r => r.t >= a && r.t <= b).map(r => r[k])))
+    m.explicacion = _explicarMom(combo, base, winMeans)
+    out.push(m)
   }
-  const RELEV = 6
-  const rel = cand.filter(c => c.score >= RELEV).sort((x, y) => y.score - x.score).slice(0, 3)
-  if (!rel.length) return _fallbackTercios(filas, combos[0])
-  return rel.map(c => {
-    const a = Math.max(t0, c.a - wl * 0.5), b = Math.min(t1, c.b + wl * 0.5)
-    const m = prepararMomento(filas, c.combo, a, b)
-    m.explicacion = `Acá es donde el gesto más cambió respecto al inicio de la sesión (desvío combinado ${Math.round(c.score)}%).`
-    return m
-  })
+  return out
 }
 function detectarMomentosSwim(largos) {
   const L = (largos || []).filter(x => x != null)
@@ -1068,19 +1083,33 @@ function detectarMomentosSwim(largos) {
   return detectarMomentos(filas, 'swimming')
 }
 
-function hrColorMom(hr) {
-  if (hr == null) return C.sage
-  if (hr < 140) return C.green
-  if (hr < 165) return C.amber
-  return C.red
+// Dibuja una curva SUAVE (Catmull-Rom -> Bézier) por pts[from..to], cortando
+// en nulls. Da el efecto "más curvas que rectas".
+function segCurve(ctx, pts, from, to) {
+  ctx.beginPath()
+  let started = false
+  for (let i = from; i < to; i++) {
+    const p1 = pts[i], p2 = pts[i + 1]
+    if (!p1 || p1.y == null) { started = false; continue }
+    if (!started) { ctx.moveTo(p1.x, p1.y); started = true }
+    if (!p2 || p2.y == null) continue
+    const p0 = (pts[i - 1] && pts[i - 1].y != null) ? pts[i - 1] : p1
+    const p3 = (pts[i + 2] && pts[i + 2].y != null) ? pts[i + 2] : p2
+    ctx.bezierCurveTo(
+      p1.x + (p2.x - p0.x) / 6, p1.y + (p2.y - p0.y) / 6,
+      p2.x - (p3.x - p1.x) / 6, p2.y - (p3.y - p1.y) / 6,
+      p2.x, p2.y)
+  }
+  ctx.stroke()
 }
 
-// Canvas 2D + requestAnimationFrame: la curva se dibuja progresivamente de
-// izquierda a derecha dejando estela; cabeza con glow; una serie se puede
-// pintar por zona de FC. El readout de valores se escribe directo al DOM
-// (sin setState) para no re-renderizar React a 60fps.
+// Canvas 2D + requestAnimationFrame: cada curva se dibuja despacio de izquierda
+// a derecha dejando una estela pintada (suave, con glow) y un tramo "cometa"
+// resaltado cerca de la cabeza. Los valores en vivo se escriben directo al DOM
+// en la propia leyenda (sin re-render de React), así cada color se asocia a su
+// métrica y a su valor actual.
 function CurvaAnimada({ momento, playing = true }) {
-  const canvasRef = useRef(null), readoutRef = useRef(null), rafRef = useRef(0)
+  const canvasRef = useRef(null), valRefs = useRef([]), rafRef = useRef(0)
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !momento) return
@@ -1089,45 +1118,56 @@ function CurvaAnimada({ momento, playing = true }) {
     const cssW = canvas.clientWidth, cssH = canvas.clientHeight
     if (!cssW) return
     canvas.width = cssW * dpr; canvas.height = cssH * dpr; ctx.scale(dpr, dpr)
-    const P = 16, W = cssW - P * 2, H = cssH - P * 2, M = momento.series[0].valores.length
+    const P = 18, W = cssW - P * 2, H = cssH - P * 2, M = momento.series[0].valores.length
     const xy = momento.series.map(s => {
       const [mn, mx] = s.dominio, rg = (mx - mn) || 1
       return s.valores.map((v, i) => ({ x: P + (i / (M - 1)) * W, y: v == null ? null : P + H - ((v - mn) / rg) * H }))
     })
-    const trail = momento.trailColor ? momento.trailColor.valores.map(hrColorMom) : null
-    const EASE = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+    const EASE = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2   // easeInOutQuad, parejo
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const draw = (idx) => {
       ctx.clearRect(0, 0, cssW, cssH)
-      ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1
+      ctx.strokeStyle = 'rgba(255,255,255,0.045)'; ctx.lineWidth = 1
       for (let g = 1; g < 4; g++) { const y = P + H * g / 4; ctx.beginPath(); ctx.moveTo(P, y); ctx.lineTo(P + W, y); ctx.stroke() }
       momento.series.forEach((s, si) => {
-        const pts = xy[si]; ctx.lineWidth = 2.6; ctx.lineJoin = 'round'; ctx.lineCap = 'round'
-        for (let i = 1; i <= idx; i++) {
-          if (pts[i - 1].y == null || pts[i].y == null) continue
-          ctx.strokeStyle = (trail && si === 0) ? trail[i] : s.color
-          ctx.beginPath(); ctx.moveTo(pts[i - 1].x, pts[i - 1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke()
-        }
+        const pts = xy[si]
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = s.color
+        // estela completa (suave, glow sutil)
+        ctx.globalAlpha = 0.9; ctx.lineWidth = 2.6; ctx.shadowColor = s.color; ctx.shadowBlur = 6
+        segCurve(ctx, pts, 0, idx)
+        // tramo reciente resaltado (cometa)
+        ctx.globalAlpha = 1; ctx.lineWidth = 3.3; ctx.shadowBlur = 14
+        segCurve(ctx, pts, Math.max(0, idx - 16), idx)
+        ctx.shadowBlur = 0; ctx.globalAlpha = 1
+        // cabeza con glow
         const head = pts[Math.min(idx, M - 1)]
         if (head && head.y != null) {
-          ctx.fillStyle = (trail && si === 0) ? trail[Math.min(idx, M - 1)] : s.color
-          ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 10
-          ctx.beginPath(); ctx.arc(head.x, head.y, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0
+          ctx.fillStyle = s.color; ctx.shadowColor = s.color; ctx.shadowBlur = 16
+          ctx.beginPath(); ctx.arc(head.x, head.y, 4, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0
         }
       })
-      if (readoutRef.current) readoutRef.current.textContent = momento.series.map(s => {
-        const v = s.valores[Math.min(idx, M - 1)]; return `${s.label} ${v == null ? '—' : Math.round(v)} ${s.unit}`.trim()
-      }).join('   ·   ')
+      momento.series.forEach((s, i) => {
+        const el = valRefs.current[i]
+        if (el) { const v = s.valores[Math.min(idx, M - 1)]; el.textContent = (v == null ? '—' : Math.round(v)) + (s.unit ? ' ' + s.unit : '') }
+      })
     }
     if (reduce || !playing) { draw(M - 1); return }
-    let start = null; const durA = momento.duracionMs || 7000
-    const tick = (tsN) => { if (start == null) start = tsN; const p = Math.min(1, (tsN - start) / durA); draw(Math.floor(EASE(p) * (M - 1))); if (p < 1) rafRef.current = requestAnimationFrame(tick) }
+    let start = null; const durA = momento.duracionMs || 14000
+    const tick = (tsN) => { if (start == null) start = tsN; const p = Math.min(1, (tsN - start) / durA); draw(Math.max(1, Math.floor(EASE(p) * (M - 1)))); if (p < 1) rafRef.current = requestAnimationFrame(tick) }
     rafRef.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafRef.current)
   }, [momento, playing])
   return <div>
     <canvas ref={canvasRef} style={{ width: '100%', height: 200, display: 'block' }} />
-    <div ref={readoutRef} style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: C.ink, marginTop: 10, minHeight: 17 }} />
+    <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 12 }}>
+      {momento.series.map((s, i) => (
+        <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ width: 11, height: 11, borderRadius: 3, background: s.color, flex: '0 0 auto' }} />
+          <span style={{ fontSize: 12, color: C.dim }}>{s.label}</span>
+          <span ref={el => valRefs.current[i] = el} style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: C.ink, fontWeight: 600 }} />
+        </div>
+      ))}
+    </div>
   </div>
 }
 
@@ -1139,17 +1179,8 @@ function SlideMomento({ momento, activo }) {
       <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: C.sage }}>{momento.titulo}</span>
       <button onClick={() => setRun(r => r + 1)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 999, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.dim, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}><RotateCcw size={12} />Repetir</button>
     </div>
-    <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', margin: '2px 0 8px' }}>
-      {momento.series.map((s, i) => {
-        const esFC = momento.trailColor && i === 0
-        return <span key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: C.dim }}>
-          <span style={{ width: 16, height: 4, borderRadius: 2, background: esFC ? 'linear-gradient(90deg,#5FA574,#E0A43C,#E65B45)' : s.color }} />
-          {s.label}{esFC ? ' · color = FC' : ''}
-        </span>
-      })}
-    </div>
     <CurvaAnimada key={run} momento={momento} playing={activo} />
-    {momento.explicacion && <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginTop: 10 }}>{momento.explicacion}</div>}
+    {momento.explicacion && <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55, marginTop: 12 }}>{momento.explicacion}</div>}
   </Glass>
 }
 function MomentosCarrusel({ momentos }) {

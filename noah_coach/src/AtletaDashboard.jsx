@@ -4889,6 +4889,9 @@ export default function AtletaDashboard({ atletaId }) {
       onInicio={() => { setVerPerfilV1(false); setTab('inicio') }} onAsistente={() => setTab('asistente')}
       abrir={(t) => { if (t === 'perfil') setVerPerfilV1(true); else setTab(t) }} />
   }
+  if (tab === 'asistente') {
+    return <PantallaAsistente atletaId={id} nombre={atleta?.nombre} onBack={() => setTab('inicio')} />
+  }
 
   // ── Inicio (Opción 1) como pantalla propia (no toca el dashboard actual) ──
   if (tab === 'inicio') {
@@ -6983,6 +6986,21 @@ function _saludoInicial(nombre) {
     : 'Hola, soy NOAH. Preguntame lo que quieras sobre tu entrenamiento.'
 }
 
+// Pantalla propia del Asistente en el chrome v2 (grafito, con header y back).
+function PantallaAsistente({ atletaId, nombre, onBack }) {
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#171C16,#101510)' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 10, padding: '14px', background: 'rgba(16,21,16,0.88)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', color: '#F3F0E8', cursor: 'pointer', flex: '0 0 auto' }}><ChevronLeft size={18} /></button>
+        <div style={{ fontSize: 15, fontWeight: 800, color: '#F3F0E8', letterSpacing: 0.2 }}>Asistente NOAH</div>
+      </div>
+      <div style={{ padding: '6px 12px 18px' }}>
+        <SeccionAsistente atletaId={atletaId} nombre={nombre} />
+      </div>
+    </div>
+  )
+}
+
 function SeccionAsistente({ atletaId, nombre }) {
   const [mensajes, setMensajes] = useState([
     { rol: 'asistente', texto: _saludoInicial(nombre), hora: _horaAhora() }
@@ -7037,8 +7055,8 @@ function SeccionAsistente({ atletaId, nombre }) {
     <div style={{ display:'flex', flexDirection:'column', height:'70vh' }}>
       <style>{`
         @keyframes pulsoNoah {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(139,92,246,0.55); }
-          50% { box-shadow: 0 0 0 7px rgba(139,92,246,0); }
+          0%, 100% { box-shadow: 0 0 0 0 rgba(79,140,201,0.55); }
+          50% { box-shadow: 0 0 0 7px rgba(79,140,201,0); }
         }
         @keyframes puntitoParpadeo {
           0%, 100% { opacity: 0.25; }
@@ -7047,13 +7065,13 @@ function SeccionAsistente({ atletaId, nombre }) {
         .avatar-noah-wrap { position: relative; flex-shrink: 0; }
         .avatar-noah {
           width:36px; height:36px; border-radius:50%; object-fit:cover;
-          border:2px solid rgba(139,92,246,0.6);
+          border:2px solid rgba(79,140,201,0.6);
           animation: pulsoNoah 2.2s ease-in-out infinite;
         }
         .avatar-noah.pensando { animation: pulsoNoah 0.85s ease-in-out infinite; }
         .avatar-noah-online {
           position:absolute; bottom:-1px; right:-1px; width:11px; height:11px;
-          border-radius:50%; background:#22C55E; border:2px solid #0A0F1E;
+          border-radius:50%; background:#5FA574; border:2px solid #13160F;
         }
         .punto-pensando { animation: puntitoParpadeo 1.2s ease-in-out infinite; }
         .punto-pensando:nth-child(2) { animation-delay: 0.2s; }
@@ -7062,7 +7080,7 @@ function SeccionAsistente({ atletaId, nombre }) {
 
       <div style={{ display:'flex', alignItems:'center', gap:6, padding:'2px 4px 10px',
         borderBottom:'1px solid rgba(255,255,255,0.08)', marginBottom:8 }}>
-        <div style={{ width:7, height:7, borderRadius:'50%', background:'#22C55E' }}/>
+        <div style={{ width:7, height:7, borderRadius:'50%', background:'#5FA574' }}/>
         <span style={{ fontSize:12, color:'rgba(255,255,255,0.55)', fontWeight:600 }}>
           Online · Asistente NOAH
         </span>
@@ -7093,8 +7111,8 @@ function SeccionAsistente({ atletaId, nombre }) {
                 {m.hora && <span style={{ fontSize:10, color:'rgba(255,255,255,0.35)' }}>{m.hora}</span>}
               </div>
               <div style={{
-                background: m.rol === 'usuario' ? 'rgba(139,92,246,0.28)' : 'rgba(15,15,28,0.92)',
-                border: `1px solid ${m.rol === 'usuario' ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.10)'}`,
+                background: m.rol === 'usuario' ? 'rgba(79,140,201,0.22)' : '#1F241D',
+                border: `1px solid ${m.rol === 'usuario' ? 'rgba(79,140,201,0.45)' : 'rgba(255,255,255,0.10)'}`,
                 borderRadius: 14,
                 padding: '10px 14px',
                 color: 'rgba(255,255,255,0.92)',
@@ -7138,7 +7156,7 @@ function SeccionAsistente({ atletaId, nombre }) {
         />
         <button onClick={enviar} disabled={enviando || !input.trim()} style={{
           width:44, height:44, borderRadius:12, border:'none',
-          background: (enviando || !input.trim()) ? 'rgba(139,92,246,0.3)' : '#8B5CF6',
+          background: (enviando || !input.trim()) ? 'rgba(79,140,201,0.35)' : '#4F8CC9',
           color:'#fff', display:'flex', alignItems:'center', justifyContent:'center',
           cursor: (enviando || !input.trim()) ? 'default' : 'pointer',
         }}>
