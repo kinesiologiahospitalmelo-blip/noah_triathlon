@@ -142,7 +142,7 @@ function HannaRing({ valor, nivel, anim }) {
 export default function InicioHome({
   atleta = {}, semana = {}, hanna = null, syncStatus = null, bioLoading, actLoading,
   onSyncBio = () => {}, onSyncAct = () => {}, onAcceso = () => {}, onAsistente = () => {},
-  onSubirFoto = () => {}, navActivo = 'inicio', onNav = () => {}, hannaSlot = null, semanaSlot = null,
+  onSubirFoto = () => {}, navActivo = 'inicio', onNav = () => {}, hannaSlot = null, semanaSlot = null, bienestarSlot = null,
   accesos = ACCESOS_DEFAULT, nav = NAV_DEFAULT,
   logo = '/assets/noah_logo_icono_negro.png',
   fotoFallback = '/assets/noah_avatar_m.png',
@@ -291,6 +291,11 @@ export default function InicioHome({
               </div>
             )}
           </section>
+
+          {/* ── 3b · BIENESTAR: check-in + fuerza + ciclo (inyectado) ── */}
+          {bienestarSlot && (
+            <section style={{ marginTop: 12, ...rise(330) }}>{bienestarSlot}</section>
+          )}
 
           {/* ── 4 · SINCRONIZACIÓN: LED de estado + acción (dato real) ── */}
           <section style={{ display: 'flex', gap: 8, marginTop: 12, ...rise(370) }}>

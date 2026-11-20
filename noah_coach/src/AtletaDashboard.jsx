@@ -21,6 +21,8 @@ import { Heart,
   BatteryLow, Moon, GlassWater, Brain, ChevronLeft, ChevronRight, Banana, Minus, Check, Scale, LogOut,
   UserCircle, MessageCircle, Send, ChevronDown, Home, Clock } from 'lucide-react'
 import InicioHome from './InicioHome'
+import RegistroDiario from './RegistroDiario'
+import CicloMenstrual from './CicloMenstrual'
 import PantallaNoah from './PantallaNoah'
 import SeccionAnalisis from './SeccionAnalisis'
 import { NOAH, FONT } from './noahTheme'
@@ -4918,12 +4920,16 @@ export default function AtletaDashboard({ atletaId }) {
     return <>
       <AlertaPopup atletaId={id} />
       <InicioHome
-        atleta={{ nombre: atleta?.nombre, foto: atleta?.foto }}
+        atleta={{ nombre: atleta?.nombre, foto: atleta?.foto, sexo: atleta?.sexo }}
         semana={semana} hanna={hannaProp}
         syncStatus={syncStatus} bioLoading={syncBioLoading} actLoading={syncLoading}
         onSyncBio={handleSyncBio} onSyncAct={handleSyncAct}
         onAcceso={goAcceso} onNav={goNav} navActivo="inicio"
         onAsistente={() => setTab('asistente')} onSubirFoto={() => setTab('perfil')}
+        bienestarSlot={<>
+          <RegistroDiario atletaId={id} />
+          {atleta?.sexo === 'F' && <CicloMenstrual atletaId={id} />}
+        </>}
       />
     </>
   }
