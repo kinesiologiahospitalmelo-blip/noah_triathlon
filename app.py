@@ -4853,7 +4853,9 @@ def get_hanna_life(atleta_id):
             SELECT fecha, hanna_life, hanna_nivel, hanna_scores,
                    riesgo_viral, riesgo_viral_nivel, riesgo_viral_alertas,
                    hrv_rmssd, hrv_estimado_valor, body_battery,
-                   stress_avg, sleep_h, hr_reposo
+                   stress_avg, sleep_h, hr_reposo,
+                   estado_autonomico, modificador_carga,
+                   centinela_nivel, centinela_msg, fc_reposo_delta, hrv_cv
             FROM sleep_hrv
             WHERE atleta_id=%s AND fecha >= %s
             ORDER BY fecha ASC
@@ -4868,7 +4870,7 @@ def get_hanna_life(atleta_id):
                 alertas, scores = [], {}
             puntos.append({
                 'fecha':        str(r[0])[:10],
-                'hanna_life':   r[1],
+                'hanna_life':   r[1],          # curva INTEGRADA (cuerpo × carga)
                 'hanna_nivel':  r[2],
                 'hanna_scores': scores,
                 'riesgo_viral': r[4],
@@ -4879,6 +4881,12 @@ def get_hanna_life(atleta_id):
                 'stress':       r[10],
                 'sleep':        r[11],
                 'hr_reposo':    r[12],
+                'cuerpo':       r[13],         # curva CUERPO (estado autonómico, solo biomarcadores)
+                'mod_carga':    r[14],         # efecto de la carga (A = cuerpo × mod_carga)
+                'centinela_nivel': r[15],      # aviso temprano: ok / leve / alerta / alto
+                'centinela_msg':   r[16],
+                'fc_reposo_delta': r[17],      # FC reposo reciente vs base personal (lpm)
+                'hrv_cv':          r[18],      # variabilidad de HRV (coef. variación %)
             })
 
         # Hanna hoy — tomar el último punto calculado
@@ -4899,7 +4907,8 @@ def get_hanna_life(atleta_id):
         if puntos:
             if not isinstance(hanna_hoy, dict):
                 hanna_hoy = {}
-            for campo in ('hanna_life', 'riesgo_viral', 'hrv', 'bb', 'stress', 'sleep', 'hr_reposo'):
+            for campo in ('hanna_life', 'cuerpo', 'riesgo_viral', 'hrv', 'bb', 'stress', 'sleep', 'hr_reposo',
+                          'centinela_nivel', 'centinela_msg', 'fc_reposo_delta', 'hrv_cv'):
                 if hanna_hoy.get(campo) is None:
                     for p in reversed(puntos):
                         if p.get(campo) is not None:
