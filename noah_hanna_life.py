@@ -541,8 +541,10 @@ def calcular_riesgo_viral(
     Usa percentiles personales si disponibles.
     """
     if not historia_hrv or len(historia_hrv) < 3:
-        return {'riesgo_pct': 0, 'nivel': 'bajo', 'alertas': [],
-                'recomendacion': 'Sin suficientes datos de HRV'}
+        # Sin HRV suficiente NO es "riesgo 0": es "no evaluable". Devolvemos None
+        # para no mostrar un 0% engañoso; el frontend muestra "sin datos".
+        return {'riesgo_pct': None, 'nivel': 'sin_datos', 'alertas': [],
+                'recomendacion': 'Sin HRV suficiente para evaluar riesgo viral'}
 
     riesgo = 0
     alertas = []

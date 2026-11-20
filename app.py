@@ -1880,6 +1880,188 @@ def fuel_registrar_comida(atleta_id):
 _init_nutricion_tables()
 
 
+# ─── REGISTRO DIARIO: check-in de 5 caras + toggle de fuerza/cross ────────────
+@app.route('/api/atletas/<int:atleta_id>/registro', methods=['GET'])
+@requiere_login
+def get_registro_diario(atleta_id):
+    """Registro del día (check-in + fuerza) + carga complementaria de la semana."""
+    conn = get_conn()
+    try:
+        from noah_registro_diario import get_registro
+        fecha = request.args.get('fecha', str(date.today()))
+        data = get_registro(conn, atleta_id, fecha)
+        conn.close()
+        return ok(data)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        import traceback; traceback.print_exc()
+        return error(str(e))
+
+
+@app.route('/api/atletas/<int:atleta_id>/registro/checkin', methods=['POST'])
+@requiere_login
+def post_registro_checkin(atleta_id):
+    """Guarda el check-in de 5 caras (1=muy mal .. 5=muy bien)."""
+    conn = get_conn()
+    try:
+        from noah_registro_diario import guardar_checkin
+        d = request.get_json(force=True, silent=True) or {}
+        cara = d.get('cara')
+        if cara is None:
+            conn.close(); return error('Falta "cara" (1..5)')
+        fecha = d.get('fecha', str(date.today()))
+        res = guardar_checkin(conn, atleta_id, cara, fecha=fecha, nota=d.get('nota'))
+        conn.close()
+        return ok(res)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        return error(str(e))
+
+
+@app.route('/api/atletas/<int:atleta_id>/registro/fuerza', methods=['POST'])
+@requiere_login
+def post_registro_fuerza(atleta_id):
+    """Registra si entrenó fuerza/cross hoy (+ sRPE opcional, carga complementaria
+    que NO modifica el TSS/CTL/ATL validados)."""
+    conn = get_conn()
+    try:
+        from noah_registro_diario import guardar_fuerza
+        d = request.get_json(force=True, silent=True) or {}
+        fecha = d.get('fecha', str(date.today()))
+        res = guardar_fuerza(conn, atleta_id, d.get('fuerza'),
+                             cross_tipo=d.get('cross_tipo'),
+                             rpe=d.get('rpe'), minutos=d.get('minutos'),
+                             fecha=fecha)
+        conn.close()
+        return ok(res)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        return error(str(e))
+
+
+# ─── FOTO DE PERFIL DEL ATLETA ────────────────────────────────────────────────
+def _init_foto_table():
+    try:
+        conn = get_conn()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS atleta_foto (
+                atleta_id   INTEGER PRIMARY KEY,
+                data_url    TEXT,
+                updated_at  TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        conn.commit(); conn.close()
+    except Exception as e:
+        print(f"[foto] init tabla: {e}")
+
+_init_foto_table()
+
+
+@app.route('/api/atletas/<int:atleta_id>/foto', methods=['GET'])
+@requiere_login
+def get_atleta_foto(atleta_id):
+    """Devuelve la foto del atleta como data URL (o null si no tiene)."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT data_url FROM atleta_foto WHERE atleta_id=%s",
+                           (atleta_id,)).fetchone()
+        conn.close()
+        return ok({'foto': row[0] if row else None})
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        return error(str(e))
+
+
+@app.route('/api/atletas/<int:atleta_id>/foto', methods=['POST'])
+@requiere_login
+def post_atleta_foto(atleta_id):
+    """Guarda la foto (data URL JPEG ya redimensionada en el cliente)."""
+    conn = get_conn()
+    try:
+        d = request.get_json(force=True, silent=True) or {}
+        data_url = d.get('data_url')
+        if not data_url or not data_url.startswith('data:image/'):
+            conn.close(); return error('data_url inválida')
+        if len(data_url) > 900_000:   # ~650KB de imagen; el cliente ya achica
+            conn.close(); return error('La imagen es muy grande')
+        conn.execute("""
+            INSERT INTO atleta_foto (atleta_id, data_url, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (atleta_id) DO UPDATE
+              SET data_url=EXCLUDED.data_url, updated_at=NOW()
+        """, (atleta_id, data_url))
+        conn.commit(); conn.close()
+        return ok({'ok': True})
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        return error(str(e))
+
+
+# ─── EFICIENCIA METABÓLICA / VO2max ───────────────────────────────────────────
+@app.route('/api/atletas/<int:atleta_id>/vo2', methods=['GET'])
+@requiere_login
+def get_vo2(atleta_id):
+    """Tendencia de VO2max correlacionada con biomarcadores + training_status."""
+    conn = get_conn()
+    try:
+        from noah_vo2 import get_vo2_analisis
+        dias = int(request.args.get('dias', 120))
+        data = get_vo2_analisis(conn, atleta_id, dias=dias)
+        conn.close()
+        return ok(data)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        import traceback; traceback.print_exc()
+        return error(str(e))
+
+
+# ─── CICLO MENSTRUAL (atletas femeninas) ──────────────────────────────────────
+@app.route('/api/atletas/<int:atleta_id>/ciclo_menstrual', methods=['GET'])
+@requiere_login
+def get_ciclo_menstrual(atleta_id):
+    """Fase actual, día del ciclo, próximo período estimado e historial."""
+    conn = get_conn()
+    try:
+        from noah_registro_diario import get_ciclo
+        fecha = request.args.get('fecha', str(date.today()))
+        data = get_ciclo(conn, atleta_id, fecha)
+        conn.close()
+        return ok(data)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        import traceback; traceback.print_exc()
+        return error(str(e))
+
+
+@app.route('/api/atletas/<int:atleta_id>/ciclo_menstrual', methods=['POST'])
+@requiere_login
+def post_ciclo_menstrual(atleta_id):
+    """Registra el inicio de un período (y datos opcionales)."""
+    conn = get_conn()
+    try:
+        from noah_registro_diario import guardar_ciclo
+        d = request.get_json(force=True, silent=True) or {}
+        fi = d.get('fecha_inicio')
+        if not fi:
+            conn.close(); return error('Falta "fecha_inicio"')
+        res = guardar_ciclo(conn, atleta_id, fi,
+                            duracion=d.get('duracion'),
+                            sintomas=d.get('sintomas'), nota=d.get('nota'))
+        conn.close()
+        return ok(res)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        return error(str(e))
+
+
 @app.route('/api/nutricion/foto', methods=['GET'])
 @requiere_login
 def get_foto_comida():
