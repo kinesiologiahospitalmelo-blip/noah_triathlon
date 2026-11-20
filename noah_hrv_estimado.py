@@ -226,6 +226,37 @@ def calcular_hrv_estimado(
     }
 
 
+def _mediana(vals):
+    s = sorted(vals)
+    n = len(s)
+    if not n:
+        return None
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2.0
+
+
+def _vecino_hrv(reales: dict, fecha_str: str, ventana: int = 3):
+    """Relleno por VECINO CERCANO: mediana de las lecturas REALES de HRV dentro
+    de ±`ventana` días. Devuelve (valor, distancia_min) o (None, None).
+
+    Pensado para baches cortos en una serie que normalmente sí tiene HRV. Usa
+    mediana local (robusta, no asume tendencia lineal) y solo rellena si hay al
+    menos una lectura real cerca; si no, no inventa nada.
+    """
+    try:
+        d0 = date.fromisoformat(str(fecha_str)[:10])
+    except Exception:
+        return None, None
+    vecinos = []
+    for off in range(1, ventana + 1):
+        for signo in (-1, 1):
+            v = reales.get((d0 + timedelta(days=off * signo)).isoformat())
+            if v is not None:
+                vecinos.append((off, float(v)))
+    if not vecinos:
+        return None, None
+    return _mediana([v for _, v in vecinos]), min(o for o, _ in vecinos)
+
+
 def calcular_y_guardar_hrv_estimado(
     conn,
     atleta_id: int,
@@ -268,23 +299,34 @@ def calcular_y_guardar_hrv_estimado(
     if not rows:
         return 0
 
+    # Mapa de lecturas REALES de HRV (para el relleno por vecino cercano)
+    reales = {}
+    for rf, rv in conn.execute(
+        "SELECT fecha, hrv_rmssd FROM sleep_hrv WHERE atleta_id=%s AND hrv_rmssd IS NOT NULL",
+        [atleta_id]).fetchall():
+        reales[str(rf)[:10]] = rv
+
     updated = 0
     for row in rows:
         row_id, f, hr_rep, bb, stress, sleep = row
-        tsb = tsb_map.get(str(f)[:10])
 
-        resultado = calcular_hrv_estimado(
-            hr_reposo=hr_rep,
-            body_battery=bb,
-            stress_avg=stress,
-            sleep_h=sleep,
-            tsb=tsb,
-            baseline=baseline,
-        )
-
-        hrv_est    = resultado.get('hrv_estimado')
-        confianza  = resultado.get('confianza', 0.0)
-        if hrv_est is None:
+        # 1) VECINO CERCANO: si hay HRV real dentro de ±3 días, usar la mediana
+        #    local (robusta, no lineal). Es el mejor relleno para baches cortos.
+        hrv_vec, dist = _vecino_hrv(reales, str(f)[:10], ventana=3)
+        if hrv_vec is not None:
+            hrv_est   = round(float(hrv_vec), 1)
+            confianza = {1: 0.72, 2: 0.62, 3: 0.52}.get(dist, 0.5)
+        else:
+            # 2) MODO SIN HRV: sin ninguna lectura real cerca, NO se inventa un
+            #    HRV. Se limpia cualquier estimado viejo (p.ej. el floor 10 que
+            #    la migración dejó en esta columna) y se deja en null; el
+            #    readiness (HANNA LIFE) se calcula con el resto de los datos
+            #    (body battery, FC reposo, stress, carga).
+            conn.execute("""
+                UPDATE sleep_hrv
+                SET hrv_estimado_valor=NULL, hrv_estimado=0, hrv_flag='sin_datos'
+                WHERE id=%s
+            """, (row_id,))
             continue
 
         # Calcular ratio vs últimos 7 días de HRV estimado
