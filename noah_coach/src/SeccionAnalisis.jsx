@@ -598,9 +598,18 @@ export default function SeccionAnalisis({ atletaId }) {
             {mono?.strain != null && <div style={{ fontFamily: M, fontSize: 11, color: NOAH.ink45, marginTop: 5 }}>Strain {Math.round(mono.strain)}</div>}
           </div>
           <div style={{ ...surface({ padding: '14px' }) }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8 }}><ShieldAlert size={13} color={rv >= 60 ? SEMA.bad : rv >= 30 ? SEMA.warn : SEMA.ok} strokeWidth={2.2} /><span style={eyebrow}>Riesgo viral</span></div>
-            <div style={{ fontFamily: M, fontSize: 28, fontWeight: 700, color: rv >= 60 ? SEMA.bad : rv >= 30 ? SEMA.warn : SEMA.ok, letterSpacing: -1, lineHeight: 1 }}>{rv != null ? `${Math.round(rv)}` : '—'}<span style={{ fontSize: 12, color: NOAH.ink45 }}>%</span></div>
-            <div style={{ fontFamily: F, fontSize: 10.5, color: NOAH.ink45, marginTop: 5 }}>probabilidad</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8 }}><ShieldAlert size={13} color={rv == null ? NOAH.ink45 : rv >= 60 ? SEMA.bad : rv >= 30 ? SEMA.warn : SEMA.ok} strokeWidth={2.2} /><span style={eyebrow}>Riesgo viral</span></div>
+            {rv != null ? (
+              <>
+                <div style={{ fontFamily: M, fontSize: 28, fontWeight: 700, color: rv >= 60 ? SEMA.bad : rv >= 30 ? SEMA.warn : SEMA.ok, letterSpacing: -1, lineHeight: 1 }}>{Math.round(rv)}<span style={{ fontSize: 12, color: NOAH.ink45 }}>%</span></div>
+                <div style={{ fontFamily: F, fontSize: 10.5, color: NOAH.ink45, marginTop: 5 }}>probabilidad</div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontFamily: M, fontSize: 20, fontWeight: 700, color: NOAH.ink45, letterSpacing: -0.5, lineHeight: 1.1 }}>sin datos</div>
+                <div style={{ fontFamily: F, fontSize: 10, color: NOAH.ink45, marginTop: 5, lineHeight: 1.35 }}>faltan noches de HRV para evaluarlo</div>
+              </>
+            )}
           </div>
         </div>
 

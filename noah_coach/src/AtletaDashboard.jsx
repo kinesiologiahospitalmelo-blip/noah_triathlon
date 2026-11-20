@@ -25,6 +25,7 @@ import RegistroDiario from './RegistroDiario'
 import CicloMenstrual from './CicloMenstrual'
 import PantallaNoah from './PantallaNoah'
 import SeccionAnalisis from './SeccionAnalisis'
+import EficienciaMetabolica from './EficienciaMetabolica'
 import { NOAH, FONT } from './noahTheme'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
@@ -4653,20 +4654,22 @@ function GrupoEntreno({ atletaId, presc, goNav, onInicio, onAsistente, abrir }) 
 }
 
 function GrupoRendimiento({ atletaId, goNav, onInicio, onAsistente, abrir, initialSub }) {
-  const [sub, setSub] = useState(['bio', 'zonas', 'tests', 'tecnica'].includes(initialSub) ? initialSub : 'bio')
-  const subtabs = [{ id: 'bio', label: 'Biomarcadores' }, { id: 'zonas', label: 'Zonas' }, { id: 'tests', label: 'Tests' }, { id: 'tecnica', label: 'Técnica' }]
+  const [sub, setSub] = useState(['bio', 'metabolica', 'zonas', 'tests', 'tecnica'].includes(initialSub) ? initialSub : 'bio')
+  const subtabs = [{ id: 'bio', label: 'Biomarcadores' }, { id: 'metabolica', label: 'VO2' }, { id: 'zonas', label: 'Zonas' }, { id: 'tests', label: 'Tests' }, { id: 'tecnica', label: 'Técnica' }]
   // Hero por sub-pestaña: foto propia (de nuestros assets) + título relevante.
   const HEROES = {
-    bio:     { foto: '/assets/hero_analisis.jpg', eyebrow: 'Rendimiento', titulo: 'Tu estado de hoy' },
-    zonas:   { foto: '/assets/hero_entreno.jpg',  eyebrow: 'Zonas',        titulo: 'Tus rangos de entrenamiento' },
-    tests:   { foto: '/assets/hero_perfil.jpg',   eyebrow: 'Evaluaciones', titulo: 'Tests de umbral' },
-    tecnica: { foto: '/assets/hero_analisis.jpg', eyebrow: 'Técnica',      titulo: 'Tu biomecánica' },
+    bio:        { foto: '/assets/hero_analisis.jpg', eyebrow: 'Rendimiento', titulo: 'Tu estado de hoy' },
+    metabolica: { foto: '/assets/hero_entreno.jpg',  eyebrow: 'Metabólico',  titulo: 'Tu VO2 y cómo asimilás' },
+    zonas:      { foto: '/assets/hero_entreno.jpg',  eyebrow: 'Zonas',        titulo: 'Tus rangos de entrenamiento' },
+    tests:      { foto: '/assets/hero_perfil.jpg',   eyebrow: 'Evaluaciones', titulo: 'Tests de umbral' },
+    tecnica:    { foto: '/assets/hero_analisis.jpg', eyebrow: 'Técnica',      titulo: 'Tu biomecánica' },
   }
   const h = HEROES[sub] || HEROES.bio
   return (
     <PantallaNoah title="Análisis" onBack={onInicio} navActivo="analisis" onNav={goNav} onAsistente={onAsistente} subtabs={subtabs} subActivo={sub} onSub={setSub}
       foto={h.foto} heroEyebrow={h.eyebrow} heroTitulo={h.titulo}>
       {sub === 'bio' && <SeccionAnalisis atletaId={atletaId} />}
+      {sub === 'metabolica' && <EficienciaMetabolica atletaId={atletaId} />}
       {sub === 'zonas' && <SeccionZonas atletaId={atletaId} />}
       {sub === 'tests' && <SeccionTests atletaId={atletaId} modoAtleta={true} />}
       {sub === 'tecnica' && <SeccionTecnica atletaId={atletaId} />}
@@ -4703,6 +4706,7 @@ export default function AtletaDashboard({ atletaId }) {
   const [health, setHealth]       = useState(null)
   const [diag, setDiag]           = useState(null)
   const [tab, setTab]             = useState('inicio')
+  const [fotoAtleta, setFotoAtleta] = useState(null) // data URL de la foto propia
   const [accesoSub, setAccesoSub] = useState(null)   // subtab inicial al entrar por accesos de Inicio
   const [verPerfilV1, setVerPerfilV1] = useState(false) // "abrir versión actual" del Perfil
   const [activeTabIdx, setActiveTabIdx] = useState(0)
@@ -4756,6 +4760,38 @@ export default function AtletaDashboard({ atletaId }) {
     setSyncLoading(false)
   }
 
+  // --- Subir foto de perfil: redimensiona en el navegador (canvas) y sube ---
+  const handleSubirFoto = () => {
+    const inp = document.createElement('input')
+    inp.type = 'file'; inp.accept = 'image/*'
+    inp.onchange = () => {
+      const file = inp.files && inp.files[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const img = new Image()
+        img.onload = () => {
+          const LADO = 400
+          const min = Math.min(img.width, img.height)
+          const sx = (img.width - min) / 2, sy = (img.height - min) / 2
+          const cv = document.createElement('canvas')
+          cv.width = LADO; cv.height = LADO
+          const ctx = cv.getContext('2d')
+          ctx.drawImage(img, sx, sy, min, min, 0, 0, LADO, LADO)
+          const dataUrl = cv.toDataURL('image/jpeg', 0.82)
+          setFotoAtleta(dataUrl)   // optimista
+          authFetch(`${API}/atletas/${id}/foto`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data_url: dataUrl }),
+          }).catch(() => {})
+        }
+        img.src = ev.target.result
+      }
+      reader.readAsDataURL(file)
+    }
+    inp.click()
+  }
+
   // --- Wahoo connection status ---
   useEffect(() => {
     if (String(id) !== '4') return
@@ -4794,6 +4830,7 @@ export default function AtletaDashboard({ atletaId }) {
     }).catch(()=>{})
     axios.get(`${API}/atletas/${id}/estado`).then(r=>setEstado(r.data.data)).catch(()=>{})
     axios.get(`${API}/atletas/${id}/prescripcion`).then(r=>setPresc(r.data.data)).catch(()=>{})
+    axios.get(`${API}/atletas/${id}/foto`).then(r=>{ if (r.data?.data?.foto) setFotoAtleta(r.data.data.foto) }).catch(()=>{})
     // ── Auto-sync al cargar: baja días perdidos en background ──────────────
     axios.get(`${API}/atletas/${id}/sync_status`).then(async r => {
       const st = r.data.data
@@ -4920,12 +4957,12 @@ export default function AtletaDashboard({ atletaId }) {
     return <>
       <AlertaPopup atletaId={id} />
       <InicioHome
-        atleta={{ nombre: atleta?.nombre, foto: atleta?.foto, sexo: atleta?.sexo }}
+        atleta={{ nombre: atleta?.nombre, foto: fotoAtleta || atleta?.foto, sexo: atleta?.sexo }}
         semana={semana} hanna={hannaProp}
         syncStatus={syncStatus} bioLoading={syncBioLoading} actLoading={syncLoading}
         onSyncBio={handleSyncBio} onSyncAct={handleSyncAct}
         onAcceso={goAcceso} onNav={goNav} navActivo="inicio"
-        onAsistente={() => setTab('asistente')} onSubirFoto={() => setTab('perfil')}
+        onAsistente={() => setTab('asistente')} onSubirFoto={handleSubirFoto}
         bienestarSlot={<>
           <RegistroDiario atletaId={id} />
           {atleta?.sexo === 'F' && <CicloMenstrual atletaId={id} />}
