@@ -1880,6 +1880,109 @@ def fuel_registrar_comida(atleta_id):
 _init_nutricion_tables()
 
 
+# ─── REGISTRO DIARIO: check-in de 5 caras + toggle de fuerza/cross ────────────
+@app.route('/api/atletas/<int:atleta_id>/registro', methods=['GET'])
+@requiere_login
+def get_registro_diario(atleta_id):
+    """Registro del día (check-in + fuerza) + carga complementaria de la semana."""
+    conn = get_conn()
+    try:
+        from noah_registro_diario import get_registro
+        fecha = request.args.get('fecha', str(date.today()))
+        data = get_registro(conn, atleta_id, fecha)
+        conn.close()
+        return ok(data)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        import traceback; traceback.print_exc()
+        return error(str(e))
+
+
+@app.route('/api/atletas/<int:atleta_id>/registro/checkin', methods=['POST'])
+@requiere_login
+def post_registro_checkin(atleta_id):
+    """Guarda el check-in de 5 caras (1=muy mal .. 5=muy bien)."""
+    conn = get_conn()
+    try:
+        from noah_registro_diario import guardar_checkin
+        d = request.get_json(force=True, silent=True) or {}
+        cara = d.get('cara')
+        if cara is None:
+            conn.close(); return error('Falta "cara" (1..5)')
+        fecha = d.get('fecha', str(date.today()))
+        res = guardar_checkin(conn, atleta_id, cara, fecha=fecha, nota=d.get('nota'))
+        conn.close()
+        return ok(res)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        return error(str(e))
+
+
+@app.route('/api/atletas/<int:atleta_id>/registro/fuerza', methods=['POST'])
+@requiere_login
+def post_registro_fuerza(atleta_id):
+    """Registra si entrenó fuerza/cross hoy (+ sRPE opcional, carga complementaria
+    que NO modifica el TSS/CTL/ATL validados)."""
+    conn = get_conn()
+    try:
+        from noah_registro_diario import guardar_fuerza
+        d = request.get_json(force=True, silent=True) or {}
+        fecha = d.get('fecha', str(date.today()))
+        res = guardar_fuerza(conn, atleta_id, d.get('fuerza'),
+                             cross_tipo=d.get('cross_tipo'),
+                             rpe=d.get('rpe'), minutos=d.get('minutos'),
+                             fecha=fecha)
+        conn.close()
+        return ok(res)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        return error(str(e))
+
+
+# ─── CICLO MENSTRUAL (atletas femeninas) ──────────────────────────────────────
+@app.route('/api/atletas/<int:atleta_id>/ciclo_menstrual', methods=['GET'])
+@requiere_login
+def get_ciclo_menstrual(atleta_id):
+    """Fase actual, día del ciclo, próximo período estimado e historial."""
+    conn = get_conn()
+    try:
+        from noah_registro_diario import get_ciclo
+        fecha = request.args.get('fecha', str(date.today()))
+        data = get_ciclo(conn, atleta_id, fecha)
+        conn.close()
+        return ok(data)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        import traceback; traceback.print_exc()
+        return error(str(e))
+
+
+@app.route('/api/atletas/<int:atleta_id>/ciclo_menstrual', methods=['POST'])
+@requiere_login
+def post_ciclo_menstrual(atleta_id):
+    """Registra el inicio de un período (y datos opcionales)."""
+    conn = get_conn()
+    try:
+        from noah_registro_diario import guardar_ciclo
+        d = request.get_json(force=True, silent=True) or {}
+        fi = d.get('fecha_inicio')
+        if not fi:
+            conn.close(); return error('Falta "fecha_inicio"')
+        res = guardar_ciclo(conn, atleta_id, fi,
+                            duracion=d.get('duracion'),
+                            sintomas=d.get('sintomas'), nota=d.get('nota'))
+        conn.close()
+        return ok(res)
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        return error(str(e))
+
+
 @app.route('/api/nutricion/foto', methods=['GET'])
 @requiere_login
 def get_foto_comida():
@@ -4853,7 +4956,9 @@ def get_hanna_life(atleta_id):
             SELECT fecha, hanna_life, hanna_nivel, hanna_scores,
                    riesgo_viral, riesgo_viral_nivel, riesgo_viral_alertas,
                    hrv_rmssd, hrv_estimado_valor, body_battery,
-                   stress_avg, sleep_h, hr_reposo
+                   stress_avg, sleep_h, hr_reposo,
+                   estado_autonomico, modificador_carga,
+                   centinela_nivel, centinela_msg, fc_reposo_delta, hrv_cv
             FROM sleep_hrv
             WHERE atleta_id=%s AND fecha >= %s
             ORDER BY fecha ASC
@@ -4868,7 +4973,7 @@ def get_hanna_life(atleta_id):
                 alertas, scores = [], {}
             puntos.append({
                 'fecha':        str(r[0])[:10],
-                'hanna_life':   r[1],
+                'hanna_life':   r[1],          # curva INTEGRADA (cuerpo × carga)
                 'hanna_nivel':  r[2],
                 'hanna_scores': scores,
                 'riesgo_viral': r[4],
@@ -4879,6 +4984,12 @@ def get_hanna_life(atleta_id):
                 'stress':       r[10],
                 'sleep':        r[11],
                 'hr_reposo':    r[12],
+                'cuerpo':       r[13],         # curva CUERPO (estado autonómico, solo biomarcadores)
+                'mod_carga':    r[14],         # efecto de la carga (A = cuerpo × mod_carga)
+                'centinela_nivel': r[15],      # aviso temprano: ok / leve / alerta / alto
+                'centinela_msg':   r[16],
+                'fc_reposo_delta': r[17],      # FC reposo reciente vs base personal (lpm)
+                'hrv_cv':          r[18],      # variabilidad de HRV (coef. variación %)
             })
 
         # Hanna hoy — tomar el último punto calculado
@@ -4890,6 +5001,23 @@ def get_hanna_life(atleta_id):
                 hanna_hoy = puntos[-1]
         except Exception:
             hanna_hoy = puntos[-1] if puntos else {}
+
+        # Completar con el ÚLTIMO valor disponible por métrica. Hoy casi siempre
+        # viene incompleto (Garmin procesa sueño/HRV al día siguiente), así que
+        # para cada biomarcador tomamos el último día con dato y guardamos de qué
+        # fecha es (campo + '_fecha'), para no mostrar vacío ni un dato stale sin
+        # avisar.
+        if puntos:
+            if not isinstance(hanna_hoy, dict):
+                hanna_hoy = {}
+            for campo in ('hanna_life', 'cuerpo', 'riesgo_viral', 'hrv', 'bb', 'stress', 'sleep', 'hr_reposo',
+                          'centinela_nivel', 'centinela_msg', 'fc_reposo_delta', 'hrv_cv'):
+                if hanna_hoy.get(campo) is None:
+                    for p in reversed(puntos):
+                        if p.get(campo) is not None:
+                            hanna_hoy[campo] = p[campo]
+                            hanna_hoy[campo + '_fecha'] = p['fecha']
+                            break
 
         conn.close()
         return ok(_limpiar_nan({

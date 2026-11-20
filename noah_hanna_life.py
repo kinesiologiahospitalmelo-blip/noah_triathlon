@@ -611,6 +611,73 @@ def calcular_riesgo_viral(
     }
 
 
+# ── Centinela de aviso temprano ───────────────────────────────────────────────
+def calcular_centinela_enfermedad(
+    historia_hrv:  List[float],
+    historia_fc:   List[float],
+    fc_baseline:   Optional[float] = None,
+) -> dict:
+    """
+    Aviso TEMPRANO de enfermedad / sobrecarga, COMPLEMENTARIO al riesgo viral.
+    No reemplaza ni modifica el riesgo viral (algoritmo validado de caída de HRV):
+    mira dos señales que el riesgo viral no evalúa de forma directa y que suelen
+    ADELANTARSE a la caída de la media de HRV:
+      1) FC en reposo en ALZA sostenida sobre la base personal — pródromo clásico
+         de infección (Flatt & Esco 2017; Buchheit 2014).
+      2) Variabilidad de la HRV (coeficiente de variación) en AUMENTO = pérdida de
+         estabilidad autonómica, que precede a la caída de la media (Flatt 2016).
+    Solo usa FC-reposo e HRV reales ya guardados; no inventa datos.
+    """
+    out = {'nivel': 'ok', 'delta_fc': None, 'hrv_cv': None,
+           'hrv_cv_base': None, 'senales': [],
+           'msg': 'Sin señales tempranas.'}
+    senales = []
+    puntos = 0
+
+    # 1) Tendencia de FC en reposo (media reciente vs base personal)
+    fc_rec = [float(v) for v in (historia_fc or [])[-5:] if v]
+    fc_base = fc_baseline
+    if fc_base is None and historia_fc:
+        prev = [float(v) for v in historia_fc[:-5] if v] or [float(v) for v in historia_fc if v]
+        fc_base = float(np.mean(prev)) if prev else None
+    if fc_rec and fc_base:
+        delta = float(np.mean(fc_rec)) - float(fc_base)
+        out['delta_fc'] = round(delta, 1)
+        if delta >= 5:
+            puntos += 2
+            senales.append({'nivel': 'alto', 'msg': f'FC reposo +{delta:.0f} lpm sobre tu base'})
+        elif delta >= 3:
+            puntos += 1
+            senales.append({'nivel': 'moderado', 'msg': f'FC reposo +{delta:.0f} lpm sobre tu base'})
+
+    # 2) Variabilidad de la HRV (CV = desvío / media, en %)
+    hrv_rec = [float(v) for v in (historia_hrv or [])[-7:] if v]
+    if len(hrv_rec) >= 4:
+        m = float(np.mean(hrv_rec)); s = float(np.std(hrv_rec))
+        cv = (s / m * 100.0) if m else None
+        out['hrv_cv'] = round(cv, 1) if cv is not None else None
+        hrv_prev = [float(v) for v in (historia_hrv or [])[-14:-7] if v]
+        if len(hrv_prev) >= 4:
+            mp = float(np.mean(hrv_prev)); sp = float(np.std(hrv_prev))
+            cv_base = (sp / mp * 100.0) if mp else None
+            out['hrv_cv_base'] = round(cv_base, 1) if cv_base is not None else None
+            if cv is not None and cv_base and cv >= cv_base * 1.5 and cv >= 10:
+                puntos += 1
+                senales.append({'nivel': 'moderado',
+                                'msg': 'Variabilidad de HRV en aumento (inestabilidad autonómica)'})
+
+    nivel = 'alto' if puntos >= 3 else 'alerta' if puntos == 2 else 'leve' if puntos == 1 else 'ok'
+    out['nivel'] = nivel
+    out['senales'] = senales
+    out['msg'] = (
+        'Sin señales tempranas. FC reposo y variabilidad estables.' if nivel == 'ok' else
+        'Una señal temprana leve. Observá sueño y estrés de hoy.'   if nivel == 'leve' else
+        'Dos señales tempranas: cuidá la carga y observá síntomas.' if nivel == 'alerta' else
+        'Señales tempranas marcadas: priorizá recuperación y controlá síntomas.'
+    )
+    return out
+
+
 # ── Guardar en DB ─────────────────────────────────────────────────────────────
 def calcular_y_guardar_hanna_life(
     conn,
@@ -628,6 +695,8 @@ def calcular_y_guardar_hanna_life(
         ('estado_autonomico','REAL'), ('modificador_carga','REAL'),
         ('riesgo_viral','REAL'),      ('riesgo_viral_nivel','TEXT'),
         ('riesgo_viral_alertas','TEXT'),
+        ('centinela_nivel','TEXT'),   ('centinela_msg','TEXT'),
+        ('fc_reposo_delta','REAL'),   ('hrv_cv','REAL'),
     ])
     conn.commit()
 
@@ -668,6 +737,15 @@ def calcular_y_guardar_hanna_life(
     hrv30 = df_hrv30['hrv'].dropna().values
     baseline_30d = float(hrv30.mean()) if len(hrv30) >= 5 else None
 
+    # Base personal de FC en reposo (30 días) para el centinela de aviso temprano
+    df_fc30 = pd.read_sql(
+        "SELECT hr_reposo FROM sleep_hrv "
+        "WHERE atleta_id=%s AND hr_reposo>0 ORDER BY fecha DESC LIMIT 30",
+        conn, params=[atleta_id]
+    )
+    fc30 = df_fc30['hr_reposo'].dropna().values
+    fc_baseline_30d = float(fc30.mean()) if len(fc30) >= 5 else None
+
     cond   = "atleta_id=%s" if recalcular_todo else \
              "atleta_id=%s AND fecha<=%s AND hanna_life IS NULL"
     params = [atleta_id] if recalcular_todo else [atleta_id, fecha]
@@ -683,15 +761,17 @@ def calcular_y_guardar_hanna_life(
 
     historia_hrv   = []
     historia_hanna = []
+    historia_fc    = []
 
     hist = conn.execute("""
-        SELECT hrv_rmssd, hrv_estimado_valor, hanna_life FROM sleep_hrv
+        SELECT hrv_rmssd, hrv_estimado_valor, hanna_life, hr_reposo FROM sleep_hrv
         WHERE atleta_id=%s AND fecha < %s ORDER BY fecha DESC LIMIT 14
     """, (atleta_id, str(rows[0][1])[:10])).fetchall()
     for h in reversed(hist):
         v = h[0] or h[1]
         if v: historia_hrv.append(float(v))
         if h[2]: historia_hanna.append(float(h[2]))
+        historia_fc.append(float(h[3]) if h[3] else None)
 
     # Calcular días sin entrenar por fecha
     fechas_entrenamiento = set(df_ses['fecha'].tolist())
@@ -741,6 +821,14 @@ def calcular_y_guardar_hanna_life(
             historia_hanna=historia_hanna[-14:],
         )
 
+        # Centinela de aviso temprano (FC reposo + variabilidad HRV). Incluye el
+        # día de hoy en la ventana reciente de FC.
+        centinela = calcular_centinela_enfermedad(
+            historia_hrv=(historia_hrv[-14:] + ([float(hrv_val)] if hrv_val else [])),
+            historia_fc=(historia_fc[-14:] + [float(fc) if fc else None]),
+            fc_baseline=fc_baseline_30d,
+        )
+
         # Suavizado EMA (α=0.30) — reduce variación abrupta
         hl_final = result['hanna_life']
         if len(historia_hanna) >= 3:
@@ -752,7 +840,9 @@ def calcular_y_guardar_hanna_life(
                 hanna_life=%s, hanna_nivel=%s, hanna_scores=%s,
                 hanna_puede_cargar=%s, hanna_semaforo=%s, hanna_semaforo_msg=%s,
                 estado_autonomico=%s, modificador_carga=%s,
-                riesgo_viral=%s, riesgo_viral_nivel=%s, riesgo_viral_alertas=%s
+                riesgo_viral=%s, riesgo_viral_nivel=%s, riesgo_viral_alertas=%s,
+                centinela_nivel=%s, centinela_msg=%s,
+                fc_reposo_delta=%s, hrv_cv=%s
             WHERE id=%s
         """, (
             hl_final, result['nivel'],
@@ -762,13 +852,17 @@ def calcular_y_guardar_hanna_life(
             result['estado_autonomico'], result['modificador_carga'],
             riesgo['riesgo_pct'], riesgo['nivel'],
             json.dumps(riesgo['alertas']),
+            centinela['nivel'], centinela['msg'],
+            centinela['delta_fc'], centinela['hrv_cv'],
             rid,
         ))
 
         if hrv_val: historia_hrv.append(float(hrv_val))
         historia_hanna.append(hl_final)
+        historia_fc.append(float(fc) if fc else None)
         historia_hrv   = historia_hrv[-14:]
         historia_hanna = historia_hanna[-14:]
+        historia_fc    = historia_fc[-14:]
         updated += 1
 
     conn.commit()
@@ -784,7 +878,8 @@ def get_hanna_hoy(conn, atleta_id: int,
                estado_autonomico, modificador_carga,
                riesgo_viral, riesgo_viral_nivel, riesgo_viral_alertas,
                hrv_rmssd, hrv_estimado_valor, hrv_estimado,
-               body_battery, stress_avg, sleep_h, hr_reposo, spo2_avg
+               body_battery, stress_avg, sleep_h, hr_reposo, spo2_avg,
+               centinela_nivel, centinela_msg, fc_reposo_delta, hrv_cv
         FROM sleep_hrv WHERE atleta_id=%s
         AND fecha <= %s AND hanna_life IS NOT NULL
         ORDER BY fecha DESC LIMIT 1
@@ -818,6 +913,10 @@ def get_hanna_hoy(conn, atleta_id: int,
         'sleep_h':              row[16],
         'hr_reposo':            row[17],
         'spo2':                 row[18],
+        'centinela_nivel':      row[19],
+        'centinela_msg':        row[20],
+        'fc_reposo_delta':      row[21],
+        'hrv_cv':               row[22],
     }
 
 
