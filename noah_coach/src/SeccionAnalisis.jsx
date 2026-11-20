@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { NOAH, FONT } from './noahTheme'
 import AlertasCard from './AlertasCard'
+import CalibracionHanna from './CalibracionHanna'
 // Foto editorial — importada desde src/assets (donde ya está subida en el repo).
 import heroImg from './assets/analisis_hero.jpg'
 function FotoHero() {
@@ -523,6 +524,9 @@ export default function SeccionAnalisis({ atletaId }) {
         <div style={{ ...surface({ padding: '16px 12px 12px', marginBottom: 14 }) }}>
           <HannaPrediccion puntos={hanna?.puntos} hoy={hoy} dias={dias} />
         </div>
+
+        {/* Aprendizaje: percepción del atleta vs HANNA */}
+        <CalibracionHanna atletaId={atletaId} />
 
         <div style={{ ...surface({ padding: '16px 12px 10px', marginBottom: 14 }) }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8, padding: '0 4px' }}>

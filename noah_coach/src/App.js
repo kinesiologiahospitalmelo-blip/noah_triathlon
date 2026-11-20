@@ -3761,37 +3761,45 @@ function Login() {
   const inputStyle = (campo) => ({
     width: '100%', marginTop: 7, marginBottom: 18, padding: '13px 15px',
     borderRadius: 12, boxSizing: 'border-box', outline: 'none',
-    background: foco === campo ? 'rgba(112,84,199,0.10)' : 'rgba(255,255,255,0.05)',
-    border: `1px solid ${foco === campo ? 'rgba(112,84,199,0.75)' : 'rgba(255,255,255,0.12)'}`,
-    color: '#F3F4F6', fontSize: 14.5, fontFamily: 'inherit',
+    background: foco === campo ? 'rgba(120,134,107,0.08)' : '#FFFFFF',
+    border: `1px solid ${foco === campo ? '#78866B' : 'rgba(41,45,41,0.14)'}`,
+    color: '#292D29', fontSize: 14.5, fontFamily: 'inherit',
     transition: 'border-color .18s, background .18s',
   })
   return (
     <div style={{
       minHeight: '100vh', position: 'relative', overflow: 'hidden',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: '#101522',
+      background: '#F3F0E8',
       fontFamily: "'Archivo', system-ui, -apple-system, sans-serif", padding: 20,
     }}>
-      {/* Glows de marca muy sutiles (identidad: violeta + verde) sobre azul noche */}
-      <div style={{ position: 'absolute', width: 480, height: 480, borderRadius: '50%', filter: 'blur(120px)', background: '#7054C7', opacity: 0.16, left: -140, top: -120 }} />
-      <div style={{ position: 'absolute', width: 420, height: 420, borderRadius: '50%', filter: 'blur(120px)', background: '#399B7B', opacity: 0.12, right: -120, bottom: -120 }} />
+      {/* Glows de marca muy sutiles en paleta NOAH (salvia + coral) sobre marfil */}
+      <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', filter: 'blur(130px)', background: '#78866B', opacity: 0.14, left: -150, top: -130 }} />
+      <div style={{ position: 'absolute', width: 420, height: 420, borderRadius: '50%', filter: 'blur(130px)', background: '#E65B45', opacity: 0.08, right: -130, bottom: -130 }} />
 
-      <form onSubmit={submit} style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 340, display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+      <form onSubmit={submit} style={{
+        position: 'relative', zIndex: 1, width: '100%', maxWidth: 360,
+        display: 'flex', flexDirection: 'column', alignItems: 'stretch',
+        background: '#FBFAF6', border: '1px solid rgba(41,45,41,0.10)', borderRadius: 24,
+        boxShadow: '0 2px 4px rgba(41,45,41,0.04), 0 30px 64px -34px rgba(41,45,41,0.5)',
+        padding: '34px 26px 30px',
+      }}>
         {/* Marca */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 34 }}>
-          <LogoNoahIso size={104} />
-          <div style={{ display: 'flex', gap: 3, marginTop: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 30 }}>
+          <div style={{ width: 92, height: 92, borderRadius: 22, background: '#101522', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 18px 36px -18px rgba(41,45,41,0.5)' }}>
+            <LogoNoahIso size={58} />
+          </div>
+          <div style={{ display: 'flex', gap: 3, marginTop: 18 }}>
             {['N', 'O', 'A', 'H'].map((l, i) => (
-              <span key={i} style={{ fontSize: 30, fontWeight: 800, letterSpacing: 6, color: '#F3F4F6' }}>{l}</span>
+              <span key={i} style={{ fontSize: 30, fontWeight: 800, letterSpacing: 6, color: '#292D29' }}>{l}</span>
             ))}
           </div>
-          <div style={{ fontSize: 9, color: 'rgba(243,244,246,0.5)', letterSpacing: 2.4, textTransform: 'uppercase', fontWeight: 700, marginTop: 8 }}>
+          <div style={{ fontSize: 9, color: 'rgba(41,45,41,0.5)', letterSpacing: 2.4, textTransform: 'uppercase', fontWeight: 700, marginTop: 8 }}>
             Never Over, Always Higher
           </div>
         </div>
 
-        <label style={{ fontSize: 12, color: 'rgba(243,244,246,0.6)', fontWeight: 700 }}>Usuario</label>
+        <label style={{ fontSize: 12, color: 'rgba(41,45,41,0.6)', fontWeight: 700 }}>Usuario</label>
         <input
           value={usuario} onChange={e => setUsuario(e.target.value)}
           onFocus={() => setFoco('usuario')} onBlur={() => setFoco('')}
@@ -3799,7 +3807,7 @@ function Login() {
           style={inputStyle('usuario')}
         />
 
-        <label style={{ fontSize: 12, color: 'rgba(243,244,246,0.6)', fontWeight: 700 }}>Contraseña</label>
+        <label style={{ fontSize: 12, color: 'rgba(41,45,41,0.6)', fontWeight: 700 }}>Contraseña</label>
         <input
           type="password" value={password} onChange={e => setPassword(e.target.value)}
           onFocus={() => setFoco('password')} onBlur={() => setFoco('')}
@@ -3808,18 +3816,18 @@ function Login() {
         />
 
         {error && (
-          <div style={{ fontSize: 12.5, color: '#F2B8AE', background: 'rgba(230,91,69,0.12)',
-            border: '1px solid rgba(230,91,69,0.35)', borderRadius: 10, padding: '10px 13px', marginBottom: 16 }}>
+          <div style={{ fontSize: 12.5, color: '#B23A2A', background: 'rgba(230,91,69,0.10)',
+            border: '1px solid rgba(230,91,69,0.30)', borderRadius: 10, padding: '10px 13px', marginBottom: 16 }}>
             {error}
           </div>
         )}
 
         <button type="submit" disabled={cargando} style={{
           width: '100%', padding: '14px', borderRadius: 12, border: 'none', marginTop: 4,
-          background: cargando ? 'rgba(112,84,199,0.5)' : 'linear-gradient(135deg,#7E60D6,#5B43B0)',
-          color: '#fff', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit',
+          background: cargando ? 'rgba(41,45,41,0.45)' : '#292D29',
+          color: '#F3F0E8', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit',
           cursor: cargando ? 'default' : 'pointer', letterSpacing: 0.3,
-          boxShadow: '0 14px 30px -12px rgba(112,84,199,0.7)',
+          boxShadow: '0 14px 30px -14px rgba(41,45,41,0.55)',
         }}>
           {cargando ? 'Ingresando…' : 'Ingresar'}
         </button>
