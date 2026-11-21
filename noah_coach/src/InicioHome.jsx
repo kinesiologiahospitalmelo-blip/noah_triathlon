@@ -7,10 +7,11 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   Dumbbell, BarChart3, ClipboardCheck, Trophy, HeartPulse, Brain,
   Waves, Bike, Footprints, MessageCircle, Home, User, Camera,
-  BatteryFull, BatteryLow, Zap, RefreshCw,
+  BatteryFull, BatteryLow, Zap, RefreshCw, LogOut,
 } from 'lucide-react'
 import { NOAH, DEPORTE, SERIES, FONT } from './noahTheme'
 import LogoIso from './LogoIso'
+import { cerrarSesion } from './sesion'
 
 // Semáforo (tonos del estilo nuevo)
 const SEMA = { ok: '#35C07A', warn: '#E8A24B', bad: '#E2726E' } // verde hoy · naranja ayer · rojo hace días
@@ -190,15 +191,36 @@ export default function InicioHome({
         .noah-tile:hover{transform:translateY(-3px)}
         .noah-press{transition:transform .12s ease}
         .noah-press:active{transform:scale(.97)}
+        .ih-wrap{max-width:440px;margin:0 auto}
+        .ih-hero{height:312px}
+        .ih-hero-foto{width:60%}
+        .ih-hero-txt{max-width:68%}
+        .ih-nombre{font-size:40px !important}
+        .ih-body{display:flex;flex-direction:column}
+        .ih-col{display:contents}
+        .ih-semana{order:0}.ih-hanna{order:1}.ih-bien{order:2}.ih-sync{order:3}.ih-acc{order:4}
+        .ih-nav{max-width:440px}
+        @media (min-width:900px){
+          .ih-wrap{max-width:1100px;padding:0 24px}
+          .ih-hero{height:380px;border-radius:30px !important;margin-top:20px}
+          .ih-hero-foto{width:46%}
+          .ih-hero-txt{max-width:50%;left:44px !important;bottom:44px !important}
+          .ih-nombre{font-size:64px !important}
+          .ih-body{display:grid;grid-template-columns:1.05fr 1fr;gap:0 24px;align-items:start;margin-top:8px}
+          .ih-body > .ih-col > section{margin-top:16px !important}
+          .ih-col{display:flex;flex-direction:column}
+          .ih-col-b .ih-acc{order:-1}.ih-col-b .ih-bien{order:0}
+          .ih-nav{max-width:560px}
+        }
         @media (prefers-reduced-motion: reduce){
           .noah-tile,.noah-press{transition:none}.noah-float{animation:none !important}
         }
       `}</style>
 
-      <div style={{ maxWidth: 440, margin: '0 auto' }}>
+      <div className="ih-wrap">
 
         {/* ── 1 · HERO editorial: atleta protagonista + marca + saludo ── */}
-        <section style={{ position: 'relative', height: 312, overflow: 'hidden', borderBottomLeftRadius: 30, borderBottomRightRadius: 30, ...rise(0) }}>
+        <section className="ih-hero" style={{ position: 'relative', overflow: 'hidden', borderBottomLeftRadius: 30, borderBottomRightRadius: 30, ...rise(0) }}>
           <svg viewBox="0 0 440 312" preserveAspectRatio="xMidYMid slice" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
             <rect width="440" height="312" fill={NOAH.marfil} />
             <circle className="noah-float" cx="372" cy="60" r="150" fill={NOAH.coral} opacity="0.14"
@@ -206,7 +228,7 @@ export default function InicioHome({
             <circle cx="60" cy="330" r="130" fill={NOAH.salvia} opacity="0.12" />
           </svg>
 
-          <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '60%' }}>
+          <div className="ih-hero-foto" style={{ position: 'absolute', right: 0, top: 0, bottom: 0 }}>
             <img src={foto} alt={nombre} onError={() => setImgErr(true)}
               style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: '50% 20%' }} />
             <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(90deg, ${NOAH.marfil} 2%, rgba(243,240,232,0.55) 30%, rgba(243,240,232,0.08) 56%, transparent 72%)` }} />
@@ -225,17 +247,26 @@ export default function InicioHome({
             <span style={{ fontFamily: FONT.base, fontWeight: 700, fontSize: 20, letterSpacing: -0.3, color: NOAH.grafito }}>noah<span style={{ color: NOAH.azul }}>°</span></span>
           </div>
 
-          <div style={{ position: 'absolute', left: 20, bottom: 30, maxWidth: '68%' }}>
+          <button onClick={cerrarSesion} aria-label="Cerrar sesión" title="Cerrar sesión" className="noah-press" style={{
+            position: 'absolute', top: 16, right: 16, zIndex: 3, height: 36, padding: '0 12px 0 10px', borderRadius: 999, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(41,45,41,0.55)', border: '1.5px solid rgba(255,255,255,0.8)',
+            backdropFilter: 'blur(4px)', color: '#fff', fontFamily: FONT.base, fontSize: 12, fontWeight: 700,
+          }}>
+            <LogOut size={15} strokeWidth={2.2} /> Salir
+          </button>
+
+          <div className="ih-hero-txt" style={{ position: 'absolute', left: 20, bottom: 30 }}>
             <div style={{ fontFamily: FONT.base, fontSize: 12, fontWeight: 700, letterSpacing: 2, color: NOAH.salvia, textTransform: 'uppercase' }}>Hola</div>
-            <div style={{ fontFamily: FONT.base, fontSize: 40, fontWeight: 700, color: NOAH.grafito, lineHeight: 1, letterSpacing: -1, marginTop: 2 }}>{nombre}</div>
+            <div className="ih-nombre" style={{ fontFamily: FONT.base, fontSize: 40, fontWeight: 700, color: NOAH.grafito, lineHeight: 1, letterSpacing: -1, marginTop: 2 }}>{nombre}</div>
             <div style={{ fontFamily: FONT.base, fontSize: 13.5, color: NOAH.ink70, marginTop: 10, lineHeight: 1.35 }}>Entrená más inteligente.<br />Rendí mejor.</div>
           </div>
         </section>
 
-        <div style={{ padding: '0 16px' }}>
+        <div className="ih-body" style={{ padding: '0 16px' }}>
+<div className="ih-col ih-col-a">
 
           {/* ── 2 · SEMANA: 3 anillos horizontales (horas + distribución) ── */}
-          <section className="noah-tile" style={{
+          <section className="noah-tile ih-semana" style={{
             position: 'relative', marginTop: -20, zIndex: 2,
             background: NOAH.surface, border: `1px solid ${NOAH.border}`, borderRadius: 20,
             boxShadow: '0 2px 4px rgba(41,45,41,0.04), 0 18px 40px -22px rgba(41,45,41,0.5)',
@@ -257,7 +288,7 @@ export default function InicioHome({
           </section>
 
           {/* ── 3 · HANNA LIFE: anillo a lo ancho + info real ── */}
-          <section style={{ marginTop: 12, ...rise(300) }}>
+          <section className="ih-hanna" style={{ marginTop: 12, ...rise(300) }}>
             {hannaSlot || (
               <div className="noah-tile" style={{
                 position: 'relative', overflow: 'hidden', borderRadius: 20, padding: '16px 16px',
@@ -292,13 +323,9 @@ export default function InicioHome({
             )}
           </section>
 
-          {/* ── 3b · BIENESTAR: check-in + fuerza + ciclo (inyectado) ── */}
-          {bienestarSlot && (
-            <section style={{ marginTop: 12, ...rise(330) }}>{bienestarSlot}</section>
-          )}
 
           {/* ── 4 · SINCRONIZACIÓN: LED de estado + acción (dato real) ── */}
-          <section style={{ display: 'flex', gap: 8, marginTop: 12, ...rise(370) }}>
+          <section className="ih-sync" style={{ display: 'flex', gap: 8, marginTop: 12, ...rise(370) }}>
             {[
               { lbl: 'Bio', esHoy: syncStatus?.bio_es_hoy, dias: syncStatus?.bio_dias_atras, l: bioLoading, f: onSyncBio },
               { lbl: 'Actividad', esHoy: syncStatus?.act_es_hoy, dias: syncStatus?.act_dias_atras, l: actLoading, f: onSyncAct },
@@ -323,9 +350,11 @@ export default function InicioHome({
               )
             })}
           </section>
+</div>
+<div className="ih-col ih-col-b">
 
           {/* ── 5 · ACCESOS: grilla con profundidad ── */}
-          <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 14 }}>
+          <section className="ih-acc" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 14 }}>
             {accesos.map((a, i) => (
               <button key={a.id} onClick={() => onAcceso(a.id)} className="noah-tile noah-press" style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9, padding: '16px 6px',
@@ -344,6 +373,13 @@ export default function InicioHome({
               </button>
             ))}
           </section>
+
+          {/* ── 3b · BIENESTAR: check-in + fuerza + ciclo (inyectado) ── */}
+          {bienestarSlot && (
+            <section className="ih-bien" style={{ marginTop: 12, ...rise(330) }}>{bienestarSlot}</section>
+          )}
+</div>
+
         </div>
       </div>
 
@@ -358,7 +394,7 @@ export default function InicioHome({
 
       {/* ── 7 · NAV inferior ── */}
       <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: 64, background: 'rgba(251,250,246,0.92)', borderTop: `1px solid ${NOAH.border}`, backdropFilter: 'blur(10px)', zIndex: 50 }}>
-        <div style={{ maxWidth: 440, margin: '0 auto', height: '100%', display: 'flex' }}>
+        <div className="ih-nav" style={{ margin: '0 auto', height: '100%', display: 'flex' }}>
           {nav.map(n => {
             const on = navActivo === n.id
             return <button key={n.id} onClick={() => onNav(n.id)} className="noah-press" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, background: 'none', border: 'none', cursor: 'pointer' }}>

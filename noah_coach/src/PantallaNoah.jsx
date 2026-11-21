@@ -2,7 +2,8 @@
 // Barra superior (volver + título) + sub-tabs + contenido + chat flotante + nav inferior.
 // Cada sección se siente INDEPENDIENTE, luminosa y en identidad NOAH. Solo presentación.
 // Props existentes preservadas; se agregan opcionales (foto, eyebrow) sin cambiar comportamiento.
-import { ArrowLeft, Home, Dumbbell, BarChart3, User, MessageCircle } from 'lucide-react'
+import { ArrowLeft, Home, Dumbbell, BarChart3, User, MessageCircle, LogOut } from 'lucide-react'
+import { cerrarSesion } from './sesion'
 import { NOAH, FONT } from './noahTheme'
 import LogoIso from './LogoIso'
 
@@ -69,6 +70,12 @@ export default function PantallaNoah({
           </div>
           {action}
           <LogoIso size={26} radius={7} style={{ opacity: 0.92 }} />
+          <button onClick={cerrarSesion} aria-label="Cerrar sesión" title="Cerrar sesión" style={{
+            width: 40, height: 40, borderRadius: 13, flex: '0 0 auto', display: 'grid', placeItems: 'center', cursor: 'pointer',
+            background: 'rgba(251,250,246,0.75)', border: `1px solid ${NOAH.border}`, color: NOAH.grafito,
+          }}>
+            <LogOut size={17} strokeWidth={2.2} />
+          </button>
         </div>
       </header>
 
@@ -149,7 +156,7 @@ export default function PantallaNoah({
         borderTop: `1px solid ${NOAH.borderSoft}`,
         boxShadow: '0 -8px 26px -18px rgba(41,45,41,0.3)',
       }}>
-        <div style={{ maxWidth: 480, margin: '0 auto', height: 66, display: 'flex', padding: '0 8px' }}>
+        <div style={{ maxWidth: 'min(560px, 100%)', margin: '0 auto', height: 66, display: 'flex', padding: '0 8px' }}>
           {nav.map(n => {
             const on = navActivo === n.id
             return (

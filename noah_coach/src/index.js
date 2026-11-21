@@ -9,6 +9,9 @@ root.render(
   <App />
 );
 
+// Quita el splash inline (index.html) apenas React pintó la pantalla de carga v2.
+requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById('noah-boot')?.remove()));
+
 // Service worker: habilita instalar NOAH como app (botón "Instalar" en
 // Android/Chrome). No cachea, así que no sirve versiones viejas tras un deploy.
 if ('serviceWorker' in navigator) {
