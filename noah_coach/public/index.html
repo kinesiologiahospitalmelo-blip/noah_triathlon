@@ -9,8 +9,9 @@
       name="description"
       content="NOAH Coach — Never Over, Always Higher. Plataforma de entrenamiento y seguimiento de atletas."
     />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="NOAH" />
     <!--
@@ -32,10 +33,19 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>NOAH Coach</title>
+    <!-- Splash inline: se pinta al instante (antes de que cargue el JS) con el mismo
+         fondo marfil que PantallaCarga v2, para que nunca aparezca otra pantalla. -->
+    <style>
+      html,body{margin:0;background:#F3F0E8}
+      #noah-boot{position:fixed;inset:0;z-index:9998;background:#F3F0E8;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Archivo',system-ui,-apple-system,sans-serif}
+      #noah-boot b{font-size:34px;font-weight:800;letter-spacing:11px;color:#292D29;margin-right:-11px}
+      #noah-boot i{font-style:normal;font-size:9.5px;letter-spacing:2.6px;text-transform:uppercase;font-weight:700;color:rgba(41,45,41,.5);margin-top:9px}
+    </style>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    <div id="noah-boot"><b>NOAH</b><i>Never Over, Always Higher</i></div>
     <!--
       This HTML file is a template.
       If you open it directly in the browser, you will see an empty page.
