@@ -2,7 +2,11 @@
 // Wizard de alta de atleta: carrusel de secciones con glassmorphism
 import { useState, useRef, useEffect } from 'react'
 
-const API = 'http://localhost:5000/api'
+// En producción (Vercel/celular) el backend entra por /api en el mismo dominio;
+// solo en local se usa localhost:5000. (Misma lógica que App.js — antes estaba
+// hardcodeado a localhost y por eso el onboarding fallaba fuera de la compu.)
+const esLocal = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
+const API = esLocal ? `http://${window.location.hostname}:5000/api` : '/api'
 
 // ── Estilos globales ──────────────────────────────────────────────────────────
 const STYLES = `

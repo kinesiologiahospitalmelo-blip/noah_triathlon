@@ -3322,7 +3322,7 @@ function DashboardAtleta({ atletaId, atleta }) {
 
       {tab==='clustering'&&atletaId&&<ClusteringPanel atletaId={atletaId} atleta={atleta} />}
       {tab==='optimizer'&&atletaId&&<OptimizerPanel atletaId={atletaId} atleta={atleta} />}
-      {tab==='perfil'&&atletaId&&(<><PerfilFisiologico atletaId={atletaId} atleta={atleta} /><PerfilDisponibilidad atletaId={atletaId} atleta={atleta} /></>)}
+      {tab==='perfil'&&atletaId&&(<><AccesoAtleta atletaId={atletaId} /><PerfilFisiologico atletaId={atletaId} atleta={atleta} /><PerfilDisponibilidad atletaId={atletaId} atleta={atleta} /></>)}
       {tab==='twin'&&atletaId&&<TwinAtleta atletaId={atletaId} />}
       {tab==='aprendizaje'&&atletaId&&<AprendizajePanel atletaId={atletaId} atleta={atleta} />}
       {tab==='tecnica'&&atletaId&&<SeccionTecnica atletaId={atletaId} />}
@@ -4306,6 +4306,68 @@ function AprendizajePanel({ atletaId, atleta }) {
   )
 }
 
+
+// Acceso del atleta: crea/actualiza usuario+contraseña de login (tabla
+// usuarios_login) pegando al endpoint seguro que ya existe. Solo presentación —
+// no cambia la lógica del backend.
+function AccesoAtleta({ atletaId }) {
+  const [usuario, setUsuario]   = useState('')
+  const [password, setPassword] = useState('')
+  const [verPass, setVerPass]   = useState(false)
+  const [saving, setSaving]     = useState(false)
+  const [msg, setMsg]           = useState(null) // { ok, text }
+
+  useEffect(() => { setUsuario(''); setPassword(''); setMsg(null); setVerPass(false) }, [atletaId])
+
+  const guardar = async () => {
+    if (!usuario.trim() || !password) { setMsg({ ok: false, text: 'Completá usuario y contraseña.' }); return }
+    if (password.length < 4)          { setMsg({ ok: false, text: 'La contraseña debe tener al menos 4 caracteres.' }); return }
+    setSaving(true); setMsg(null)
+    try {
+      await axios.post(`${API}/admin/crear_usuario_login`, { atleta_id: atletaId, usuario: usuario.trim(), password })
+      setMsg({ ok: true, text: `Listo. El atleta entra con el usuario "${usuario.trim()}".` })
+      setPassword('')
+    } catch (e) {
+      setMsg({ ok: false, text: e?.response?.data?.error || e.message || 'Error al guardar' })
+    }
+    setSaving(false)
+  }
+
+  const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg2, color: C.text, fontSize: 14 }
+
+  return (
+    <div style={{ marginBottom: 28, paddingBottom: 24, borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Acceso del atleta</div>
+      <div style={{ fontSize: 12, color: C.text2, marginBottom: 16, lineHeight: 1.5 }}>
+        Usuario y contraseña con los que el atleta inicia sesión en la app. Guardar crea el acceso
+        (o lo reemplaza, pisando también la contraseña). El usuario es único.
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 12, color: C.text2, marginBottom: 4 }}>Usuario</div>
+        <input type="text" value={usuario} placeholder="ej: juanperez" autoCapitalize="none" autoCorrect="off"
+          onChange={e => setUsuario(e.target.value)} style={inp} />
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 12, color: C.text2, marginBottom: 4 }}>Contraseña</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input type={verPass ? 'text' : 'password'} value={password} placeholder="mínimo 4 caracteres"
+            onChange={e => setPassword(e.target.value)} style={{ ...inp, flex: 1 }} />
+          <button type="button" onClick={() => setVerPass(v => !v)}
+            style={{ padding: '0 12px', borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg2, color: C.text2, fontSize: 12, cursor: 'pointer' }}>
+            {verPass ? 'Ocultar' : 'Ver'}
+          </button>
+        </div>
+      </div>
+      {msg && (
+        <div style={{ fontSize: 12, marginBottom: 12, color: msg.ok ? C.done : '#F85149' }}>{msg.text}</div>
+      )}
+      <button onClick={guardar} disabled={saving}
+        style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: C.purple, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+        {saving ? 'Guardando...' : 'Guardar acceso'}
+      </button>
+    </div>
+  )
+}
 
 function PerfilFisiologico({ atletaId, atleta }) {
   const [lthrRun,  setLthrRun]  = useState(atleta?.lthr_run  || '')
