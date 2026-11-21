@@ -1,16 +1,44 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "builds": [
-    { "src": "app.py", "use": "@vercel/python" },
+    {
+      "src": "app.py",
+      "use": "@vercel/python"
+    },
     {
       "src": "noah_coach/package.json",
       "use": "@vercel/static-build",
-      "config": { "distDir": "build", "routePrefix": "/" }
+      "config": {
+        "distDir": "build",
+        "routePrefix": "/"
+      }
     }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/app.py" },
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+    {
+      "src": "/(index\\.html|sw\\.js|manifest\\.json)",
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate"
+      },
+      "continue": true
+    },
+    {
+      "src": "/",
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate"
+      },
+      "continue": true
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/app.py"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
   ]
 }
