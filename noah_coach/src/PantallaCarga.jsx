@@ -51,7 +51,7 @@ export default function PantallaCarga({ onTerminar, duracionMs = 5000 }) {
           ))}
         </div>
         <div style={{ fontSize: 9.5, color: 'rgba(41,45,41,0.5)', letterSpacing: 2.6, textTransform: 'uppercase', fontWeight: 700, marginTop: 9 }}>
-          Never Over, Always Higher
+          Never Over, Always Higher  V 2.0
         </div>
       </div>
 
