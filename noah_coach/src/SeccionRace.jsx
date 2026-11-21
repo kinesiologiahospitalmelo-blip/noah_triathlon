@@ -1,6 +1,7 @@
 // SeccionRace.jsx — NOA Race Section
 // Carrusel de carreras con modal de edición, prioridades A/B/C/D
 import { useState, useEffect, useRef } from 'react'
+import { Footprints, Bike as BikeIcon, Waves, Trophy, Flag, Plus, Trash2, Zap, Calendar, MapPin, ChevronLeft, ChevronRight } from 'lucide-react'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
 // como ya funcionaba. En Vercel (1 sola dirección para front y backend)
@@ -38,35 +39,35 @@ const PRIORIDAD = {
 }
 
 const ESTADO = {
-  pendiente:  { color: '#8B5CF6', label: 'Pendiente' },
-  completada: { color: '#10B981', label: 'Completada' },
+  pendiente:  { color: '#4F8CC9', label: 'Pendiente' },
+  completada: { color: '#4E9E6B', label: 'Completada' },
   cancelada:  { color: '#6B7280', label: 'Cancelada' },
 }
 
 const DEPORTE_CONFIG = {
   running:  {
     label: 'Running',
-    gradient: 'linear-gradient(135deg, #1a0533 0%, #2d1b69 40%, #4c1d95 70%, #7c3aed 100%)',
-    icon: '🏃',
-    accent: '#8B5CF6',
+    gradient: 'linear-gradient(135deg, #1a0d0a 0%, #5a2318 45%, #8f3524 72%, #E65B45 100%)',
+    Icon: Footprints,
+    accent: '#E65B45',
   },
   triatlon: {
     label: 'Triatlón',
-    gradient: 'linear-gradient(135deg, #0c1445 0%, #1e3a5f 40%, #0e7490 70%, #06b6d4 100%)',
-    icon: '🏊',
-    accent: '#06B6D4',
+    gradient: 'linear-gradient(135deg, #1a1405 0%, #5a4418 45%, #8f6a1e 72%, #E0A43C 100%)',
+    Icon: Trophy,
+    accent: '#E0A43C',
   },
   cycling: {
     label: 'Ciclismo',
-    gradient: 'linear-gradient(135deg, #1a2e05 0%, #365314 40%, #4d7c0f 70%, #84cc16 100%)',
-    icon: '🚴',
-    accent: '#84CC16',
+    gradient: 'linear-gradient(135deg, #12160f 0%, #323a2a 45%, #4a5540 72%, #78866B 100%)',
+    Icon: BikeIcon,
+    accent: '#78866B',
   },
   swimming: {
     label: 'Natación',
-    gradient: 'linear-gradient(135deg, #0a1628 0%, #0c4a6e 40%, #0369a1 70%, #38bdf8 100%)',
-    icon: '🏊',
-    accent: '#38BDF8',
+    gradient: 'linear-gradient(135deg, #0a1420 0%, #1d3a56 45%, #2c5578 72%, #4F8CC9 100%)',
+    Icon: Waves,
+    accent: '#4F8CC9',
   },
 }
 
@@ -208,7 +209,7 @@ function ModalCarrera({ carrera, atletaId, onClose, onGuardado }) {
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          {[['info','📋 Info'],['resultado','🏆 Resultado']].map(([t, l]) => (
+          {[['info','Info'],['resultado','Resultado']].map(([t, l]) => (
             <button key={t} onClick={() => setTab(t)} style={{
               flex: 1, padding: '10px 0', fontSize: 12, fontWeight: 600,
               cursor: 'pointer', border: 'none',
@@ -430,7 +431,7 @@ function RaceCard({ carrera, onEdit, onDelete, modoAtleta = false, atletaId }) {
           position: 'absolute', bottom: 12, right: 16,
           fontSize: 48, opacity: 0.25, zIndex: 1,
           lineHeight: 1,
-        }}>{dep.icon}</div>
+        }}><dep.Icon size={54} color="#fff" /></div>
 
         {/* Días faltantes */}
         <div style={{
@@ -560,14 +561,14 @@ function RaceCard({ carrera, onEdit, onDelete, modoAtleta = false, atletaId }) {
               .catch(err => alert('Error: ' + err.message))
             }} style={{
               width:'100%', padding:'8px 0', borderRadius:10,
-              border:'1px solid rgba(139,92,246,0.3)',
-              background:'rgba(139,92,246,0.1)',
-              color:'#A78BFA', fontSize:11, fontWeight:700,
+              border:'1px solid rgba(79,140,201,0.3)',
+              background:'rgba(79,140,201,0.1)',
+              color:'#4F8CC9', fontSize:11, fontWeight:700,
               cursor:'pointer', transition:'all 0.15s',
             }}
-            onMouseEnter={e=>e.target.style.background='rgba(139,92,246,0.25)'}
-            onMouseLeave={e=>e.target.style.background='rgba(139,92,246,0.1)'}
-            >⚡ Estrategia de carrera</button>
+            onMouseEnter={e=>e.target.style.background='rgba(79,140,201,0.25)'}
+            onMouseLeave={e=>e.target.style.background='rgba(79,140,201,0.1)'}
+            ><Zap size={13} style={{verticalAlign:'-2px',marginRight:5}} />Estrategia de carrera</button>
           </div>
         )}
 
@@ -604,12 +605,12 @@ function AddRaceCard({ onClick }) {
       alignItems: 'center', justifyContent: 'center', gap: 12,
       transition: 'all 0.2s',
     }}
-    onMouseEnter={e => { e.currentTarget.style.border = '2px dashed rgba(139,92,246,0.4)'; e.currentTarget.style.background = 'rgba(139,92,246,0.05)' }}
+    onMouseEnter={e => { e.currentTarget.style.border = '2px dashed rgba(79,140,201,0.4)'; e.currentTarget.style.background = 'rgba(79,140,201,0.05)' }}
     onMouseLeave={e => { e.currentTarget.style.border = '2px dashed rgba(255,255,255,0.12)'; e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}>
       <div style={{
         width: 48, height: 48, borderRadius: 14,
-        background: 'rgba(139,92,246,0.15)',
-        border: '1px solid rgba(139,92,246,0.3)',
+        background: 'rgba(79,140,201,0.15)',
+        border: '1px solid rgba(79,140,201,0.3)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 24,
       }}>+</div>
@@ -629,8 +630,8 @@ function ModalEstrategia({ data, carrera, onClose }) {
   const e = data.energia || {}
   const t = data.tiempo_estimado || {}
 
-  const deporteColor = { running: '#10B981', cycling: '#3B82F6', swimming: '#06B6D4', transicion: '#F59E0B' }
-  const deporteIcon = { running: '🏃', cycling: '🚴', swimming: '🏊', transicion: '🔄' }
+  const deporteColor = { running: '#E65B45', cycling: '#78866B', swimming: '#4F8CC9', transicion: '#E0A43C' }
+  const deporteIcon = { running: '', cycling: '', swimming: '', transicion: '' }
 
   // Calcular max pace/power para escalar barras
   const maxPace = Math.max(...segs.filter(s => s.pace_decimal).map(s => s.pace_decimal), 1)
@@ -650,10 +651,10 @@ function ModalEstrategia({ data, carrera, onClose }) {
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <div style={{ fontSize: 11, color: '#A78BFA', fontWeight: 700, letterSpacing: 1 }}>ESTRATEGIA DE CARRERA</div>
+            <div style={{ fontSize: 11, color: '#4F8CC9', fontWeight: 700, letterSpacing: 1 }}>ESTRATEGIA DE CARRERA</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginTop: 4 }}>{carrera?.nombre || data.carrera}</div>
             <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
-              {data.distancia_km}km · Tiempo estimado: <span style={{ color: '#A78BFA', fontWeight: 700 }}>{t.total_hms}</span>
+              {data.distancia_km}km · Tiempo estimado: <span style={{ color: '#4F8CC9', fontWeight: 700 }}>{t.total_hms}</span>
               · {e.kcal_total} kcal
               {data.atleta && ` · ${data.atleta.peso_kg}kg`}
               {data.condiciones?.temp && ` · ${data.condiciones.temp}°C`}
@@ -673,7 +674,7 @@ function ModalEstrategia({ data, carrera, onClose }) {
 
         {/* Gráfico de pacing — barras horizontales */}
         <div style={{ marginBottom: 28 }}>
-          <div style={{ fontSize: 11, color: '#A78BFA', fontWeight: 700, marginBottom: 10, letterSpacing: 1 }}>PACING POR SEGMENTO</div>
+          <div style={{ fontSize: 11, color: '#4F8CC9', fontWeight: 700, marginBottom: 10, letterSpacing: 1 }}>PACING POR SEGMENTO</div>
           {segs.filter(s => s.deporte !== 'transicion').map((s, i) => {
             const isRun = s.deporte === 'running'
             const isBike = s.deporte === 'cycling'
@@ -790,7 +791,7 @@ function ModalEstrategia({ data, carrera, onClose }) {
                 {e.deficit_g > 0 && ` · Déficit: ${e.deficit_g}g`}
               </div>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#A78BFA' }}>{e.kcal_total} kcal</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#4F8CC9' }}>{e.kcal_total} kcal</div>
           </div>
         </div>
 
@@ -865,32 +866,30 @@ export default function SeccionRace({ atletaId, modoAtleta = false }) {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         flexWrap: 'wrap', gap: 10,
       }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: '#E6EDF3', marginBottom: 2 }}>
-            🏁 Carreras
-          </div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
-            {carreras.length} carreras · {priA} prioridad A
-            {proxima && ` · Próxima: ${diasFaltantes(proxima.fecha)}d`}
-          </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(41,45,41,0.55)', display: 'flex', alignItems: 'center', gap: 7 }}>
+          <Flag size={15} color="#E65B45" /> {carreras.length} carreras · {priA} prioridad A
+          {proxima && ` · Próxima: ${diasFaltantes(proxima.fecha)}d`}
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           {/* Filtros */}
           {['todas','pendiente','completada'].map(f => (
             <button key={f} onClick={() => setFiltro(f)} style={{
-              padding: '4px 12px', borderRadius: 7, fontSize: 11, fontWeight: 600,
-              cursor: 'pointer', border: '1px solid rgba(255,255,255,0.1)',
-              background: filtro === f ? 'rgba(139,92,246,0.2)' : 'transparent',
-              color: filtro === f ? '#8B5CF6' : 'rgba(255,255,255,0.4)',
+              padding: '4px 12px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+              cursor: 'pointer',
+              border: `1px solid ${filtro === f ? 'rgba(79,140,201,0.45)' : 'rgba(41,45,41,0.12)'}`,
+              background: filtro === f ? 'rgba(79,140,201,0.14)' : 'rgba(251,250,246,0.7)',
+              color: filtro === f ? '#4F8CC9' : 'rgba(41,45,41,0.5)',
             }}>
               {f.charAt(0).toUpperCase() + f.slice(1)}
             </button>
           ))}
           <button onClick={() => setModal('nueva')} style={{
-            padding: '6px 14px', borderRadius: 8,
-            border: 'none', background: '#8B5CF6',
-            color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700,
-          }}>+ Carrera</button>
+            padding: '6px 14px', borderRadius: 999,
+            border: 'none', background: 'linear-gradient(135deg,#E65B45,#CF4A36)',
+            color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 800,
+            display: 'flex', alignItems: 'center', gap: 5,
+            boxShadow: '0 6px 16px -8px rgba(230,91,69,0.6)',
+          }}><Plus size={14} /> Carrera</button>
         </div>
       </div>
 
@@ -900,7 +899,7 @@ export default function SeccionRace({ atletaId, modoAtleta = false }) {
           borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
           background: DEPORTE_CONFIG[proxima.deporte]?.gradient || DEPORTE_CONFIG.running.gradient,
           position: 'relative', padding: '20px 24px',
-          border: `1px solid ${PRIORIDAD[proxima.prioridad]?.color || '#8B5CF6'}40`,
+          border: `1px solid ${PRIORIDAD[proxima.prioridad]?.color || '#4F8CC9'}40`,
         }}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)' }}/>
           <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>

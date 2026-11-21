@@ -44,34 +44,38 @@ const _streamsModuleCache = {}
 const _streamsPending = {}
 
 // ── Paleta NOAH — análisis deportivo profesional ────────────────────────────
+// ISLA OSCURA (Opción C): fondo grafito cálido derivado del Grafito #292D29 de la
+// paleta oficial — marfil y grafito son los dos polos del MISMO sistema. Texto en
+// marfil cálido; series en acentos NOAH (coral/azul/salvia) + amber funcional;
+// zonas Z1–Z6 estándar (fisiológicas). Solo presentación: no cambia la lógica.
 const D = {
-  bg:       '#080D18',
-  bg2:      '#0B1120',
+  bg:       '#1A1E1A',
+  bg2:      '#13160F',
   glass:    'rgba(255,255,255,0.03)',
-  border:   'rgba(255,255,255,0.07)',
-  border2:  'rgba(255,255,255,0.13)',
-  text:     '#E2E8F0',
-  text2:    '#94A3B8',
-  text3:    'rgba(255,255,255,0.25)',
-  hr:    { line: '#A78BFA', area: 'rgba(167,139,250,0.04)', dot: '#A78BFA' },
-  power: { line: '#F59E0B', area: 'rgba(245,158,11,0.04)', dot: '#FCD34D' },
-  pace:  { line: '#22D3EE', area: 'rgba(34,211,238,0.04)', dot: '#22D3EE' },
-  cad:   { line: '#34D399', area: 'rgba(52,211,153,0.04)', dot: '#6EE7B7' },
-  alt:   { line: 'rgba(148,163,175,0.45)', area: 'rgba(148,163,175,0.06)' },
-  lthr:  '#F59E0B',
-  grid:  'rgba(255,255,255,0.06)',
-  lapSep:'rgba(255,255,255,0.10)',
-  lapBar:'rgba(255,255,255,0.04)',
-  lapBarHov:'rgba(255,255,255,0.08)',
-  lapBarTop:'rgba(255,255,255,0.15)',
+  border:   'rgba(255,255,255,0.09)',
+  border2:  'rgba(255,255,255,0.15)',
+  text:     '#F3F0E8',
+  text2:    'rgba(243,240,232,0.62)',
+  text3:    'rgba(243,240,232,0.34)',
+  hr:    { line: '#E65B45', area: 'rgba(230,91,69,0.14)',  dot: '#E65B45' },
+  power: { line: '#E0A43C', area: 'rgba(224,164,60,0.14)', dot: '#E0A43C' },
+  pace:  { line: '#4F8CC9', area: 'rgba(79,140,201,0.14)', dot: '#4F8CC9' },
+  cad:   { line: '#9DB089', area: 'rgba(157,176,137,0.12)',dot: '#9DB089' },
+  alt:   { line: 'rgba(243,240,232,0.30)', area: 'rgba(243,240,232,0.05)' },
+  lthr:  '#E65B45',
+  grid:  'rgba(243,240,232,0.08)',
+  lapSep:'rgba(243,240,232,0.14)',
+  lapBar:'rgba(243,240,232,0.04)',
+  lapBarHov:'rgba(243,240,232,0.08)',
+  lapBarTop:'rgba(243,240,232,0.16)',
   zone: {
     Z1: '#6366F1', Z2: '#3B82F6', Z3: '#22C55E',
     Z4: '#EAB308', Z5: '#F97316', Z6: '#EF4444',
   },
   sport: {
-    running:  '#A78BFA',
-    cycling:  '#F59E0B',
-    swimming: '#38BDF8',
+    running:  '#E65B45',
+    cycling:  '#78866B',
+    swimming: '#4F8CC9',
   },
 }
 
@@ -211,6 +215,21 @@ export default function GraficoActividadStreams({
   // Colapsar/expandir el grafico principal para ahorrar espacio -- abierto
   // por defecto, el usuario lo puede cerrar tocando el chevron del header.
   const [chartOpen, setChartOpen]     = useState(true)
+  // ── Ancho REAL del contenedor (fix de raíz): el gráfico se dibuja a los px
+  //    reales en vez de un lienzo fijo de 720, así NO se encoge en mobile y la
+  //    letra se ve a tamaño real (1:1). Se remide ante resize/rotación. ──
+  const wrapRef = useRef(null)
+  const [anchoReal, setAnchoReal] = useState(360)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const medir = () => { const w = el.clientWidth; if (w > 20) setAnchoReal(Math.round(w)) }
+    medir()
+    let ro
+    if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(medir); ro.observe(el) }
+    window.addEventListener('resize', medir)
+    return () => { if (ro) ro.disconnect(); window.removeEventListener('resize', medir) }
+  }, [chartOpen])
   // Un solo canal visible a la vez -- como en Garmin/TrainingPeaks. Antes se
   // mostraban FC + Potencia + Pace superpuestos por default, lo que generaba
   // el efecto "arcoíris" (varias líneas de colores compitiendo en el mismo
@@ -471,8 +490,8 @@ export default function GraficoActividadStreams({
   const altMin  = altVals.length  ? Math.min(...altVals) - 10              : 0
   const altMax  = altVals.length  ? Math.max(...altVals) + 10              : 100
 
-  const W = 720, H = height
-  const PT = 22, PB = 40, PL = 52, PR = 52
+  const W = anchoReal, H = height   // W = ancho real medido (1:1, no se encoge)
+  const PT = 22, PB = 40, PL = 40, PR = 38
   const iW = W - PL - PR
   const iH = H - PT - PB
   const n  = series.length
@@ -564,11 +583,11 @@ export default function GraficoActividadStreams({
     { key: 'cadence',  label: sport === 'cycling' ? 'Cad rpm' : 'Cad spm',
       color: D.cad.line, show: series.some(s => s.cadence) },
     { key: 'alt',      label: 'Altitud',   color: D.alt.line,   show: altVals.length > 0 },
-    { key: 'temp',     label: 'Temp °C',   color: '#67E8F9',    show: tempVals.length > 0 },
-    { key: 'vert_osc', label: 'Osc.Vert',  color: '#F472B6',    show: vertVals.length > 0 },
-    { key: 'gct',      label: 'GCT',       color: '#FB923C',    show: gctVals.length > 0 },
-    { key: 'stride',   label: 'Zancada',   color: '#A78BFA',    show: stridVals.length > 0 },
-    { key: 'resp',     label: 'Resp',      color: '#67E8F9',    show: respVals.length > 0 },
+    { key: 'temp',     label: 'Temp °C',   color: '#4F8CC9',    show: tempVals.length > 0 },
+    { key: 'vert_osc', label: 'Osc.Vert',  color: '#E65B45',    show: vertVals.length > 0 },
+    { key: 'gct',      label: 'GCT',       color: '#E0A43C',    show: gctVals.length > 0 },
+    { key: 'stride',   label: 'Zancada',   color: '#78866B',    show: stridVals.length > 0 },
+    { key: 'resp',     label: 'Resp',      color: '#4F8CC9',    show: respVals.length > 0 },
   ].filter(c => c.show)
 
   // Si el canal activo no tiene datos disponibles en esta sesión (ej: no
@@ -584,7 +603,13 @@ export default function GraficoActividadStreams({
   }, [CANALES.map(c => c.key).join(',')])
 
   return (
-    <div style={{ borderRadius: 0, overflow: 'visible', background: 'transparent' }}>
+    <div style={{
+      borderRadius: 22,
+      overflow: 'hidden',
+      background: 'linear-gradient(165deg, #1C211C 0%, #13160F 100%)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      boxShadow: '0 22px 48px -18px rgba(41,45,41,0.55), inset 0 1px 0 rgba(255,255,255,0.08)',
+    }}>
       {/* Métricas individuales */}
       <div style={{ padding: '8px 2px 12px' }}>
 
@@ -606,9 +631,9 @@ export default function GraficoActividadStreams({
               {metrics.map((m, i) => (
                 <div key={i} style={{
                   flex: '1 1 calc(33.3% - 8px)', minWidth: 90, maxWidth: 160,
-                  background: 'linear-gradient(165deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
+                  background: 'linear-gradient(165deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.02) 100%)',
                   borderRadius: 10, padding: '10px 12px',
-                  border: '1px solid rgba(255,255,255,0.07)',
+                  border: '1px solid rgba(255,255,255,0.08)',
                   textAlign: 'center',
                 }}>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4, marginBottom:4 }}>
@@ -709,6 +734,7 @@ export default function GraficoActividadStreams({
           fija en mobile y el grafico quedaba "encajonado" sin usar el ancho
           completo (letterboxing por el viewBox). */}
       {chartOpen && series.length >= 1 ? (
+        <div ref={wrapRef} style={{ width:'100%' }}>
         <svg ref={svgRef} width={W} height={H} viewBox={`0 0 ${W} ${H}`}
           style={{ display:'block', width:'100%', height:'auto', cursor:'crosshair' }}
           onMouseMove={handleMouse} onMouseLeave={() => setHover(null)}>
@@ -777,7 +803,7 @@ export default function GraficoActividadStreams({
                 <g key={i}>
                   {/* Barra con color de zona */}
                   <rect x={x1+0.5} y={blockTop} width={w-1} height={blockH}
-                    fill={zoneCol} opacity={isHov ? 0.85 : (_lapsNorm.length <= 1 ? 0.25 : 0.75)} rx="1"/>
+                    fill={zoneCol} opacity={isHov ? 0.70 : (_lapsNorm.length <= 1 ? 0.18 : 0.52)} rx="1"/>
                   {/* Separador entre laps */}
                   {i > 0 && (
                     <line x1={x1} y1={PT} x2={x1} y2={PT+iH}
@@ -821,7 +847,7 @@ export default function GraficoActividadStreams({
             const yV = v => PT + iH - ((v - vMin) / (vMax - vMin || 1)) * iH
             return <path d={bezierPath(
               series.map((s,i) => s.vert_osc ? [xs(i), yV(s.vert_osc)] : null).filter(Boolean)
-            )} fill="none" stroke="#F472B6" strokeWidth="1" opacity="0.6"
+            )} fill="none" stroke="#E65B45" strokeWidth="1" opacity="0.65"
               clipPath={`url(#clip_${sesionId})`}/>
           })()}
 
@@ -831,7 +857,7 @@ export default function GraficoActividadStreams({
             const yS = v => PT + iH - ((v - sMin) / (sMax - sMin || 1)) * iH
             return <path d={bezierPath(
               series.map((s,i) => s.stride ? [xs(i), yS(s.stride)] : null).filter(Boolean)
-            )} fill="none" stroke="#C084FC" strokeWidth="1" opacity="0.6"
+            )} fill="none" stroke="#78866B" strokeWidth="1" opacity="0.65"
               clipPath={`url(#clip_${sesionId})`}/>
           })()}
 
@@ -841,7 +867,7 @@ export default function GraficoActividadStreams({
             const yT = v => PT + iH - ((v - tMin) / (tMax - tMin || 1)) * iH
             return <path d={bezierPath(
               series.map((s,i) => s.temp != null ? [xs(i), yT(s.temp)] : null).filter(Boolean)
-            )} fill="none" stroke="#67E8F9" strokeWidth="1" opacity="0.6"
+            )} fill="none" stroke="#4F8CC9" strokeWidth="1" opacity="0.65"
               clipPath={`url(#clip_${sesionId})`}/>
           })()}
 
@@ -851,7 +877,7 @@ export default function GraficoActividadStreams({
             const yR = v => PT + iH - ((v - rMin) / (rMax - rMin || 1)) * iH
             return <path d={bezierPath(
               series.map((s,i) => s.resp ? [xs(i), yR(s.resp)] : null).filter(Boolean)
-            )} fill="none" stroke="#FB923C" strokeWidth="1" opacity="0.6"
+            )} fill="none" stroke="#4F8CC9" strokeWidth="1" opacity="0.6"
               clipPath={`url(#clip_${sesionId})`}/>
           })()}
 
@@ -861,7 +887,7 @@ export default function GraficoActividadStreams({
             const yG = v => PT + iH - ((v - gMin) / (gMax - gMin || 1)) * iH
             return <path d={bezierPath(
               series.map((s,i) => s.gct ? [xs(i), yG(s.gct)] : null).filter(Boolean)
-            )} fill="none" stroke="#FB923C" strokeWidth="1" opacity="0.5"
+            )} fill="none" stroke="#E0A43C" strokeWidth="1" opacity="0.6"
               clipPath={`url(#clip_${sesionId})`}/>
           })()}
 
@@ -958,7 +984,7 @@ export default function GraficoActividadStreams({
           {hover != null && hX != null && (
             <>
               <line x1={hX} y1={PT} x2={hX} y2={PT+iH}
-                stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
+                stroke="rgba(243,240,232,0.22)" strokeWidth="1"/>
               {hS?.hr    != null && canalesOn.hr    && yHR(hS.hr)     != null &&
                 <circle cx={hX} cy={yHR(hS.hr)}     r={3} fill={D.hr.dot}    stroke={D.bg} strokeWidth="1.5"/>}
               {hS?.power != null && canalesOn.power && yPow(hS.power)  != null &&
@@ -1021,6 +1047,7 @@ export default function GraficoActividadStreams({
             )
           })}
         </svg>
+        </div>
       ) : (!chartOpen && series.length >= 1) ? null : (
         <SinGrafico act={act} distKm={distKm} sport={sport} loading={loading}
           streamZonas={streamZonas} lthr={actLthr} sesionId={sesionId}/>
@@ -1059,17 +1086,20 @@ export default function GraficoActividadStreams({
         }
         if (!lista || !lista.length) return null
         return (
-          <div style={{ padding:'10px 16px 12px', borderTop:`1px solid ${D.border}` }}>
-            <div style={{ fontSize:10, fontWeight:600, color:D.text2, textTransform:'uppercase',
-              letterSpacing:'0.06em', marginBottom:8 }}>Zonas</div>
-            <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
-              {lista.map(([z, v]) => (
-                <div key={z} style={{ minWidth:44 }}>
-                  <div style={{ fontSize:11, fontWeight:500, color:D.text2 }}>{z}</div>
-                  <div style={{ fontSize:14, fontWeight:600, letterSpacing:'-0.01em', color:(v._c || D.zone[z]) }}>{Math.round(v.pct)}%</div>
-                  <div style={{ height:3, borderRadius:2, background:(v._c || D.zone[z]), opacity:0.85, marginTop:4 }}/>
-                </div>
-              ))}
+          <div style={{ padding:'12px 16px 14px', borderTop:`1px solid ${D.border}` }}>
+            <div style={{ fontSize:10.5, fontWeight:800, color:D.text, textTransform:'uppercase',
+              letterSpacing:'0.09em', marginBottom:11 }}>Zonas</div>
+            <div style={{ display:'flex', gap:8 }}>
+              {lista.map(([z, v]) => {
+                const col = v._c || D.zone[z]
+                return (
+                  <div key={z} style={{ flex:1, textAlign:'center', minWidth:0 }}>
+                    <div style={{ fontSize:11.5, fontWeight:700, color:D.text2, marginBottom:3 }}>{z}</div>
+                    <div style={{ fontSize:19, fontWeight:800, letterSpacing:'-0.02em', color:col, lineHeight:1 }}>{Math.round(v.pct)}%</div>
+                    <div style={{ height:4, borderRadius:3, background:col, marginTop:7 }}/>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )
@@ -1143,7 +1173,7 @@ function SinGrafico({ act, distKm, sport, loading, streamZonas, lthr, sesionId }
               <div key={i} style={{
                 flex:1, minWidth:80,
                 background:D.glass, border:`1px solid ${D.border}`,
-                borderTop:`2px solid ${m.c||'rgba(255,255,255,0.15)'}`,
+                borderTop:`2px solid ${m.c||'rgba(243,240,232,0.20)'}`,
                 borderRadius:10, padding:'10px 13px',
               }}>
                 <div style={{ fontSize:10, color:D.text3, textTransform:'uppercase',
@@ -1224,8 +1254,8 @@ function TablaLaps({ laps, sport, lthr, hover, setHover, ftp, paceUmbral, zonasR
               const isH   = hover===i
               return (
                 <tr key={i} onMouseEnter={()=>setHover?.(i)} onMouseLeave={()=>setHover?.(null)}
-                  style={{ background:isH?'rgba(245,158,11,0.06)':'transparent',
-                    borderBottom:`1px solid rgba(255,255,255,0.04)` }}>
+                  style={{ background:isH?'rgba(245,158,11,0.10)':'transparent',
+                    borderBottom:`1px solid rgba(243,240,232,0.07)` }}>
                   <td style={{ padding:'5px 8px', color:D.text3, fontWeight:700, textAlign:'left' }}>{l.lap_num||i+1}</td>
                   <td style={{ padding:'5px 8px', color:D.text2, textAlign:'right' }}>{fmtDur(l.duration_min)}</td>
                   <td style={{ padding:'5px 8px', color:D.text2, textAlign:'right' }}>
@@ -1282,13 +1312,13 @@ function TablaLaps({ laps, sport, lthr, hover, setHover, ftp, paceUmbral, zonasR
               <tr key={i} onMouseEnter={()=>setHover?.(i)} onMouseLeave={()=>setHover?.(null)}
                 style={{ background:isH?'rgba(255,255,255,0.05)':'transparent', cursor:'default' }}>
                 <td style={{ padding:'3px 7px', color:D.text3, fontWeight:600 }}>{l.lap_num||l.lap||i+1}</td>
-                <td style={{ padding:'3px 7px', color:'rgba(255,255,255,0.6)' }}>
+                <td style={{ padding:'3px 7px', color:'rgba(243,240,232,0.6)' }}>
                   {l.distance_km?`${Math.round(l.distance_km*1000)}m`:'--'}
                 </td>
                 <td style={{ padding:'3px 7px', color:D.text2 }}>{fmtDur(l.duration_min)}</td>
                 <td style={{ padding:'3px 7px', fontWeight:700, color:zc }}>{l.hr_avg?Math.round(l.hr_avg):'--'}</td>
                 <td style={{ padding:'3px 7px', color:D.text3 }}>{l.hr_max?Math.round(l.hr_max):'--'}</td>
-                <td style={{ padding:'3px 7px', color:'rgba(255,255,255,0.55)' }}>{metrica}</td>
+                <td style={{ padding:'3px 7px', color:'rgba(243,240,232,0.55)' }}>{metrica}</td>
                 <td style={{ padding:'3px 7px', color:D.text3 }}>{(l.cadence||l.cadencia)?Math.round(l.cadence||l.cadencia):'--'}</td>
                 <td style={{ padding:'3px 7px' }}>
                   <span style={{ padding:'1px 6px', borderRadius:3, fontSize:9, fontWeight:700,

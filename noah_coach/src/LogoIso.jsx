@@ -1,0 +1,20 @@
+// LogoIso.jsx — Isologo NOAH v2 (cubos). SVG inline, nítido a cualquier tamaño.
+// Por defecto va dentro de un tile oscuro (azul noche) para que las caras
+// blancas del isologo resalten también sobre fondos claros (marfil).
+const NOAH_ISO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 730 700" width="100%" height="100%" role="img" aria-label="NOAH"><g transform="translate(-380,-60)"><g id="isotipo"><polygon points="460,223 553,169 650,222 552,275" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="553,169 643,116 741,173 650,222" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="460,223 552,275 552,395 460,344" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="552,275 650,222 650,344 552,395" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="460,351 552,402 552,522 460,472" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="552,402 650,349 650,469 552,522" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="460,480 552,530 552,648 460,597" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,349 742,401 742,522 650,470" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,401 839,349 936,400 839,453" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,401 839,453 839,577 742,524" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="839,453 936,400 936,522 839,577" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,224 741,173 830,224 738,275" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,224 738,275 738,395 650,344" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="738,275 830,224 830,345 738,395" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="552,529 650,475 650,597 552,648" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,475 742,528 742,650 650,597" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,528 839,580 936,527 839,474" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,528 839,580 839,704 742,650" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="839,580 936,527 936,650 839,704" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="830,207 927,153 1032,207 935,261" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="830,207 935,261 935,376 830,323" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="935,261 1032,207 1032,324 935,376" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="936,382 1032,331 1032,447 936,499" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="936,507 1032,454 1032,574 936,626" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/></g></g></svg>`
+
+export default function LogoIso({ size = 34, radius = 10, tile = true, bg = '#101522', style = {} }) {
+  if (!tile) {
+    return <div style={{ width: size, height: size * 700 / 730, lineHeight: 0, flex: '0 0 auto', ...style }}
+      dangerouslySetInnerHTML={{ __html: NOAH_ISO_SVG }} />
+  }
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: radius, background: bg, flex: '0 0 auto',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', ...style,
+    }}>
+      <div style={{ width: '70%', height: '70%', lineHeight: 0 }}
+        dangerouslySetInnerHTML={{ __html: NOAH_ISO_SVG }} />
+    </div>
+  )
+}

@@ -38,9 +38,9 @@ const authFetch = (url, opts = {}) => {
 
 // ── Colors (NOAH_C match) ──
 const NC = {
-  run: '#A78BFA', bike: '#F59E0B', swim: '#38BDF8',
-  accent: '#8B5CF6', cyan: '#06B6D4',
-  ok: '#10B981', warn: '#F59E0B', bad: '#EF4444',
+  run: '#E65B45', bike: '#9DB089', swim: '#4F8CC9',
+  accent: '#4F8CC9', cyan: '#4F8CC9',
+  ok: '#4E9E6B', warn: '#E0A43C', bad: '#EF4444',
   ink: 'rgba(255,255,255,0.92)', ink2: 'rgba(255,255,255,0.70)',
   ink3: 'rgba(255,255,255,0.45)', ink4: 'rgba(255,255,255,0.28)',
   border: 'rgba(255,255,255,0.08)',
@@ -197,7 +197,7 @@ export function TwinAtleta({ atletaId }) {
           <button key={t.id} onClick={() => setVista(t.id)} style={{
             flex: 1, padding: '12px 8px', border: 'none', cursor: 'pointer',
             background: vista === t.id
-              ? 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(56,189,248,0.10))'
+              ? 'linear-gradient(135deg, rgba(79,140,201,0.16), rgba(120,134,107,0.10))'
               : 'rgba(255,255,255,0.02)',
             borderBottom: vista === t.id ? `2px solid ${NC.accent}` : '2px solid transparent',
             transition: 'all 0.2s',
@@ -212,7 +212,7 @@ export function TwinAtleta({ atletaId }) {
       {/* PRESCRIPCIÓN */}
       {vista === 'prescripcion' && (
         <>
-          <div style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)',
+          <div style={{ background: 'linear-gradient(165deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025))',
             borderRadius: 14, padding: '18px 20px',
             boxShadow: '0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-around', gap: 8, marginBottom: 14 }}>
@@ -256,7 +256,7 @@ export function TwinAtleta({ atletaId }) {
                     background: best.riesgo < 0.15 ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
                     color: best.riesgo < 0.15 ? NC.ok : NC.warn }}>Riesgo {(best.riesgo*100).toFixed(0)}%</span>
                   <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
-                    background: 'rgba(139,92,246,0.15)', color: NC.accent }}>TSS {best.tss_total}</span>
+                    background: 'rgba(79,140,201,0.15)', color: NC.accent }}>TSS {best.tss_total}</span>
                 </div>
               </div>
               <WeekStrip plan={best.plan || []} />
@@ -291,7 +291,7 @@ export function TwinAtleta({ atletaId }) {
 
       {/* EVALUACIÓN */}
       {vista === 'evaluacion' && (
-        <div style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)',
+        <div style={{ background: 'linear-gradient(165deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025))',
           borderRadius: 14, padding: '22px 22px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)' }}>
           {evaluacion.ok ? (
@@ -387,7 +387,7 @@ export function TwinCoach({ atletaId, atleta }) {
 
       {/* Header */}
       <div style={{
-        background: 'linear-gradient(135deg, #0F172A, #1E293B)',
+        background: 'linear-gradient(165deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025))',
         borderRadius: 14, padding: '18px 22px',
         boxShadow: '0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)',
       }}>
@@ -400,9 +400,9 @@ export function TwinCoach({ atletaId, atleta }) {
           </div>
           <button onClick={ejecutar} disabled={loading} style={{
             padding: '8px 20px', borderRadius: 10, border: 'none', cursor: 'pointer',
-            background: loading ? NC.ink4 : 'linear-gradient(135deg, #8B5CF6, #6D28D9)',
+            background: loading ? NC.ink4 : 'linear-gradient(135deg, #4F8CC9, #3E72A8)',
             color: '#fff', fontSize: 12, fontWeight: 700,
-            boxShadow: loading ? 'none' : '0 6px 20px -4px rgba(139,92,246,0.5), inset 0 1px 0 rgba(255,255,255,0.25)',
+            boxShadow: loading ? 'none' : '0 6px 20px -4px rgba(79,140,201,0.5), inset 0 1px 0 rgba(255,255,255,0.25)',
           }}>
             {loading ? 'Calibrando...' : '◎ Ejecutar Twin'}
           </button>
@@ -474,7 +474,7 @@ export function TwinCoach({ atletaId, atleta }) {
                 <button key={i} onClick={() => setEscSel(i)} style={{
                   padding: '7px 14px', borderRadius: 8, cursor: 'pointer',
                   border: `1.5px solid ${active ? NC.accent : NC.border}`,
-                  background: active ? 'rgba(139,92,246,0.12)' : 'transparent',
+                  background: active ? 'rgba(79,140,201,0.14)' : 'transparent',
                   color: active ? NC.accent : NC.ink3, fontSize: 11, fontWeight: 600,
                   whiteSpace: 'nowrap', transition: 'all 0.15s',
                   boxShadow: active ? `0 0 12px ${NC.accent}33` : 'none',

@@ -19,7 +19,14 @@ import { Heart,
   Target, Flag, FlaskConical, CheckCircle2, XCircle, AlertTriangle, Zap, Ruler,
   HeartPulse, Flame, Activity, RotateCw, Satellite, ClipboardList, User, BatteryFull,
   BatteryLow, Moon, GlassWater, Brain, ChevronLeft, ChevronRight, Banana, Minus, Check, Scale, LogOut,
-  UserCircle, MessageCircle, Send, ChevronDown } from 'lucide-react'
+  UserCircle, MessageCircle, Send, ChevronDown, Home, Clock } from 'lucide-react'
+import InicioHome from './InicioHome'
+import RegistroDiario from './RegistroDiario'
+import CicloMenstrual from './CicloMenstrual'
+import PantallaNoah from './PantallaNoah'
+import SeccionAnalisis from './SeccionAnalisis'
+import EficienciaMetabolica from './EficienciaMetabolica'
+import { NOAH, FONT } from './noahTheme'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
 // como ya funcionaba. En Vercel (1 sola dirección para front y backend)
@@ -618,7 +625,7 @@ function SesionCard({ sesion, expandida, onToggle, esHoy, atletaId }) {
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontSize:14, fontWeight:600, color:NOAH_C.ink, marginBottom:3, lineHeight:1.2 }}>{sesion.nombre}</div>
           <div style={{ fontSize:11, color:NOAH_C.ink3, display:'flex', gap:10, flexWrap:'wrap' }}>
-            {sesion.duracion && <span>⏱ {Math.round(sesion.duracion)} min</span>}
+            {sesion.duracion && <span style={{display:'inline-flex',alignItems:'center',gap:3}}><Clock size={11} /> {Math.round(sesion.duracion)} min</span>}
             {sesion.tss && <span>TSS {sesion.tss}</span>}
             {sesion.sport==='cycling' && sesion.watts_min ? <span>{sesion.watts_min}–{sesion.watts_max}W</span>
               : sesion.sport==='swimming' && sesion.pace_ref ? <span>{fmtPace(sesion.pace_ref)}/100m</span>
@@ -803,6 +810,211 @@ function SemanaCompleta({ presc, atletaId, sesionExpandida, setSesionExpandida }
 }
 
 
+
+// ── Esta Semana (v2) — sección autónoma marfil ──────────────────────────────
+const SEM_SP = {
+  running:  { c:'#E65B45', l:'rgba(230,91,69,0.12)',   Icon:IconRun,  short:'RUN',  label:'Running'  },
+  cycling:  { c:'#78866B', l:'rgba(120,134,107,0.12)', Icon:IconBike, short:'BIKE', label:'Ciclismo' },
+  swimming: { c:'#4F8CC9', l:'rgba(79,140,201,0.12)',  Icon:IconSwim, short:'SWIM', label:'Natación' },
+}
+const SEM_EST = {
+  done:    { c:'#4E9E6B', l:'rgba(78,158,107,0.14)', label:'Completada',   icon:CheckCircle2 },
+  miss:    { c:'#E65B45', l:'rgba(230,91,69,0.12)',  label:'No realizada', icon:XCircle },
+  partial: { c:'#E0A43C', l:'rgba(224,164,60,0.14)', label:'Modificada',   icon:AlertTriangle },
+  planned: { c:'rgba(41,45,41,0.45)', l:'rgba(41,45,41,0.06)', label:'Planificada', icon:Minus },
+  rest:    { c:'rgba(41,45,41,0.4)',  l:'rgba(41,45,41,0.05)', label:'Descanso',    icon:Minus },
+}
+function SemSportPill({ sport }) {
+  const s = SEM_SP[sport] || SEM_SP.running
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 9px', borderRadius:7,
+      fontSize:11, fontWeight:800, color:s.c, background:s.l, border:`1px solid ${s.c}33`, whiteSpace:'nowrap' }}>
+      <s.Icon size={13} color={s.c} />{s.short}
+    </span>
+  )
+}
+function SemEstadoPill({ estado }) {
+  const e = SEM_EST[estado] || SEM_EST.planned
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'3px 9px', borderRadius:7,
+      fontSize:10.5, fontWeight:700, color:e.c, background:e.l, border:`1px solid ${e.c}33` }}>
+      <e.icon size={12} color={e.c} />{e.label}
+    </span>
+  )
+}
+function SemSesionCard({ sesion, expandida, onToggle, esHoy, atletaId }) {
+  const estado = getEstado(sesion)
+  const s = SEM_SP[sesion?.sport||'running'] || SEM_SP.running
+  const accent = estado==='done'?SEM_EST.done.c : estado==='miss'?SEM_EST.miss.c : estado==='partial'?SEM_EST.partial.c : esHoy?s.c : 'rgba(41,45,41,0.12)'
+  return (
+    <div style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderLeft:`3px solid ${accent}`,
+      borderRadius:14, boxShadow:NOAH.shadow, overflow:'hidden' }}>
+      <div onClick={onToggle} style={{ padding:'12px 14px', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
+        <div style={{ width:44, height:44, borderRadius:10, flexShrink:0, background:s.l, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2 }}>
+          <s.Icon size={16} color={s.c} />
+          <span style={{ fontSize:8, fontWeight:800, color:s.c, letterSpacing:0.8 }}>{s.short}</span>
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:14, fontWeight:700, color:NOAH.ink, marginBottom:3, lineHeight:1.2 }}>{sesion.nombre}</div>
+          <div style={{ fontSize:11, color:'rgba(41,45,41,0.55)', display:'flex', gap:10, flexWrap:'wrap' }}>
+            {sesion.duracion && <span style={{display:'inline-flex',alignItems:'center',gap:3}}><Clock size={11} /> {Math.round(sesion.duracion)} min</span>}
+            {sesion.tss && <span>TSS {sesion.tss}</span>}
+            {sesion.sport==='cycling' && sesion.watts_min ? <span>{sesion.watts_min}–{sesion.watts_max}W</span>
+              : sesion.sport==='swimming' && sesion.pace_ref ? <span>{fmtPace(sesion.pace_ref)}/100m</span>
+              : sesion.pace_ref ? <span>{fmtPace(sesion.pace_ref)}/km</span> : null}
+          </div>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:5, flexShrink:0 }}>
+          <SemSportPill sport={sesion.sport||'running'} />
+          <SemEstadoPill estado={estado} />
+        </div>
+        <span style={{ fontSize:12, color:'rgba(41,45,41,0.4)', transform:expandida?'rotate(180deg)':'none', transition:'transform 0.2s', marginLeft:2 }}>▾</span>
+      </div>
+      {expandida && (
+        <div style={{ borderTop:'1px solid rgba(41,45,41,0.08)', padding:'14px', background:'rgba(243,240,232,0.5)' }}>
+          <WorkoutChart sesion={sesion} atletaId={atletaId} mostrarGrafico={false} />
+          {getDiaKey(sesion.fecha) <= hoyKey() && atletaId && (
+            <div style={{marginTop:14}}>
+              <div style={{height:1,background:'rgba(41,45,41,0.08)',marginBottom:14}}/>
+              <div style={{fontSize:10,fontWeight:700,color:'rgba(41,45,41,0.45)',letterSpacing:1,textTransform:'uppercase',marginBottom:10}}>Lo que hiciste</div>
+              <ActividadRealizada sesionPresc={sesion} atletaId={atletaId} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SemanaSection({ atletaId }) {
+  const id = atletaId || 1
+  const [presc, setPresc] = useState(null)
+  const [actsSemana, setActsSemana] = useState({})
+  const [exp, setExp] = useState(null)
+
+  const hoy = hoyKey()
+  const hoyDate = new Date(hoy+'T12:00:00')
+  const diaSemana = hoyDate.getDay() || 7
+  const lunes = new Date(hoyDate); lunes.setDate(hoyDate.getDate()-diaSemana+1)
+  const domingo = new Date(lunes); domingo.setDate(lunes.getDate()+6)
+  const desdeStr = lunes.toISOString().slice(0,10)
+  const hastaStr = domingo.toISOString().slice(0,10)
+
+  useEffect(() => {
+    if (!id) return
+    axios.get(`${API}/atletas/${id}/prescripcion`).then(r=>setPresc(r.data.data)).catch(()=>{})
+    authFetch(`${API}/atletas/${id}/actividades_rango?desde=${desdeStr}&hasta=${hastaStr}`)
+      .then(r=>r.json()).then(r=>setActsSemana(r.data?.actividades||{})).catch(()=>{})
+  }, [id, desdeStr])
+
+  const sesiones = (presc?.prescripcion?.sesiones || []).filter(s => {
+    const fk = getDiaKey(s.fecha); return fk && fk>=desdeStr && fk<=hastaStr
+  })
+  const porDia = {}
+  sesiones.forEach(s => { const fk=getDiaKey(s.fecha)||'sin-fecha'; (porDia[fk]=porDia[fk]||[]).push(s) })
+  Object.keys(actsSemana).forEach(f => { if(!porDia[f]) porDia[f]=[] })
+  const dias = Object.keys(porDia).sort()
+
+  if (presc && !dias.length) return (
+    <div style={{ textAlign:'center', padding:48, color:'rgba(41,45,41,0.5)', fontSize:14, fontFamily:FONT.base }}>Sin planificación para esta semana</div>
+  )
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16, fontFamily:FONT.base }}>
+      {dias.map(fk => {
+        const sesDia = porDia[fk]
+        const esHoy = fk===hoy
+        const esPasado = fk<hoy
+        const sc0 = SEM_SP[sesDia[0]?.sport||'running'] || SEM_SP.running
+        const fkDate = fk!=='sin-fecha' ? new Date(fk+'T12:00:00') : null
+        const diaNombre = fkDate ? fkDate.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'short'}) : 'Sin fecha'
+        return (
+          <div key={fk}>
+            <div style={{ padding:'4px 2px 8px', display:'flex', alignItems:'center', gap:10,
+              borderBottom:`1px solid ${esHoy?sc0.c+'40':'rgba(41,45,41,0.08)'}` }}>
+              <span style={{ fontSize:11, fontWeight:800, letterSpacing:0.8, textTransform:'uppercase',
+                color:esHoy?sc0.c:esPasado?'rgba(41,45,41,0.4)':'rgba(41,45,41,0.6)' }}>{diaNombre}</span>
+              {esHoy && <span style={{ fontSize:9, fontWeight:800, color:sc0.c, background:sc0.l, borderRadius:99, padding:'2px 8px', border:`1px solid ${sc0.c}33` }}>HOY</span>}
+              <div style={{ flex:1 }} />
+              <span style={{ fontSize:11, color:'rgba(41,45,41,0.4)', fontFamily:FONT.mono }}>TSS {sesDia.reduce((a,s)=>a+(s.tss||0),0)}</span>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:10, marginTop:10 }}>
+              {sesDia.map((s,i)=>(
+                <SemSesionCard key={i} sesion={s} esHoy={esHoy} atletaId={id}
+                  expandida={exp===`${fk}-${i}`} onToggle={()=>setExp(exp===`${fk}-${i}`?null:`${fk}-${i}`)} />
+              ))}
+              {sesDia.length===0 && (actsSemana[fk]||[]).map((act,i)=>{
+                const k=`${fk}-real-${i}`; const ab=exp===k
+                return (
+                  <div key={i} style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderLeft:`3px solid ${SEM_EST.done.c}`, borderRadius:14, boxShadow:NOAH.shadow, overflow:'hidden' }}>
+                    <button onClick={()=>setExp(ab?null:k)} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'12px 14px', border:'none', cursor:'pointer', background:'transparent', color:NOAH.ink, textAlign:'left', fontFamily:FONT.base }}>
+                      <SemSportPill sport={act.sport||'running'} />
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:SEM_EST.done.c, display:'flex', alignItems:'center', gap:6 }}>
+                          <CheckCircle2 size={13}/> {(SEM_SP[act.sport]?.label)||act.sport} · Realizada
+                        </div>
+                      </div>
+                      <span style={{ fontSize:12, color:'rgba(41,45,41,0.4)', transform:ab?'rotate(180deg)':'none', transition:'transform 0.2s' }}>▾</span>
+                    </button>
+                    {ab && (
+                      <div style={{ padding:'14px', background:'rgba(243,240,232,0.5)', borderTop:'1px solid rgba(41,45,41,0.08)' }}>
+                        <ActividadRealizada sesionPresc={{fecha:fk,sport:act.sport}} atletaId={id}/>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+
+      {presc?.prescripcion && (
+        <div style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderRadius:16, boxShadow:NOAH.shadow, padding:'14px 18px', display:'flex', gap:18, alignItems:'center', flexWrap:'wrap' }}>
+          {[['TSS Semana',presc.prescripcion.tss_total,'#E65B45'],['Fase',presc.prescripcion.fase,NOAH.ink],['Generado',presc.prescripcion.fecha_generada,'rgba(41,45,41,0.4)']].map(([l,v,col])=>(
+            <div key={l}>
+              <div style={{ fontSize:9, color:'rgba(41,45,41,0.45)', fontWeight:700, textTransform:'uppercase', letterSpacing:1.2, marginBottom:4 }}>{l}</div>
+              <div style={{ fontSize:20, fontWeight:800, color:col, fontFamily:FONT.mono }}>{v}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {presc?.cerebro?.sistemas && (
+        <div style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderRadius:16, boxShadow:NOAH.shadow, padding:'16px 18px' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+            <div style={{ fontSize:10, color:'#4F8CC9', fontWeight:800, letterSpacing:1.4, textTransform:'uppercase', display:'flex', alignItems:'center', gap:6 }}><Brain size={13} color="#4F8CC9" /> Cerebro NOAH</div>
+            {presc.cerebro.readiness && (() => {
+              const rd = presc.cerebro.readiness
+              const col = rd==='alto'?'#4E9E6B':rd==='medio'?'#E0A43C':'#E65B45'
+              return <div style={{ fontSize:10, fontWeight:800, padding:'3px 10px', borderRadius:99, background:`${col}1f`, color:col, border:`1px solid ${col}3a` }}>Readiness: {rd}</div>
+            })()}
+          </div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:presc.cerebro.limitante?12:0 }}>
+            {Object.entries(presc.cerebro.sistemas).map(([sys,val])=>{
+              const col = val>=80?'#4E9E6B':val>=60?'#E0A43C':'#E65B45'
+              return (
+                <div key={sys} style={{ flex:'1 1 80px', textAlign:'center', padding:'9px 4px', borderRadius:12, background:'rgba(243,240,232,0.6)', border:'1px solid rgba(41,45,41,0.07)' }}>
+                  <div style={{ fontSize:8, color:'rgba(41,45,41,0.45)', fontWeight:700, textTransform:'uppercase', marginBottom:4 }}>{sys}</div>
+                  <div style={{ fontSize:18, fontWeight:800, color:col, fontFamily:FONT.mono }}>{typeof val==='number'?val:'--'}</div>
+                </div>
+              )
+            })}
+          </div>
+          {presc.cerebro.limitante && (
+            <div style={{ fontSize:11, color:'rgba(41,45,41,0.7)', lineHeight:1.6 }}>
+              <strong style={{ color:'#E65B45' }}>Limitante:</strong> {presc.cerebro.limitante}
+              {presc.cerebro.foco && <span> · <strong style={{ color:'#4F8CC9' }}>Foco:</strong> {presc.cerebro.foco}</span>}
+            </div>
+          )}
+          {presc.cerebro.explicacion && (
+            <div style={{ fontSize:10, color:'rgba(41,45,41,0.45)', marginTop:6, lineHeight:1.5 }}>{presc.cerebro.explicacion}</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Curva de Periodización (vista atleta — simplificada) ──────────────────────
 function CurvaPeriodizacionAtleta({ atletaId }) {
@@ -1005,6 +1217,7 @@ function SesionRealizada({ sesionReal, sesionPresc, sport }) {
 // ── Vista de actividad realizada — estilo Garmin/TrainingPeaks ───────────────
 function NutricionPost({ atletaId, fecha, proxima24h }) {
   const [nut, setNut] = useState(null)
+  const [abierto, setAbierto] = useState(false)
 
   useEffect(() => {
     if (!atletaId || !fecha) return
@@ -1045,48 +1258,61 @@ function NutricionPost({ atletaId, fecha, proxima24h }) {
 
   const secs = []
   if (r.cho_recuperacion_g_total_4h || r.proteina_g_por_toma) secs.push({
-    Ic: Flame, color:'#FB923C', label:'Comer en la ventana (0–2 h)',
+    Ic: Flame, color:NOAH.salvia, label:'Comer en la ventana (0–2 h)',
     body: (<>
-      {r.cho_recuperacion_g_total_4h ? <><b style={{color:'#fff'}}>{r.cho_recuperacion_g_total_4h} g de hidratos</b> en las próximas 4 h</> : null}
+      {r.cho_recuperacion_g_total_4h ? <><b style={{color:'#292D29'}}>{r.cho_recuperacion_g_total_4h} g de hidratos</b> en las próximas 4 h</> : null}
       {(r.cho_recuperacion_g_total_4h && r.proteina_g_por_toma) ? ' + ' : null}
-      {r.proteina_g_por_toma ? <><b style={{color:'#fff'}}>{r.proteina_g_por_toma} g de proteína</b> por toma</> : null}.
+      {r.proteina_g_por_toma ? <><b style={{color:'#292D29'}}>{r.proteina_g_por_toma} g de proteína</b> por toma</> : null}.
       {(fcho || fprot) && <div style={{opacity:0.7, marginTop:2, fontSize:11}}>{[fcho, fprot].filter(Boolean).join('  ·  ')}</div>}
     </>)
   })
   if (rep.liquido_a_reponer_ml || rep.sodio_mg) secs.push({
-    Ic: GlassWater, color:'#38BDF8', label:'Hidratación',
+    Ic: GlassWater, color:NOAH.azul, label:'Hidratación',
     body: (<>
-      Reponé <b style={{color:'#fff'}}>{rep.liquido_a_reponer_ml || '--'} ml</b>{rep.sodio_mg > 0 ? <> + <b style={{color:'#fff'}}>{rep.sodio_mg} mg de sodio</b></> : null} en las próximas horas.
+      Reponé <b style={{color:'#292D29'}}>{rep.liquido_a_reponer_ml || '--'} ml</b>{rep.sodio_mg > 0 ? <> + <b style={{color:'#292D29'}}>{rep.sodio_mg} mg de sodio</b></> : null} en las próximas horas.
       {fele && <div style={{opacity:0.7, marginTop:2, fontSize:11}}>Electrolitos: {fele}</div>}
     </>)
   })
-  if (ffru) secs.push({ Ic: Banana, color:'#FACC15', label:'Fruta / snack rápido', body: ffru })
+  if (ffru) secs.push({ Ic: Banana, color:NOAH.salvia, label:'Fruta / snack rápido', body: ffru })
   if (nut.durante?.texto_corto) secs.push({
-    Ic: Zap, color:'#A78BFA', label:'Durante la próxima sesión de este tipo', body: nut.durante.texto_corto
+    Ic: Zap, color:'#78866B', label:'Durante la próxima sesión de este tipo', body: nut.durante.texto_corto
   })
 
   return (
-    <div style={{ marginTop:12, padding:'14px 15px', borderRadius:13,
-      background:'linear-gradient(180deg, rgba(56,189,248,0.07), rgba(255,255,255,0.015))',
-      border:'1px solid rgba(56,189,248,0.22)' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-        <GlassWater size={16} color={NUT_COLOR}/>
-        <span style={{ fontWeight:800, fontSize:13.5, color:'#EAF6FF' }}>Recuperación post-entreno</span>
-        <span style={{ marginLeft:'auto', fontSize:9, opacity:0.55, fontWeight:700, color:'#fff', textTransform:'uppercase', letterSpacing:'0.5px' }}>según lo gastado</span>
-      </div>
-      {secs.map((s,i)=>(
-        <div key={i} style={{ display:'flex', gap:10, padding:'10px 0', borderTop:'1px solid rgba(255,255,255,0.07)' }}>
-          <div style={{ width:26, height:26, borderRadius:8, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:`${s.color}1f`, border:`1px solid ${s.color}3a` }}>
-            <s.Ic size={14} color={s.color}/>
-          </div>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:9.5, fontWeight:800, color:s.color, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:3 }}>{s.label}</div>
-            <div style={{ fontSize:12, color:'rgba(255,255,255,0.82)', lineHeight:1.5 }}>{s.body}</div>
-          </div>
+    <div style={{ marginTop:12, borderRadius:16, overflow:'hidden',
+      background:NOAH.surface, border:`1px solid ${NOAH.border}`, boxShadow:NOAH.shadow }}>
+      {/* Header — desplegable (colapsado por defecto) */}
+      <button onClick={()=>setAbierto(o=>!o)} style={{
+        display:'flex', alignItems:'center', gap:10, width:'100%',
+        padding:'13px 15px', background:'transparent', border:'none',
+        cursor:'pointer', textAlign:'left', fontFamily:FONT.base }}>
+        <div style={{ width:30, height:30, borderRadius:9, flexShrink:0, display:'grid', placeItems:'center',
+          background:`${NOAH.salvia}1A`, border:`1px solid ${NOAH.salvia}33` }}>
+          <GlassWater size={16} color={NOAH.salvia}/>
         </div>
-      ))}
-      {r.cho_mensaje && (
-        <div style={{ marginTop:9, paddingTop:9, borderTop:'1px solid rgba(255,255,255,0.07)', fontSize:10.5, color:'rgba(255,255,255,0.5)', fontStyle:'italic' }}>{r.cho_mensaje}</div>
+        <span style={{ fontWeight:800, fontSize:13.5, color:NOAH.ink }}>Recuperación post-entreno</span>
+        <span style={{ marginLeft:'auto', fontSize:9, fontWeight:700, color:NOAH.ink45, textTransform:'uppercase', letterSpacing:'0.5px' }}>según lo gastado</span>
+        <ChevronRight size={16} color={NOAH.ink45}
+          style={{ transform: abierto ? 'rotate(90deg)' : 'none', transition:'transform 0.2s', flexShrink:0 }}/>
+      </button>
+
+      {abierto && (
+        <div style={{ padding:'0 15px 12px' }}>
+          {secs.map((s,i)=>(
+            <div key={i} style={{ display:'flex', gap:10, padding:'10px 0', borderTop:`1px solid ${NOAH.borderSoft}` }}>
+              <div style={{ width:26, height:26, borderRadius:8, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:`${s.color}1f`, border:`1px solid ${s.color}3a` }}>
+                <s.Ic size={14} color={s.color}/>
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:9.5, fontWeight:800, color:s.color, textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:3 }}>{s.label}</div>
+                <div style={{ fontSize:12, color:NOAH.ink70, lineHeight:1.5 }}>{s.body}</div>
+              </div>
+            </div>
+          ))}
+          {r.cho_mensaje && (
+            <div style={{ marginTop:9, paddingTop:9, borderTop:`1px solid ${NOAH.borderSoft}`, fontSize:10.5, color:NOAH.ink45, fontStyle:'italic' }}>{r.cho_mensaje}</div>
+          )}
+        </div>
       )}
     </div>
   )
@@ -1532,6 +1758,44 @@ function MiSesion({ presc, atletaId }) {
 }
 
 // ── Zonas tables ──────────────────────────────────────────────────────────────
+// Colores de zona estándar (fisiológicos) — se mantienen; solo el texto pasa a grafito.
+const ZONA_COLS = ['#6366F1','#3B82F6','#22C55E','#EAB308','#F97316','#EF4444']
+const Z_INK = '#292D29', Z_INK2 = 'rgba(41,45,41,0.58)', Z_INK3 = 'rgba(41,45,41,0.5)', Z_BORDER = 'rgba(41,45,41,0.08)'
+
+function ZonaRow({ z, zColor, sub, right, rightSub }) {
+  return (
+    <div style={{
+      padding:'13px 16px', borderBottom:`1px solid ${Z_BORDER}`,
+      display:'flex', justifyContent:'space-between', alignItems:'center',
+      borderLeft:`4px solid ${zColor}`, background:`${zColor}12`,
+    }}>
+      <div>
+        <span style={{fontWeight:800, color:zColor, marginRight:8, fontSize:14}}>{z.zona}</span>
+        <span style={{fontWeight:600, color:Z_INK}}>{z.nombre}</span>
+        {sub != null && <div style={{fontSize:11, color:Z_INK2, marginTop:3}}>{sub}</div>}
+      </div>
+      <div style={{textAlign:'right'}}>
+        <div style={{fontSize:14, fontWeight:700, color:zColor}}>{right || '--'}</div>
+        {rightSub != null && <div style={{fontSize:11, color:Z_INK3}}>{rightSub}</div>}
+      </div>
+    </div>
+  )
+}
+
+function ZonaRec({ rec }) {
+  if (!rec) return null
+  return (
+    <div style={{
+      padding:'10px 14px', borderRadius:10, marginBottom:12,
+      background:`${rec.color}12`, border:`1px solid ${rec.color}30`,
+      display:'flex', alignItems:'center', gap:8,
+    }}>
+      <div style={{width:8,height:8,borderRadius:'50%',background:rec.color,flexShrink:0}}/>
+      <span style={{fontSize:12,color:Z_INK2}}>{rec.msg}</span>
+    </div>
+  )
+}
+
 function ZonasRunningTable({ zonas, lthr }) {
   const _raw = zonas?.zonas || zonas?.data?.zonas || zonas
   const lista = Array.isArray(_raw)
@@ -1542,44 +1806,22 @@ function ZonasRunningTable({ zonas, lthr }) {
   const rec = zonas?.recomendacion || zonas?.data?.recomendacion
 
   if (!lista?.length) return (
-    <div style={{color:NOAH_C.ink3,fontSize:12,padding:'12px 0'}}>
+    <div style={{color:Z_INK3,fontSize:12,padding:'12px 0'}}>
       Sin datos de zonas running
-      {!lthr && <div style={{fontSize:11,color:NOAH_C.ink4,marginTop:4}}>Configurá el LTHR en el perfil del atleta</div>}
+      {!lthr && <div style={{fontSize:11,color:'rgba(41,45,41,0.4)',marginTop:4}}>Configurá el LTHR en el perfil del atleta</div>}
     </div>
   )
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:0}}>
-      {rec && (
-        <div style={{
-          padding:'10px 14px', borderRadius:8, marginBottom:12,
-          background:`${rec.color}12`, border:`1px solid ${rec.color}30`,
-          display:'flex', alignItems:'center', gap:8
-        }}>
-          <div style={{width:8,height:8,borderRadius:'50%',background:rec.color,flexShrink:0}}/>
-          <span style={{fontSize:12,color:NOAH_C.ink3}}>{rec.msg}</span>
-        </div>
-      )}
+      <ZonaRec rec={rec} />
       {lista.map((z, i) => {
-        const zColor = z.color || NOAH_C.run
+        const zColor = z.color || ZONA_COLS[i] || '#E65B45'
         const pace_rango = z.pace_rango || (z.pace_min && z.pace_max ? `${z.pace_min} – ${z.pace_max} /km` : null)
         return (
-          <div key={i} style={{
-            padding:'13px 16px', borderBottom:`1px solid ${NOAH_C.border}`,
-            display:'flex', justifyContent:'space-between', alignItems:'center',
-            borderLeft:`4px solid ${zColor}`,
-            background:`${zColor}12`,
-          }}>
-            <div>
-              <span style={{fontWeight:800, color:zColor, marginRight:8, fontSize:14}}>{z.zona||`Z${i+1}`}</span>
-              <span style={{fontWeight:600, color:'rgba(255,255,255,0.9)'}}>{z.nombre}</span>
-              <div style={{fontSize:11, color:'rgba(255,255,255,0.5)', marginTop:3}}>VO2: {z.vo2_pct} · Lactato: {z.lactato}</div>
-            </div>
-            <div style={{textAlign:'right'}}>
-              <div style={{fontSize:14, fontWeight:700, color:zColor}}>{pace_rango || '--'}</div>
-              <div style={{fontSize:11, color:NOAH_C.ink3}}>HR {z.hr_min||'--'}–{z.hr_max||'--'} bpm</div>
-            </div>
-          </div>
+          <ZonaRow key={i} z={{...z, zona: z.zona || `Z${i+1}`}} zColor={zColor}
+            sub={`VO2: ${z.vo2_pct} · Lactato: ${z.lactato}`}
+            right={pace_rango} rightSub={`HR ${z.hr_min||'--'}–${z.hr_max||'--'} bpm`} />
         )
       })}
     </div>
@@ -1596,40 +1838,18 @@ function ZonasCyclingTable({ zonas }) {
   const rec = zonas?.recomendacion || zonas?.data?.recomendacion
 
   if (!lista?.length) return (
-    <div style={{color:NOAH_C.ink3,fontSize:12,padding:'12px 0'}}>Sin datos de zonas ciclismo</div>
+    <div style={{color:Z_INK3,fontSize:12,padding:'12px 0'}}>Sin datos de zonas ciclismo</div>
   )
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:0}}>
-      {rec && (
-        <div style={{
-          padding:'10px 14px', borderRadius:8, marginBottom:12,
-          background:`${rec.color}12`, border:`1px solid ${rec.color}30`,
-          display:'flex', alignItems:'center', gap:8
-        }}>
-          <div style={{width:8,height:8,borderRadius:'50%',background:rec.color,flexShrink:0}}/>
-          <span style={{fontSize:12,color:NOAH_C.ink3}}>{rec.msg}</span>
-        </div>
-      )}
+      <ZonaRec rec={rec} />
       {lista.map((z, i) => {
-        const zColor = z.color || NOAH_C.bike
+        const zColor = z.color || ZONA_COLS[i] || '#78866B'
         return (
-          <div key={i} style={{
-            padding:'13px 16px', borderBottom:`1px solid ${NOAH_C.border}`,
-            display:'flex', justifyContent:'space-between', alignItems:'center',
-            borderLeft:`4px solid ${zColor}`,
-            background:`${zColor}12`,
-          }}>
-            <div>
-              <span style={{fontWeight:800, color:zColor, marginRight:8, fontSize:14}}>{z.zona||`Z${i+1}`}</span>
-              <span style={{fontWeight:600, color:'rgba(255,255,255,0.9)'}}>{z.nombre}</span>
-              <div style={{fontSize:11, color:'rgba(255,255,255,0.5)', marginTop:3}}>{z.pct_ftp}</div>
-            </div>
-            <div style={{textAlign:'right'}}>
-              <div style={{fontSize:14, fontWeight:700, color:zColor}}>{z.w_rango||'--'}</div>
-              <div style={{fontSize:11, color:NOAH_C.ink3}}>HR {z.hr_min||'--'}–{z.hr_max||'--'} · {z.wkg_min||'--'} W/kg</div>
-            </div>
-          </div>
+          <ZonaRow key={i} z={{...z, zona: z.zona || `Z${i+1}`}} zColor={zColor}
+            sub={z.pct_ftp}
+            right={z.w_rango} rightSub={`HR ${z.hr_min||'--'}–${z.hr_max||'--'} · ${z.wkg_min||'--'} W/kg`} />
         )
       })}
     </div>
@@ -1639,31 +1859,17 @@ function ZonasCyclingTable({ zonas }) {
 function ZonasSwimTable({ zonas }) {
   const _raw = zonas?.zonas || zonas?.data?.zonas || zonas
   const lista = Array.isArray(_raw) ? _raw : (_raw && typeof _raw === "object") ? Object.entries(_raw).map(([zona,d])=>({zona,...d})) : null
-  if (!lista?.length) return <div style={{color:NOAH_C.ink3,fontSize:12,padding:'12px 0'}}>Sin datos de zonas natación</div>
+  if (!lista?.length) return <div style={{color:Z_INK3,fontSize:12,padding:'12px 0'}}>Sin datos de zonas natación</div>
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:0}}>
       {lista.map((z,i)=>{
-        const ZCOLS = ['#6366F1','#3B82F6','#22C55E','#EAB308','#F97316','#EF4444']; const zColor = z.color || ZCOLS[i] || NOAH_C.swim
+        const zColor = z.color || ZONA_COLS[i] || '#4F8CC9'
+        const right = z.pace_rango || ((z.pace_100m_min||z.pace_min) ? `${z.pace_100m_min||z.pace_min} – ${z.pace_100m_max||z.pace_max}` : null)
         return (
-        <div key={i} style={{
-          padding:'13px 16px', borderBottom:`1px solid ${NOAH_C.border}`,
-          display:'flex', justifyContent:'space-between', alignItems:'center',
-          borderLeft:`4px solid ${zColor}`,
-          background:`${zColor}12`,
-        }}>
-          <div>
-            <span style={{fontWeight:800, color:zColor, marginRight:8, fontSize:14}}>{z.zona}</span>
-            <span style={{fontWeight:600, color:'rgba(255,255,255,0.9)'}}>{z.nombre}</span>
-            <div style={{fontSize:11, color:'rgba(255,255,255,0.5)', marginTop:3}}>{z.descripcion}</div>
-          </div>
-          <div style={{textAlign:'right'}}>
-            <div style={{fontSize:14, fontWeight:700, color:zColor}}>
-              {z.pace_rango || ((z.pace_100m_min||z.pace_min) ? `${z.pace_100m_min||z.pace_min} – ${z.pace_100m_max||z.pace_max}` : '--')}
-            </div>
-            <div style={{fontSize:11, color:NOAH_C.ink3}}>HR {z.hr_min||'--'}–{z.hr_max||'--'} bpm</div>
-          </div>
-        </div>
+          <ZonaRow key={i} z={z} zColor={zColor}
+            sub={z.descripcion}
+            right={right} rightSub={`HR ${z.hr_min||'--'}–${z.hr_max||'--'} bpm`} />
         )
       })}
     </div>
@@ -1672,6 +1878,96 @@ function ZonasSwimTable({ zonas }) {
 
 
 
+
+// ── Mis Zonas (v2) — sección autónoma, trae sus propios datos ───────────────
+function SeccionZonas({ atletaId }) {
+  const id = atletaId || 1
+  const [atleta, setAtleta]   = useState(null)
+  const [zRun, setZRun]       = useState(null)
+  const [zBike, setZBike]     = useState(null)
+  const [zSwim, setZSwim]     = useState(null)
+  const [estado, setEstado]   = useState(null)
+  const [sub, setSub]         = useState('running')
+
+  useEffect(() => {
+    if (!id) return
+    axios.get(`${API}/atletas/${id}`).then(r => setAtleta(r.data.data)).catch(()=>{})
+    axios.get(`${API}/atletas/${id}/zonas/running`).then(r=>setZRun(r.data.data)).catch(()=>{})
+    axios.get(`${API}/atletas/${id}/zonas/cycling`).then(r=>setZBike(r.data.data)).catch(()=>{})
+    axios.get(`${API}/atletas/${id}/zonas/swimming`).then(r=>setZSwim(r.data.data)).catch(()=>{})
+    axios.get(`${API}/atletas/${id}/estado`).then(r=>setEstado(r.data.data)).catch(()=>{})
+  }, [id])
+
+  const SP = {
+    running:  { label:'Running',  color:'#E65B45', light:'rgba(230,91,69,0.12)',   Icon:IconRun },
+    cycling:  { label:'Ciclismo', color:'#78866B', light:'rgba(120,134,107,0.12)', Icon:IconBike },
+    swimming: { label:'Natación', color:'#4F8CC9', light:'rgba(79,140,201,0.12)',  Icon:IconSwim },
+  }
+  const sp = SP[sub]
+  const css = zSwim?.css
+  const umbral = {
+    running:  atleta?.lthr_run != null ? <>LTHR <b style={{color:SP.running.color}}>{atleta.lthr_run}</b> bpm</> : null,
+    cycling:  zBike?.ftp != null ? <>FTP <b style={{color:SP.cycling.color}}>{zBike.ftp}</b> W</> : null,
+    swimming: css ? <>CSS <b style={{color:SP.swimming.color}}>{`${Math.floor(css)}:${String(Math.round((css%1)*60)).padStart(2,'0')}`}</b> /100m</> : null,
+  }[sub]
+
+  // Banner adaptativo según TSB (misma lógica), colores v2
+  const tsb = estado?.estado?.tsb
+  let banner = null
+  if (tsb != null) {
+    if (tsb > 10) banner = { color:'#78866B', icon:CheckCircle2, msg:`Forma óptima (TSB ${tsb?.toFixed(1)}) — Podés entrenar en zonas altas con seguridad.` }
+    else if (tsb < -20) banner = { color:'#E65B45', icon:AlertTriangle, msg:`Alta fatiga acumulada (TSB ${tsb?.toFixed(1)}) — Priorizá Z1-Z2. Evitá umbrales y VO2max.` }
+    else if (tsb < -10) banner = { color:'#E0A43C', icon:Zap, msg:`En carga (TSB ${tsb?.toFixed(1)}) — Tolerás Z3-Z4 pero moderá el volumen en Z5-Z6.` }
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14, fontFamily:FONT.base }}>
+      {banner && (
+        <div style={{ padding:'11px 15px', borderRadius:14, background:`${banner.color}16`,
+          border:`1px solid ${banner.color}3a`, display:'flex', alignItems:'center', gap:10 }}>
+          <banner.icon size={20} color={banner.color} style={{flexShrink:0}}/>
+          <div>
+            <div style={{fontSize:12,fontWeight:800,color:banner.color,marginBottom:2}}>Recomendación según tu estado</div>
+            <div style={{fontSize:12,color:'rgba(41,45,41,0.7)'}}>{banner.msg}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Selector de deporte — chips flotando */}
+      <div style={{ display:'flex', gap:8 }}>
+        {Object.entries(SP).map(([id2, s]) => {
+          const sel = sub===id2
+          return (
+            <button key={id2} onClick={()=>setSub(id2)} style={{
+              padding:'8px 16px', fontSize:12, fontWeight:sel?800:600, fontFamily:FONT.base,
+              color:sel?s.color:'rgba(41,45,41,0.5)', background:sel?s.light:'rgba(251,250,246,0.7)',
+              border:`1.5px solid ${sel?s.color+'55':'rgba(41,45,41,0.1)'}`, borderRadius:999,
+              cursor:'pointer', display:'flex', alignItems:'center', gap:6, transition:'all 0.15s' }}>
+              <s.Icon size={14} color={s.color} />
+              {s.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Tarjeta marfil con la tabla de zonas del deporte activo */}
+      <div style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderRadius:16,
+        boxShadow:NOAH.shadow, overflow:'hidden' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+          padding:'15px 16px', borderBottom:`1px solid rgba(41,45,41,0.07)` }}>
+          <div style={{ display:'flex', alignItems:'center', gap:9 }}>
+            <sp.Icon size={18} color={sp.color} />
+            <span style={{ fontSize:16, fontWeight:800, color:NOAH.ink }}>Zonas {sp.label}</span>
+          </div>
+          {umbral && <div style={{ fontSize:13, color:'rgba(41,45,41,0.5)' }}>{umbral}</div>}
+        </div>
+        {sub==='running'  && <ZonasRunningTable zonas={zRun} lthr={atleta?.lthr_run} />}
+        {sub==='cycling'  && <ZonasCyclingTable zonas={zBike} />}
+        {sub==='swimming' && <ZonasSwimTable zonas={zSwim} />}
+      </div>
+    </div>
+  )
+}
 
 // ── HANNA LIFE — Gráfico de vitalidad autonómica ────────────────────────────
 function HannaLifeGrafico({ atletaId, modo = 'dark' }) {
@@ -2826,7 +3122,14 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
       .catch(() => { setActsMes({}); setCargando(false) })
   }, [atletaId, mesOffset])
 
-  const SC = { running: NOAH_C.run, cycling: NOAH_C.bike, swimming: NOAH_C.swim }
+  const [prescInt, setPrescInt] = useState(null)
+  useEffect(() => {
+    if (presc || !atletaId) return
+    axios.get(`${API}/atletas/${atletaId}/prescripcion`).then(r=>setPrescInt(r.data.data)).catch(()=>{})
+  }, [atletaId, presc])
+  const prescUse = presc || prescInt
+  const SC = { running: '#E65B45', cycling: '#78866B', swimming: '#4F8CC9' }
+  const CAL_INK = '#292D29', CAL_AZUL = '#4F8CC9'
   const DIAS = ['D','L','M','M','J','V','S']
 
   const dow = (f) => new Date(f+'T12:00:00').getDay()
@@ -2840,29 +3143,29 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
   const semanas = Array.from({length:grilla.length/7}, (_,i) => grilla.slice(i*7,i*7+7))
 
   return (
-    <div style={{ background:'#111118', borderRadius:14, overflow:'hidden' }}>
+    <div style={{ background:NOAH.surface, border:`1px solid ${NOAH.border}`, borderRadius:16, boxShadow:NOAH.shadow, overflow:'hidden', fontFamily:FONT.base }}>
 
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', padding:'14px 16px', gap:12 }}>
         <button onClick={() => setMesOffset(m => m-1)} style={{
-          background:'transparent', border:'none', color:'#60A5FA', fontSize:18, cursor:'pointer', padding:'4px 8px',
+          background:'transparent', border:'none', color:CAL_AZUL, fontSize:18, cursor:'pointer', padding:'4px 8px',
         }}>‹</button>
-        <div style={{ flex:1, textAlign:'center', fontSize:15, fontWeight:700, color:'rgba(255,255,255,0.9)',
+        <div style={{ flex:1, textAlign:'center', fontSize:15, fontWeight:800, color:CAL_INK,
           textTransform:'capitalize' }}>{nombreMes}</div>
         <button onClick={() => setMesOffset(m => m+1)} style={{
-          background:'transparent', border:'none', color:'#60A5FA', fontSize:18, cursor:'pointer', padding:'4px 8px',
+          background:'transparent', border:'none', color:CAL_AZUL, fontSize:18, cursor:'pointer', padding:'4px 8px',
         }}>›</button>
       </div>
 
       {/* Días de la semana */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', padding:'0 8px 6px' }}>
         {DIAS.map((d,i) => (
-          <div key={i} style={{ textAlign:'center', fontSize:11, fontWeight:600,
-            color:'rgba(255,255,255,0.4)', padding:'2px 0' }}>{d}</div>
+          <div key={i} style={{ textAlign:'center', fontSize:11, fontWeight:700,
+            color:'rgba(41,45,41,0.4)', padding:'2px 0' }}>{d}</div>
         ))}
       </div>
 
-      {cargando && <div style={{ padding:30, textAlign:'center', color:'rgba(255,255,255,0.3)', fontSize:12 }}>Cargando...</div>}
+      {cargando && <div style={{ padding:30, textAlign:'center', color:'rgba(41,45,41,0.35)', fontSize:12 }}>Cargando...</div>}
 
       {/* Semanas */}
       {!cargando && semanas.map((sem, si) => (
@@ -2886,29 +3189,29 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
 
             return (
               <div key={di} onClick={() => setDiaDetalle(selec ? null : fecha)} style={{
-                minHeight: 72, padding:'4px 3px', borderRadius:6, cursor:'pointer',
-                background: selec ? 'rgba(96,165,250,0.12)' : esHoy ? 'rgba(96,165,250,0.06)' : '#1A1A24',
-                border: esHoy ? '1px solid rgba(96,165,250,0.4)' : selec ? '1px solid rgba(96,165,250,0.3)' : '1px solid rgba(255,255,255,0.04)',
+                minHeight: 72, padding:'4px 3px', borderRadius:10, cursor:'pointer',
+                background: selec ? 'rgba(79,140,201,0.14)' : esHoy ? 'rgba(79,140,201,0.07)' : 'rgba(41,45,41,0.03)',
+                border: esHoy ? '1px solid rgba(79,140,201,0.45)' : selec ? '1px solid rgba(79,140,201,0.35)' : '1px solid rgba(41,45,41,0.06)',
                 transition: 'all 0.15s',
               }}>
                 {/* Número del día */}
-                <div style={{ fontSize:12, fontWeight: esHoy ? 800 : 500, marginBottom:4,
-                  color: esHoy ? '#60A5FA' : fecha > hoy ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.75)',
+                <div style={{ fontSize:12, fontWeight: esHoy ? 800 : 600, marginBottom:4,
+                  color: esHoy ? CAL_AZUL : fecha > hoy ? 'rgba(41,45,41,0.3)' : 'rgba(41,45,41,0.75)',
                   textAlign:'center',
                 }}>{num}</div>
 
                 {/* Barras de actividades por deporte (estilo Garmin) */}
                 <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
                   {Object.entries(deportes).map(([sp, data]) => {
-                    const color = SC[sp] || '#94A3B8'
+                    const color = SC[sp] || '#78866B'
                     const intense = data.tss > 60
                     return (
                       <div key={sp} style={{
                         height: intense ? 6 : 4,
                         borderRadius: 2,
                         background: color,
-                        opacity: intense ? 0.95 : 0.7,
-                        boxShadow: intense ? `0 0 4px ${color}66` : 'none',
+                        opacity: intense ? 0.95 : 0.55,
+                        boxShadow: intense ? `0 0 4px ${color}55` : 'none',
                       }} />
                     )
                   })}
@@ -2922,22 +3225,22 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
       {/* Detalle día */}
       {diaDetalle && (() => {
         const acts = actsMes[diaDetalle] || []
-        const sesiones = presc?.prescripcion?.sesiones || []
+        const sesiones = prescUse?.prescripcion?.sesiones || []
         const pres = sesiones.filter(s => getDiaKey(s.fecha) === diaDetalle)
         const label = new Date(diaDetalle+'T12:00:00').toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long'})
 
         return (
-          <div style={{ margin:'4px 8px 8px', padding:'12px', borderRadius:10,
-            background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ fontSize:12, fontWeight:700, color:'#60A5FA',
+          <div style={{ margin:'4px 10px 10px', padding:'12px 14px', borderRadius:12,
+            background:'rgba(243,240,232,0.7)', border:'1px solid rgba(41,45,41,0.08)' }}>
+            <div style={{ fontSize:12, fontWeight:800, color:CAL_AZUL,
               marginBottom:10, textTransform:'capitalize' }}>{label}</div>
 
             {acts.length === 0 && pres.length === 0 && (
-              <div style={{ fontSize:12, color:'rgba(255,255,255,0.3)' }}>Sin actividad</div>
+              <div style={{ fontSize:12, color:'rgba(41,45,41,0.4)' }}>Sin actividad</div>
             )}
 
             {acts.map((a, i) => {
-              const col = SC[a.sport] || '#94A3B8'
+              const col = SC[a.sport] || '#78866B'
               const dk = (a.distance_km > 500 ? a.distance_km/1000 : a.distance_km)?.toFixed(1)
               const sid = a.sesion_id || a.id
               const abierta = actExpandida === sid
@@ -2945,18 +3248,18 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
                 <div key={i}>
                   <div onClick={() => setActExpandida(abierta ? null : sid)}
                     style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', cursor:'pointer',
-                    borderBottom: i < acts.length-1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                    borderBottom: i < acts.length-1 ? '1px solid rgba(41,45,41,0.07)' : 'none' }}>
                     <div style={{ width:4, height:28, borderRadius:2, background:col }} />
                     <div style={{ flex:1 }}>
-                      <div style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.85)', display:'flex', alignItems:'center', gap:6 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:CAL_INK, display:'flex', alignItems:'center', gap:6 }}>
                         <SportIcon sport={a.sport} size={13} color={col} />
                         {a.sport === 'running' ? 'Run' : a.sport === 'cycling' ? 'Bike' : 'Swim'}
                       </div>
-                      <div style={{ fontSize:10, color:'rgba(255,255,255,0.45)', marginTop:2 }}>
+                      <div style={{ fontSize:10, color:'rgba(41,45,41,0.5)', marginTop:2 }}>
                       {Math.round(a.duration_min || 0)}min · {dk}km · TSS {Math.round(a.tss_total || 0)}
                       </div>
                     </div>
-                    <ChevronDown size={16} color="rgba(255,255,255,0.3)"
+                    <ChevronDown size={16} color="rgba(41,45,41,0.3)"
                       style={{ transform: abierta ? 'rotate(180deg)' : 'none', transition:'transform 0.2s' }} />
                   </div>
                   {abierta && (
@@ -2970,13 +3273,13 @@ function CalendarioMensual({ atletaId, presc, dark = true }) {
             })}
 
             {pres.filter(s => !acts.some(a => a.sport === s.sport)).map((s, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', opacity:0.5 }}>
-                <div style={{ width:4, height:28, borderRadius:2, background:SC[s.sport]||'#94A3B8', opacity:0.4 }} />
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', opacity:0.65 }}>
+                <div style={{ width:4, height:28, borderRadius:2, background:SC[s.sport]||'#78866B', opacity:0.5 }} />
                 <div>
-                  <div style={{ fontSize:11, fontWeight:600, color:'rgba(255,255,255,0.5)' }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:'rgba(41,45,41,0.55)' }}>
                     {s.nombre || s.sport}
                   </div>
-                  <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>Planificado · {Math.round(s.duracion)}min</div>
+                  <div style={{ fontSize:10, color:'rgba(41,45,41,0.4)' }}>Planificado · {Math.round(s.duracion)}min</div>
                 </div>
               </div>
             ))}
@@ -3033,12 +3336,12 @@ function ModeloBanisterAtleta({ atletaId }) {
 
   // ── Paleta brillante (prompt Parte 2) ────────────────────────────────────
   const P = {
-    ctl:    '#7C6CFF',   // violeta eléctrico
-    atl:    '#FF5C7A',   // coral
-    tsb:    '#2DE3A7',   // verde menta
-    tsb_bg: 'rgba(45,227,167,0.08)',
+    ctl:    '#4F8CC9',   // azul (fitness/CTL)
+    atl:    '#E65B45',   // coral (fatiga/ATL)
+    tsb:    '#78866B',   // salvia (forma/TSB)
+    tsb_bg: 'rgba(120,134,107,0.10)',
     fases: {
-      A:    'rgba(99,102,241,0.10)',   // violeta
+      A:    'rgba(79,140,201,0.10)',   // azul
       T:    'rgba(251,191,36,0.10)',   // ámbar
       R:    'rgba(239,68,68,0.10)',    // rojo
       Taper:'rgba(16,185,129,0.10)',  // verde
@@ -3050,7 +3353,7 @@ function ModeloBanisterAtleta({ atletaId }) {
     carreras: { A:'#EF4444', B:'#F59E0B', C:'#6366F1', D:'#6B7280' },
   }
 
-  const SPORT_C = { running:NOAH_C.accent, cycling:NOAH_C.bike, swimming:NOAH_C.success }
+  const SPORT_C = { running:'#E65B45', cycling:'#78866B', swimming:'#4F8CC9' }
   const hist  = d.hist || [], proy = d.proy || []
   const todos = [...hist, ...proy]
   if (!todos.length) return null
@@ -3186,8 +3489,8 @@ function ModeloBanisterAtleta({ atletaId }) {
         </span>
         <div style={{
           padding:'3px 10px', borderRadius:99, fontSize:10, fontWeight:700,
-          background:`rgba(124,108,255,0.15)`, color:P.ctl,
-          border:`1px solid rgba(124,108,255,0.3)`,
+          background:`rgba(79,140,201,0.15)`, color:P.ctl,
+          border:`1px solid rgba(79,140,201,0.3)`,
         }}>
           {faseLabel}
         </div>
@@ -3662,15 +3965,14 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
     .map(s => ({ t: Math.round(s.ts_s / 60), wbal: s.wbal_pct, torque: s.torque }))
 
   return (
-    <div style={{ padding:'12px 6px', borderBottom:`1px solid ${NOAH_C.border}` }}>
-      {/* Métricas avanzadas — antes eran 2 botones grandes con fondo azul
-          sólido; ahora son filas de navegación compactas (icono + label +
-          chevron), igual criterio visual que el resto del rediseño: sin
-          "botones gigantes", solo la fila activa se resalta. */}
-      <div style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.35)',
-        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8, padding:'0 2px' }}>
-        Métricas avanzadas
-      </div>
+    <div style={{
+      borderRadius: 22, overflow: 'hidden',
+      background: 'linear-gradient(165deg, #1C211C 0%, #13160F 100%)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      boxShadow: '0 22px 48px -18px rgba(41,45,41,0.55), inset 0 1px 0 rgba(255,255,255,0.08)',
+      padding:'16px 14px 18px',
+    }}>
+      {/* Sin título: la isla oscura flota sola (filas de navegación compactas). */}
       <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom: vista ? 14 : 0 }}>
         {[['torque', Zap, 'Torque']].map(([v, Icon, label]) => (
           <button key={v} onClick={() => toggle(v)} style={{
@@ -3697,7 +3999,7 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
             {[
               { label:'NP (Potencia Normalizada)', value: metricas?.np_watts ? `${metricas.np_watts}W` : '--', color:'#3B82F6' },
               { label:'Trabajo total', value: metricas?.trabajo_kj ? `${Math.round(metricas.trabajo_kj)}kJ` : '--', color:'#F97316' },
-              { label:'Variability Index', value: metricas?.variability_index ? metricas.variability_index.toFixed(2) : '--', color:'#A855F7' },
+              { label:'Variability Index', value: metricas?.variability_index ? metricas.variability_index.toFixed(2) : '--', color:'#9DB089' },
             ].map(({label,value,color}) => (
               <div key={label} style={{ flex:1, minWidth:0, background:`${color}12`, borderRadius:8,
                 padding:'8px 12px', border:`1px solid ${color}25` }}>
@@ -3749,7 +4051,7 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
                   { label:'Q2 (veneno)', value:`${cuadrantes?.Q2??'--'}%`, color:'#EF4444' },
                   { label:'NME', value:metricas?.nme?metricas.nme.toFixed(1):'--', color:'#3B82F6' },
                   { label:'CP (potencia crítica)', value:metricas?.cp_usado?`${Math.round(metricas.cp_usado)}W`:'--', color:'#F97316' },
-                  { label:"W' (capacidad anaeróbica)", value:metricas?.w_prime_usado?`${Math.round(metricas.w_prime_usado/1000)}kJ`:'--', color:'#A855F7' },
+                  { label:"W' (capacidad anaeróbica)", value:metricas?.w_prime_usado?`${Math.round(metricas.w_prime_usado/1000)}kJ`:'--', color:'#9DB089' },
                 ].map(({ label, value, color }) => (
                   <div key={label} style={{ flex:1, background:`${color}12`, borderRadius:8,
                     padding:'8px 12px', border:`1px solid ${color}25` }}>
@@ -3845,9 +4147,9 @@ function TorqueWbalBotones({ atletaId, sesionId, ftp = 200, cadenciaOptima = 85 
               {metricas?.vaciados_criticos > 0 && (
                 <div style={{ marginTop:8, padding:'8px 12px', borderRadius:8,
                   background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)',
-                  fontSize:11, color:'#FCA5A5' }}>
-                  ⚡ {metricas.vaciados_criticos} vaciado{metricas.vaciados_criticos>1?'s':''} crítico{metricas.vaciados_criticos>1?'s':''} — 
-                  {cuadrantes?.Q2 > 15 ? ` Elevá la cadencia, pasaste ${cuadrantes.Q2}% en Q2.` : ' Revisá los picos de esfuerzo.'}
+                  fontSize:11, color:'#FCA5A5', display:'flex', alignItems:'flex-start', gap:6 }}>
+                  <Zap size={13} style={{flexShrink:0,marginTop:1}} /><span>{metricas.vaciados_criticos} vaciado{metricas.vaciados_criticos>1?'s':''} crítico{metricas.vaciados_criticos>1?'s':''} —
+                  {cuadrantes?.Q2 > 15 ? ` Elevá la cadencia, pasaste ${cuadrantes.Q2}% en Q2.` : ' Revisá los picos de esfuerzo.'}</span>
                 </div>
               )}
               {metricas?.vaciados_criticos === 0 && (
@@ -4098,6 +4400,302 @@ function DistribucionEntrenamiento({ atletaId }) {
 }
 
 
+// ══════════════════════════════════════════════════════════════════════════════
+// PANTALLAS OPCIÓN 1 — Entreno (Mi Sesión) + grupos con sub-tabs.
+// Solo presentación. Reutiliza los gráficos científicos existentes (streams,
+// mapa, reserva energética, torque) INTACTOS, enmarcados en tarjetas marfil —
+// cero riesgo de perder función. Nada de lógica ni datos se modifica.
+// ══════════════════════════════════════════════════════════════════════════════
+// Vidrio esmerilado real: superficie marfil translúcida + blur, para que el fondo
+// con color se vea difuminado detrás. Borde claro arriba y sombra suave dan profundidad.
+const o1card = (extra = {}) => ({
+  background: 'linear-gradient(160deg, rgba(251,250,246,0.78), rgba(243,240,232,0.66))',
+  backdropFilter: 'blur(22px) saturate(1.35)', WebkitBackdropFilter: 'blur(22px) saturate(1.35)',
+  border: '1px solid rgba(255,255,255,0.55)', borderRadius: 18,
+  boxShadow: '0 1px 2px rgba(41,45,41,0.04), 0 12px 30px -18px rgba(41,45,41,0.26), inset 0 1px 0 rgba(255,255,255,0.5)',
+  ...extra,
+})
+const o1eyebrow = { fontFamily: FONT.base, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: NOAH.ink45 }
+const DEP_O1 = { running: NOAH.coral, cycling: NOAH.salvia, swimming: NOAH.azul }
+
+// ISLA OSCURA (Opción C): los gráficos científicos de Mi Sesión viven sobre un
+// grafito cálido derivado del Grafito #292D29 de la paleta — marfil y grafito son
+// los dos polos del MISMO sistema. Flotan como islas oscuras sobre el chrome marfil.
+// Mismo estilo que GraficoActividadStreams (isla autónoma) para que todas coincidan.
+const o1dark = (extra = {}) => ({
+  background: 'linear-gradient(165deg, #1C211C 0%, #13160F 100%)',
+  border: '1px solid rgba(255,255,255,0.08)', borderRadius: 22,
+  boxShadow: '0 22px 48px -18px rgba(41,45,41,0.55), inset 0 1px 0 rgba(255,255,255,0.08)',
+  overflow: 'hidden',
+  ...extra,
+})
+
+function EnRediseno({ nombre, onAbrir }) {
+  return (
+    <div style={{ ...o1card({ padding: '38px 22px', textAlign: 'center' }) }}>
+      <div style={{ width: 46, height: 46, borderRadius: 14, margin: '0 auto 14px', display: 'grid', placeItems: 'center', background: 'rgba(120,134,107,0.1)' }}>
+        <Activity size={22} color={NOAH.salvia} strokeWidth={2.2} />
+      </div>
+      <div style={{ fontFamily: FONT.base, fontSize: 16, fontWeight: 800, color: NOAH.ink, letterSpacing: -0.3 }}>{nombre}</div>
+      <div style={{ fontFamily: FONT.base, fontSize: 12.5, color: NOAH.ink45, marginTop: 6, lineHeight: 1.5 }}>
+        En rediseño al nuevo estilo.<br />Mientras tanto podés abrir la versión actual.
+      </div>
+      {onAbrir && (
+        <button onClick={onAbrir} style={{
+          marginTop: 16, padding: '9px 18px', borderRadius: 999, cursor: 'pointer',
+          fontFamily: FONT.base, fontSize: 12.5, fontWeight: 700, color: '#fff',
+          background: NOAH.grafito, border: 'none', boxShadow: '0 6px 16px -6px rgba(41,45,41,0.4)',
+        }}>Abrir versión actual →</button>
+      )}
+    </div>
+  )
+}
+
+function MiniCalMarfil({ fechaSel, onSelect, acts7 }) {
+  const hoy = hoyKey()
+  const dias = []
+  for (let i = 6; i >= 0; i--) dias.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10))
+  const DIAS = ['D', 'L', 'M', 'M', 'J', 'V', 'S']
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      {dias.map(d => {
+        const acts = (acts7 || {})[d] || []
+        const esHoy = d === hoy, esSel = d === fechaSel
+        const o = new Date(d + 'T12:00:00')
+        return (
+          <button key={d} onClick={() => onSelect(d)} style={{
+            flex: 1, borderRadius: 14, cursor: 'pointer', padding: '9px 2px', textAlign: 'center',
+            background: esSel ? NOAH.grafito : NOAH.surface,
+            border: `1px solid ${esSel ? NOAH.grafito : NOAH.border}`,
+            boxShadow: esSel ? '0 6px 16px -6px rgba(41,45,41,0.4)' : 'none', transition: 'all .15s',
+          }}>
+            <div style={{ fontFamily: FONT.base, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.5, color: esSel ? 'rgba(255,255,255,0.7)' : NOAH.ink45 }}>{DIAS[o.getDay()]}</div>
+            <div style={{ fontFamily: FONT.mono, fontSize: 16, fontWeight: 700, marginTop: 1, color: esSel ? '#fff' : NOAH.ink }}>{o.getDate()}</div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 3, marginTop: 4, minHeight: 6 }}>
+              {esHoy && !esSel && <div style={{ width: 4, height: 4, borderRadius: 9, background: NOAH.coral }} />}
+              {acts.map((a, i) => <div key={i} style={{ width: 5, height: 5, borderRadius: 9, background: esSel ? 'rgba(255,255,255,0.8)' : (DEP_O1[a.sport] || NOAH.ink45) }} />)}
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function ActividadCardV2({ act, sesionPresc, atletaId }) {
+  const sport = (act.sport || 'running').toLowerCase()
+  const s = SPORT[sport] || SPORT.running
+  const LTHR = sesionPresc?.lthr || (sport === 'cycling' ? 155 : 162)
+  const zonas = useZonasAtletaDash(atletaId, sport)
+  const cssVal = sport === 'swimming' ? zonas?.css : null
+  const paceUmbralVal = sport === 'running' ? zonas?.pace_umbral : null
+  const tssR = act.tss_total, tssP = sesionPresc?.tss
+  const pct = tssP && tssR ? Math.round((tssR - tssP) / tssP * 100) : null
+  const cumpl = !sesionPresc ? { c: NOAH.coral, t: 'Sin prescripción' }
+    : pct === null ? { c: NOAH.ink45, t: 'Sin TSS' }
+    : Math.abs(pct) <= 15 ? { c: NOAH.salvia, t: 'Cumplida' }
+    : pct > 15 ? { c: NOAH.coral, t: `+${pct}% sobre` }
+    : { c: NOAH.azul, t: `${Math.abs(pct)}% bajo` }
+  const depColor = DEP_O1[sport] || NOAH.coral
+  const sid = act.sesion_id || act.id
+
+  // Lenguaje visual: cada elemento FLOTA directo sobre el fondo (como los chips
+  // de fechas). Sin contenedor grande que los envuelva, sin títulos de sección.
+  // Una sola capa de vidrio esmerilado por elemento.
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Chip del deporte (flotante) + estado */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 9, padding: '7px 15px 7px 8px', borderRadius: 999,
+          background: 'linear-gradient(160deg, rgba(251,250,246,0.82), rgba(243,240,232,0.70))',
+          backdropFilter: 'blur(18px) saturate(1.3)', WebkitBackdropFilter: 'blur(18px) saturate(1.3)',
+          border: '1px solid rgba(255,255,255,0.6)', boxShadow: '0 8px 20px -14px rgba(41,45,41,0.3)',
+        }}>
+          <span style={{ width: 30, height: 30, borderRadius: 9, background: `${depColor}1A`, display: 'grid', placeItems: 'center' }}>
+            <s.Icon size={16} color={depColor} />
+          </span>
+          <span style={{ fontFamily: FONT.base, fontSize: 14.5, fontWeight: 800, color: NOAH.ink, letterSpacing: -0.2 }}>{s.label}</span>
+        </div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', padding: '7px 13px', borderRadius: 999, background: `${cumpl.c}1A`, border: `1px solid ${cumpl.c}3D` }}>
+          <span style={{ fontFamily: FONT.mono, fontSize: 11, fontWeight: 700, color: cumpl.c }}>{cumpl.t}</span>
+        </div>
+      </div>
+
+      {/* Streams — isla oscura propia (se auto-estila), flota directo sin marco */}
+      <GraficoActividad act={act} laps={act.laps || []} sport={sport} lthr={LTHR} sesionId={sid} atletaId={atletaId} css={cssVal} paceUmbral={paceUmbralVal} />
+
+      {/* Recorrido GPS — el mapa ya trae su propia superficie, flota directo */}
+      <SeccionRoute sesionId={sid} atletaId={atletaId} sport={sport} />
+
+      {/* Reserva energética — se auto-gestiona (trigger marfil + panel oscuro propio), flota directa */}
+      <EnergyReserveTimeline atletaId={atletaId} sesionId={sid} act={act} sport={sport} />
+
+      {/* Torque / W'bal (ciclismo) — se auto-gestiona como isla oscura, flota directo */}
+      {sport === 'cycling' && (
+        <TorqueWbalBotones atletaId={atletaId} sesionId={sid} ftp={act.ftp || 200} cadenciaOptima={85} />
+      )}
+    </div>
+  )
+}
+
+function SesionDelDiaV2({ atletaId, presc }) {
+  const hoy = hoyKey()
+  const [acts, setActs] = useState(null)
+  const [acts7, setActs7] = useState({})
+  const [fechaSel, setFechaSel] = useState(hoy)
+
+  useEffect(() => {
+    if (!atletaId) return
+    setActs(null); setActs7({})
+    const desde = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10)
+    const hasta = new Date().toISOString().slice(0, 10)
+    authFetch(`${API}/atletas/${atletaId}/actividades_rango?desde=${desde}&hasta=${hasta}`)
+      .then(r => r.json())
+      .then(r => { const map = r.data?.actividades || {}; setActs7(map); setActs(map[fechaSel] ?? map[hoy] ?? []) })
+      .catch(() => { setActs7({}); setActs([]) })
+  }, [atletaId]) // eslint-disable-line
+  useEffect(() => { if (acts7[fechaSel] !== undefined) setActs(acts7[fechaSel]) }, [fechaSel, acts7])
+
+  const sesiones = presc?.prescripcion?.sesiones || []
+  const sesDelDia = sesiones.filter(se => getDiaKey(se.fecha) === fechaSel)
+  const esHoySel = fechaSel === hoy
+  const diasAtras = Math.round((new Date(hoy) - new Date(fechaSel)) / 86400000)
+  const labelPresc = esHoySel ? 'Prescripción de hoy' : 'Prescripción de ese día'
+  const fechaTxt = new Date(fechaSel + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <div style={{ ...o1eyebrow, marginBottom: 4 }}>{esHoySel ? 'Hoy' : diasAtras === 1 ? 'Ayer' : 'Día seleccionado'}</div>
+        <div style={{ fontFamily: FONT.base, fontSize: 22, fontWeight: 800, color: NOAH.ink, letterSpacing: -0.6, textTransform: 'capitalize', lineHeight: 1.1 }}>{fechaTxt}</div>
+      </div>
+
+      <MiniCalMarfil fechaSel={fechaSel} onSelect={setFechaSel} acts7={acts7} />
+
+      {acts === null && <div style={{ ...o1card({ padding: 26, textAlign: 'center' }), fontFamily: FONT.base, fontSize: 12.5, color: NOAH.ink45 }}>Cargando…</div>}
+
+      {acts !== null && acts.length > 0 && acts.map((act, i) => (
+        <ActividadCardV2 key={act.sesion_id || act.id || i} act={act} sesionPresc={sesDelDia.find(se => se.sport === act.sport) || null} atletaId={atletaId} />
+      ))}
+
+      {acts !== null && acts.length > 0 && (
+        <div style={{ ...o1card({ padding: 4, overflow: 'hidden' }) }}>
+          <NutricionPost atletaId={atletaId} fecha={fechaSel} proxima24h={hayExigenteManana(sesiones, fechaSel)} />
+        </div>
+      )}
+
+      {acts !== null && acts.length === 0 && (
+        <div style={{ ...o1card({ padding: '28px 20px', textAlign: 'center' }) }}>
+          <Satellite size={26} color={NOAH.ink45} style={{ marginBottom: 8 }} />
+          <div style={{ fontFamily: FONT.base, fontSize: 14, fontWeight: 700, color: NOAH.ink }}>{esHoySel ? 'Sin actividad registrada hoy' : 'Sin actividad ese día'}</div>
+          <div style={{ fontFamily: FONT.base, fontSize: 12, color: NOAH.ink45, marginTop: 3 }}>Sincronizá Garmin para ver el entrenamiento.</div>
+        </div>
+      )}
+
+      {sesDelDia.length > 0 && (
+        <div style={{ ...o1card({ padding: '16px 12px' }) }}>
+          <div style={{ ...o1eyebrow, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}><ClipboardList size={13} /> {labelPresc}</div>
+          {sesDelDia.map((ses, i) => {
+            const SI = (SPORT[ses.sport] || SPORT.running).Icon
+            const col = DEP_O1[ses.sport] || NOAH.coral
+            return (
+              <div key={i} style={{ marginTop: i ? 18 : 0, paddingTop: i ? 16 : 0, borderTop: i ? `1px solid ${NOAH.border}` : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 10, background: `${col}1A`, display: 'grid', placeItems: 'center' }}><SI size={16} color={col} /></div>
+                  <div>
+                    <div style={{ fontFamily: FONT.base, fontSize: 15, fontWeight: 700, color: NOAH.ink }}>{ses.nombre}</div>
+                    <div style={{ fontFamily: FONT.base, fontSize: 11.5, color: NOAH.ink45 }}>{Math.round(ses.duracion)}min · TSS {ses.tss}</div>
+                  </div>
+                </div>
+                <WorkoutChart sesion={ses} atletaId={atletaId} />
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {acts !== null && acts.length === 0 && sesDelDia.length === 0 && (
+        <div style={{ ...o1card({ padding: '34px 20px', textAlign: 'center' }), fontFamily: FONT.base, fontSize: 13, color: NOAH.ink45 }}>
+          Sin actividad ni sesión planificada {esHoySel ? 'para hoy' : 'para ese día'}.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GrupoEntreno({ atletaId, presc, goNav, onInicio, onAsistente, abrir }) {
+  const [sub, setSub] = useState('hoy')
+  const subtabs = [{ id: 'hoy', label: 'Hoy' }, { id: 'semana', label: 'Semana' }, { id: 'calendario', label: 'Calendario' }, { id: 'plan', label: 'Planificación' }]
+  return (
+    <PantallaNoah title="Entreno" onBack={onInicio} navActivo="entreno" onNav={goNav} onAsistente={onAsistente} subtabs={subtabs} subActivo={sub} onSub={setSub}
+      foto="/assets/hero_entreno.jpg" heroEyebrow="Entrenamiento" heroTitulo="Tu sesión de hoy">
+      {sub === 'hoy' && <SesionDelDiaV2 atletaId={atletaId} presc={presc} />}
+      {sub === 'semana' && <SemanaSection atletaId={atletaId} />}
+      {sub === 'calendario' && <CalendarioMensual atletaId={atletaId} />}
+      {sub === 'plan' && (
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+          <div>
+            <div style={{ fontSize:16, fontWeight:800, color:NOAH.ink, display:'flex', alignItems:'center', gap:8, fontFamily:FONT.base }}>
+              <TrendingUp size={17} color={NOAH.coral}/> Planificación A/T/R/Taper
+            </div>
+            <div style={{ fontSize:13, color:NOAH.ink70, marginTop:4, fontFamily:FONT.base }}>Tu curva de CTL proyectada hacia la carrera.</div>
+          </div>
+          <div style={{ ...o1dark({ padding:'18px 8px' }) }}>
+            <ModeloBanisterAtleta atletaId={atletaId} />
+          </div>
+          <div style={{ ...o1dark({ padding:'16px 14px' }) }}>
+            <ProyeccionMultideporte atletaId={atletaId} />
+          </div>
+        </div>
+      )}
+    </PantallaNoah>
+  )
+}
+
+function GrupoRendimiento({ atletaId, goNav, onInicio, onAsistente, abrir, initialSub }) {
+  const [sub, setSub] = useState(['bio', 'metabolica', 'zonas', 'tests', 'tecnica'].includes(initialSub) ? initialSub : 'bio')
+  const subtabs = [{ id: 'bio', label: 'Biomarcadores' }, { id: 'metabolica', label: 'VO2' }, { id: 'zonas', label: 'Zonas' }, { id: 'tests', label: 'Tests' }, { id: 'tecnica', label: 'Técnica' }]
+  // Hero por sub-pestaña: foto propia (de nuestros assets) + título relevante.
+  const HEROES = {
+    bio:        { foto: '/assets/hero_analisis.jpg', eyebrow: 'Rendimiento', titulo: 'Tu estado de hoy' },
+    metabolica: { foto: '/assets/hero_entreno.jpg',  eyebrow: 'Metabólico',  titulo: 'Tu VO2 y cómo asimilás' },
+    zonas:      { foto: '/assets/hero_entreno.jpg',  eyebrow: 'Zonas',        titulo: 'Tus rangos de entrenamiento' },
+    tests:      { foto: '/assets/hero_perfil.jpg',   eyebrow: 'Evaluaciones', titulo: 'Tests de umbral' },
+    tecnica:    { foto: '/assets/hero_analisis.jpg', eyebrow: 'Técnica',      titulo: 'Tu biomecánica' },
+  }
+  const h = HEROES[sub] || HEROES.bio
+  return (
+    <PantallaNoah title="Análisis" onBack={onInicio} navActivo="analisis" onNav={goNav} onAsistente={onAsistente} subtabs={subtabs} subActivo={sub} onSub={setSub}
+      foto={h.foto} heroEyebrow={h.eyebrow} heroTitulo={h.titulo}>
+      {sub === 'bio' && <SeccionAnalisis atletaId={atletaId} />}
+      {sub === 'metabolica' && <EficienciaMetabolica atletaId={atletaId} />}
+      {sub === 'zonas' && <SeccionZonas atletaId={atletaId} />}
+      {sub === 'tests' && <SeccionTests atletaId={atletaId} modoAtleta={true} />}
+      {sub === 'tecnica' && <SeccionTecnica atletaId={atletaId} />}
+    </PantallaNoah>
+  )
+}
+
+function GrupoPerfil({ atletaId, goNav, onInicio, onAsistente, abrir, initialSub }) {
+  const [sub, setSub] = useState(['perfil', 'race', 'twin'].includes(initialSub) ? initialSub : 'perfil')
+  const subtabs = [{ id: 'perfil', label: 'Perfil' }, { id: 'race', label: 'Race' }, { id: 'twin', label: 'Mi Twin' }]
+  const HEROES = {
+    perfil: { foto: '/assets/hero_perfil.jpg',  eyebrow: 'Perfil',      titulo: 'Tu cuenta' },
+    race:   { foto: '/assets/hero_entreno.jpg', eyebrow: 'Competición', titulo: 'Tus carreras' },
+    twin:   { foto: '/assets/hero_analisis.jpg',eyebrow: 'Digital Twin', titulo: 'Tu gemelo de datos' },
+  }
+  const h = HEROES[sub] || HEROES.perfil
+  return (
+    <PantallaNoah title="Perfil" onBack={onInicio} navActivo="perfil" onNav={goNav} onAsistente={onAsistente} subtabs={subtabs} subActivo={sub} onSub={setSub}
+      foto={h.foto} heroEyebrow={h.eyebrow} heroTitulo={h.titulo}>
+      {sub === 'perfil' && <SeccionPerfil atletaId={atletaId} />}
+      {sub === 'race' && <SeccionRace atletaId={atletaId} modoAtleta={true} />}
+      {sub === 'twin' && <div style={{ ...o1dark({ padding:'16px 14px' }) }}><TwinAtleta atletaId={atletaId} /></div>}
+    </PantallaNoah>
+  )
+}
+
 export default function AtletaDashboard({ atletaId }) {
   const [atleta, setAtleta]       = useState(null)
   const [estado, setEstado]       = useState(null)
@@ -4107,7 +4705,10 @@ export default function AtletaDashboard({ atletaId }) {
   const [zonasSwim, setZonasSwim] = useState(null)
   const [health, setHealth]       = useState(null)
   const [diag, setDiag]           = useState(null)
-  const [tab, setTab]             = useState('hoy')
+  const [tab, setTab]             = useState('inicio')
+  const [fotoAtleta, setFotoAtleta] = useState(null) // data URL de la foto propia
+  const [accesoSub, setAccesoSub] = useState(null)   // subtab inicial al entrar por accesos de Inicio
+  const [verPerfilV1, setVerPerfilV1] = useState(false) // "abrir versión actual" del Perfil
   const [activeTabIdx, setActiveTabIdx] = useState(0)
   const tabsTrackRef = useRef(null)
   const touchXRef = useRef(null)
@@ -4124,6 +4725,72 @@ export default function AtletaDashboard({ atletaId }) {
   const [wahooStatus, setWahooStatus] = useState(null) // 'ok'|'error'|null
 
   const id = atletaId || 1
+
+  // ── Inicio (Opción 1): distribución semanal + resumen HANNA para la home ──
+  const [inicioDistrib, setInicioDistrib] = useState(null)
+  const [hannaResumen, setHannaResumen]   = useState(null)
+  useEffect(() => {
+    if (!id) return
+    authFetch(`${API}/atletas/${id}/distribucion_entrenamiento?dias=28`).then(r=>r.json()).then(r=>setInicioDistrib(r.data||null)).catch(()=>{})
+    authFetch(`${API}/atletas/${id}/hanna_life?dias=90`).then(r=>r.json()).then(r=>setHannaResumen(r.data||null)).catch(()=>{})
+  }, [id])
+
+  // Handlers de sincronización para la home (misma lógica que el SyncBar)
+  const handleSyncBio = async () => {
+    setSyncBioLoad(true); setSyncResult(null)
+    try {
+      const r = await axios.post(`${API}/atletas/${id}/sincronizar`, {modo:'bio'})
+      const bio = r.data.data
+      const detalles = [bio?.body_battery&&`BB:${bio.body_battery}`, bio?.hr_reposo&&`FC:${bio.hr_reposo}`, bio?.sleep_h&&`Sueño:${bio.sleep_h}h`, bio?.hrv_ms&&`HRV:${bio.hrv_ms}ms`].filter(Boolean).join(' · ')
+      setSyncResult({tipo:'bio', ok:bio?.exito, msg: bio?.exito ? `Bio actualizado${detalles?' — '+detalles:''}` : 'Sin datos nuevos'})
+      axios.get(`${API}/atletas/${id}/sync_status`).then(r2=>setSyncStatus(r2.data.data)).catch(()=>{})
+      axios.get(`${API}/atletas/${id}/estado`).then(r2=>setEstado(r2.data.data)).catch(()=>{})
+    } catch { setSyncResult({tipo:'bio', ok:false, msg:'Error'}) }
+    setSyncBioLoad(false)
+  }
+  const handleSyncAct = async () => {
+    setSyncLoading(true); setSyncResult(null)
+    try {
+      const r = await axios.post(`${API}/atletas/${id}/sincronizar`, {modo:'actividad'})
+      const nueva = (r.data.data?.output||'').includes('nueva')
+      setSyncResult({tipo:'actividad', ok:r.data.data?.exito, msg: nueva ? 'Actividad descargada' : 'Sin actividades nuevas'})
+      axios.get(`${API}/atletas/${id}/sync_status`).then(r2=>setSyncStatus(r2.data.data)).catch(()=>{})
+      if (nueva) axios.get(`${API}/atletas/${id}/estado`).then(r2=>setEstado(r2.data.data)).catch(()=>{})
+    } catch { setSyncResult({tipo:'actividad', ok:false, msg:'Error'}) }
+    setSyncLoading(false)
+  }
+
+  // --- Subir foto de perfil: redimensiona en el navegador (canvas) y sube ---
+  const handleSubirFoto = () => {
+    const inp = document.createElement('input')
+    inp.type = 'file'; inp.accept = 'image/*'
+    inp.onchange = () => {
+      const file = inp.files && inp.files[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const img = new Image()
+        img.onload = () => {
+          const LADO = 400
+          const min = Math.min(img.width, img.height)
+          const sx = (img.width - min) / 2, sy = (img.height - min) / 2
+          const cv = document.createElement('canvas')
+          cv.width = LADO; cv.height = LADO
+          const ctx = cv.getContext('2d')
+          ctx.drawImage(img, sx, sy, min, min, 0, 0, LADO, LADO)
+          const dataUrl = cv.toDataURL('image/jpeg', 0.82)
+          setFotoAtleta(dataUrl)   // optimista
+          authFetch(`${API}/atletas/${id}/foto`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data_url: dataUrl }),
+          }).catch(() => {})
+        }
+        img.src = ev.target.result
+      }
+      reader.readAsDataURL(file)
+    }
+    inp.click()
+  }
 
   // --- Wahoo connection status ---
   useEffect(() => {
@@ -4163,6 +4830,7 @@ export default function AtletaDashboard({ atletaId }) {
     }).catch(()=>{})
     axios.get(`${API}/atletas/${id}/estado`).then(r=>setEstado(r.data.data)).catch(()=>{})
     axios.get(`${API}/atletas/${id}/prescripcion`).then(r=>setPresc(r.data.data)).catch(()=>{})
+    axios.get(`${API}/atletas/${id}/foto`).then(r=>{ if (r.data?.data?.foto) setFotoAtleta(r.data.data.foto) }).catch(()=>{})
     // ── Auto-sync al cargar: baja días perdidos en background ──────────────
     axios.get(`${API}/atletas/${id}/sync_status`).then(async r => {
       const st = r.data.data
@@ -4224,12 +4892,84 @@ export default function AtletaDashboard({ atletaId }) {
     {id:'fuel',          label:'Nutrición',     icon: Flame},
     {id:'perfil',        label:'Perfil',        icon: UserCircle},
     {id:'asistente',     label:'Asistente',     icon: MessageCircle},
+    {id:'inicio',        label:'Inicio',        icon: Home},
   ]
   const zonasSubTabs = [
     {id:'running',  label:'Running',  show: true},
     {id:'cycling',  label:'Ciclismo', show: true},
     {id:'swimming', label:'Natación', show: true},
   ].filter(t => t.show)
+
+  // ── Pantallas interiores rediseñadas: cada una independiente, en su cáscara ──
+  const goNav = (idN) => { setVerPerfilV1(false); setAccesoSub(null); setTab({ inicio: 'inicio', entreno: 'entreno', analisis: 'analisis', perfil: 'perfil' }[idN] || 'inicio') }
+  if (tab === 'fuel') {
+    return (
+      <PantallaNoah title="Nutrición" onBack={() => setTab('inicio')}
+        navActivo="" onNav={goNav} onAsistente={() => setTab('asistente')}
+        foto="/assets/hero_nutricion.jpg" heroEyebrow="Nutrición" heroTitulo="Tu plan de hoy">
+        <NoahFuel atletaId={id} />
+      </PantallaNoah>
+    )
+  }
+  // ── Grupo ENTRENO (Hoy / Semana / Calendario / Planificación) ──
+  if (tab === 'entreno') {
+    return <GrupoEntreno atletaId={id} presc={presc} goNav={goNav}
+      onInicio={() => setTab('inicio')} onAsistente={() => setTab('asistente')} abrir={setTab} />
+  }
+  // ── Grupo ANÁLISIS (Biomarcadores / Zonas / Tests / Técnica) ──
+  if (tab === 'analisis' || tab === 'metricas') {
+    return <GrupoRendimiento atletaId={id} goNav={goNav} initialSub={accesoSub}
+      onInicio={() => setTab('inicio')} onAsistente={() => setTab('asistente')} abrir={setTab} />
+  }
+  // ── Grupo PERFIL (Perfil / Race / Mi Twin). "Abrir versión actual" del Perfil
+  //    levanta el flag para caer a la pantalla real (logout/ajustes) sin loop. ──
+  if (tab === 'perfil' && !verPerfilV1) {
+    return <GrupoPerfil atletaId={id} goNav={goNav} initialSub={accesoSub}
+      onInicio={() => { setVerPerfilV1(false); setTab('inicio') }} onAsistente={() => setTab('asistente')}
+      abrir={(t) => { if (t === 'perfil') setVerPerfilV1(true); else setTab(t) }} />
+  }
+  if (tab === 'asistente') {
+    return <PantallaAsistente atletaId={id} nombre={atleta?.nombre} onBack={() => setTab('inicio')} />
+  }
+
+  // ── Inicio (Opción 1) como pantalla propia (no toca el dashboard actual) ──
+  if (tab === 'inicio') {
+    const mapDep = { swim: 'swimming', bike: 'cycling', run: 'running' }
+    const semana = Object.fromEntries(['swim','bike','run'].map(k => {
+      const dep = inicioDistrib?.deporte?.[mapDep[k]]
+      const z   = inicioDistrib?.intensidad_por_deporte?.[mapDep[k]] || null
+      return [k, dep ? { horas: dep.horas, pct: dep.pct, zonas: z } : null]
+    }))
+    const hoyH = hannaResumen?.hanna_hoy || (hannaResumen?.puntos?.length ? hannaResumen.puntos[hannaResumen.puntos.length-1] : null)
+    const hannaProp = hoyH ? {
+      valor: hoyH.hanna_life != null ? Math.round(hoyH.hanna_life*10)/10 : null,
+      nivel: hoyH.hanna_nivel || null,
+      hrv: hoyH.hrv ?? null,
+      tsb: hoyH.hanna_scores?.tsb ?? null,
+      sueno: hoyH.hanna_scores?.sueno ?? null,
+      riesgo_viral: hoyH.riesgo_viral ?? null,
+    } : null
+    const goAcceso = (idA) => {
+      const m = { entrenamiento:['entreno',null], analisis:['analisis','bio'], evaluaciones:['analisis','tests'], tecnica:['analisis','tecnica'], competicion:['perfil','race'], twin:['perfil','twin'], bienestar:['fuel',null] }[idA] || ['entreno', null]
+      setVerPerfilV1(false); setAccesoSub(m[1]); setTab(m[0])
+    }
+    const goNav    = (idN) => { setVerPerfilV1(false); setAccesoSub(null); setTab({ inicio:'inicio', entreno:'entreno', analisis:'analisis', perfil:'perfil' }[idN] || 'inicio') }
+    return <>
+      <AlertaPopup atletaId={id} />
+      <InicioHome
+        atleta={{ nombre: atleta?.nombre, foto: fotoAtleta || atleta?.foto, sexo: atleta?.sexo }}
+        semana={semana} hanna={hannaProp}
+        syncStatus={syncStatus} bioLoading={syncBioLoading} actLoading={syncLoading}
+        onSyncBio={handleSyncBio} onSyncAct={handleSyncAct}
+        onAcceso={goAcceso} onNav={goNav} navActivo="inicio"
+        onAsistente={() => setTab('asistente')} onSubirFoto={handleSubirFoto}
+        bienestarSlot={<>
+          <RegistroDiario atletaId={id} />
+          {atleta?.sexo === 'F' && <CicloMenstrual atletaId={id} />}
+        </>}
+      />
+    </>
+  }
 
   return (
     <div style={{ maxWidth:'100vw', overflowX:'hidden', minHeight:'100vh', background:`
@@ -5114,9 +5854,9 @@ function ProyeccionMultideporte({ atletaId }) {
   )
 
   const DEPORTES = [
-    {key:'running',  label:'🏃 Running',  color:NOAH_C.run  || '#8B5CF6'},
-    {key:'cycling',  label:'🚴 Ciclismo', color:NOAH_C.bike || '#38BDF8'},
-    {key:'swimming', label:'🏊 Natación', color:NOAH_C.swim || '#34D399'},
+    {key:'running',  label:'Running',  color:'#E65B45'},
+    {key:'cycling',  label:'Ciclismo', color:'#78866B'},
+    {key:'swimming', label:'Natación', color:'#4F8CC9'},
   ]
   const conDatos = DEPORTES.filter(d => data[d.key])
   if (conDatos.length === 0) return null
@@ -5276,31 +6016,31 @@ function EnergyReserveTimeline({ atletaId, sesionId, act, sport='running' }) {
     : [['Duración', durMin!=null?fmtDur(durMin):'--'], ['Distancia', distKm!=null?`${distKm.toFixed(1)} km`:'--'], ['Ritmo prom.', avgPace?`${fP(avgPace)}${cfg.paceUnit}`:'--'], ['FC prom.', avgHr!=null?`${avgHr} bpm`:'--']]
 
   return (
-    <div style={{padding:'12px 6px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-      <div style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.35)',
-        textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8, padding:'0 2px' }}>
-        Métricas avanzadas
-      </div>
+    <div style={{
+      borderRadius: 22, overflow: 'hidden',
+      background: 'linear-gradient(165deg, #1C211C 0%, #13160F 100%)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      boxShadow: '0 22px 48px -18px rgba(41,45,41,0.55), inset 0 1px 0 rgba(255,255,255,0.08)',
+      padding:'14px',
+    }}>
+      {/* Sin título: isla oscura que flota sola. */}
       <button onClick={toggle} style={{
         display:'flex', alignItems:'center', gap:10, width:'100%',
-        padding:'10px 12px', borderRadius:12, fontSize:13, fontWeight:600,
-        background: open ? 'rgba(74,222,128,0.10)' : 'rgba(255,255,255,0.03)',
-        border:`1px solid ${open ? 'rgba(74,222,128,0.35)' : 'rgba(255,255,255,0.07)'}`,
-        color: open ? '#4ADE80' : 'rgba(255,255,255,0.75)',
+        padding:'11px 13px', borderRadius:12, fontSize:13, fontWeight:700,
+        background: open ? 'rgba(120,134,107,0.16)' : 'rgba(255,255,255,0.03)',
+        border:`1px solid ${open ? 'rgba(120,134,107,0.45)' : 'rgba(255,255,255,0.07)'}`,
+        color: open ? '#C5D1B8' : 'rgba(255,255,255,0.85)',
         cursor:'pointer', transition:'all 0.15s', textAlign:'left',
       }}>
-        <BatteryFull size={15} color={open ? '#4ADE80' : 'rgba(255,255,255,0.4)'}/>
+        <BatteryFull size={15} color={open ? '#9DB089' : '#E65B45'}/>
         <span style={{ flex:1 }}>{loading ? 'Calculando...' : 'Reserva energética'}</span>
-        <span style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>Ver análisis</span>
-        <ChevronRight size={14} color="rgba(255,255,255,0.3)"
+        <span style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.4)' }}>Ver análisis</span>
+        <ChevronRight size={14} color="rgba(255,255,255,0.4)"
           style={{ transform: open ? 'rotate(90deg)' : 'none', transition:'transform 0.2s' }}/>
       </button>
 
       {open && data && disponible && (
-        <div style={{marginTop:14, borderRadius:18, padding:'20px 18px',
-          background:`radial-gradient(130% 90% at 15% 0%, rgba(45,226,240,0.06), transparent 55%), radial-gradient(120% 90% at 100% 0%, rgba(244,114,182,0.06), transparent 55%), ${ER_C.bg}`,
-          border:'1px solid rgba(255,255,255,0.09)',
-          boxShadow:'0 40px 90px -45px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.05)'}}>
+        <div style={{marginTop:14, padding:'2px'}}>
           <style>{`
             .er-main{display:flex;flex-direction:column;gap:14px}
             .er-chart{width:100%}
@@ -5322,8 +6062,7 @@ function EnergyReserveTimeline({ atletaId, sesionId, act, sport='running' }) {
               <BatteryFull size={20} color={SER[0].color}/>
             </div>
             <div>
-              <div style={{fontSize:9.5,color:'rgba(255,255,255,0.4)',letterSpacing:'1.2px',textTransform:'uppercase',fontWeight:800}}>Métricas avanzadas</div>
-              <div style={{fontSize:20,fontWeight:800,color:'#F3F4F6',letterSpacing:'-0.4px',marginTop:1}}>Reserva energética</div>
+              <div style={{fontSize:20,fontWeight:800,color:'#F3F4F6',letterSpacing:'-0.4px'}}>Reserva energética</div>
               <div style={{fontSize:11.5,color:'rgba(255,255,255,0.45)',marginTop:2,fontWeight:500}}>{cfg.subt}</div>
             </div>
           </div>
@@ -5525,18 +6264,20 @@ function EnergyReserveTimeline({ atletaId, sesionId, act, sport='running' }) {
 // (campo.disponible === false, o no existe granularidad para una
 // visualización -- ej. heatmap diario), se muestra un estado "NOAH está
 // aprendiendo" en vez de "no hay suficientes datos".
+// Paleta v2 oficial sobre isla grafito (perfil = tablero de datos premium del
+// atleta, mismo lenguaje de islas oscuras que Mi Sesión / Técnica).
 const GE = {
-  bg:     '#05070D',
-  glass:  '#0B1220',
-  green:  '#22E6B8',
-  cyan:   '#00D4FF',
-  glow:   '#8EF7D7',
-  text:   '#FFFFFF',
-  text2:  '#93A4B8',
-  text3:  'rgba(147,164,184,0.55)',
-  danger: '#FF6B6B',
-  warn:   '#FFC857',
-  border: 'rgba(142,247,215,0.14)',
+  bg:     '#13160F',
+  glass:  '#1C211C',
+  green:  '#9DB089',   // salvia (favorable / protagonista)
+  cyan:   '#4F8CC9',   // azul (secundario)
+  glow:   '#B8C7A8',   // salvia claro (acento suave)
+  text:   '#F3F0E8',   // marfil
+  text2:  'rgba(243,240,232,0.60)',
+  text3:  'rgba(243,240,232,0.40)',
+  danger: '#E65B45',   // coral (alerta)
+  warn:   '#E0A43C',   // ámbar (atención)
+  border: 'rgba(255,255,255,0.09)',
 }
 
 function SeccionPerfil({ atletaId }) {
@@ -5593,8 +6334,7 @@ function SeccionPerfil({ atletaId }) {
   const Panel = ({ children, span, style, i=0 }) => (
     <div style={{
       gridColumn: span || 'auto',
-      background: 'linear-gradient(160deg, rgba(255,255,255,0.035), rgba(11,18,32,0.55))',
-      backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+      background: 'linear-gradient(165deg, #1C211C, #13160F)',
       border: `1px solid ${GE.border}`, borderRadius: 28,
       padding: '22px 22px 20px', position: 'relative', overflow: 'hidden',
       boxShadow: '0 10px 34px -14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04)',
@@ -5821,13 +6561,13 @@ function SeccionPerfil({ atletaId }) {
             {!editando ? (
               <button onClick={()=>setEditando(true)} style={{
                 padding:'5px 14px', borderRadius:20, border:`1px solid ${GE.border}`,
-                background:'rgba(142,247,215,0.08)', color:GE.glow, fontSize:11, fontWeight:600, cursor:'pointer' }}>
-                {guardadoF ? '✓ Guardado' : 'Editar'}
+                background:'rgba(157,176,137,0.12)', color:GE.glow, fontSize:11, fontWeight:600, cursor:'pointer' }}>
+                {guardadoF ? 'Guardado' : 'Editar'}
               </button>
             ) : (
               <button onClick={guardarFisico} disabled={guardandoF} style={{
                 padding:'5px 14px', borderRadius:20, border:'none',
-                background:GE.glow, color:'#05070D', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                background:GE.glow, color:'#13160F', fontSize:11, fontWeight:700, cursor:'pointer' }}>
                 {guardandoF ? 'Guardando...' : 'Guardar'}
               </button>
             )}
@@ -5862,7 +6602,7 @@ function SeccionPerfil({ atletaId }) {
 
         <Panel style={{ textAlign:'center', padding:'36px 24px' }}>
           <div className="ge-breathe" style={{ display:'inline-flex', width:52, height:52, borderRadius:'50%',
-            background:'rgba(142,247,215,0.12)', alignItems:'center', justifyContent:'center', marginBottom:14 }}>
+            background:'rgba(157,176,137,0.14)', alignItems:'center', justifyContent:'center', marginBottom:14 }}>
             <Brain size={26} color={GE.glow}/>
           </div>
           <div style={{ fontSize:16, fontWeight:700, color:GE.text }}>NOAH está aprendiendo</div>
@@ -5903,13 +6643,13 @@ function SeccionPerfil({ atletaId }) {
             {!editando ? (
               <button onClick={()=>setEditando(true)} style={{
                 padding:'5px 14px', borderRadius:20, border:`1px solid ${GE.border}`,
-                background:'rgba(142,247,215,0.08)', color:GE.glow, fontSize:11, fontWeight:600, cursor:'pointer' }}>
-                {guardadoF ? '✓ Guardado' : 'Editar'}
+                background:'rgba(157,176,137,0.12)', color:GE.glow, fontSize:11, fontWeight:600, cursor:'pointer' }}>
+                {guardadoF ? 'Guardado' : 'Editar'}
               </button>
             ) : (
               <button onClick={guardarFisico} disabled={guardandoF} style={{
                 padding:'5px 14px', borderRadius:20, border:'none',
-                background:GE.glow, color:'#05070D', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                background:GE.glow, color:'#13160F', fontSize:11, fontWeight:700, cursor:'pointer' }}>
                 {guardandoF ? 'Guardando...' : 'Guardar'}
               </button>
             )}
@@ -6079,7 +6819,7 @@ function SeccionPerfil({ atletaId }) {
           <PanelTitle Icon={Brain}>Lo que NOAH detectó</PanelTitle>
           {(() => {
             const candidatos = [
-              punto_quiebre_tsb?.disponible && { Icon:Zap, label:'TSB sensible', color:'#A855F7',
+              punto_quiebre_tsb?.disponible && { Icon:Zap, label:'TSB sensible', color:'#4F8CC9',
                 value:`${punto_quiebre_tsb.cambio_eficiencia_por_10_tsb_pct}%`, sub:'por -10 TSB',
                 nota:'Cuánto cae su eficiencia (ritmo/esfuerzo) por cada 10 puntos que baja el TSB. Le dice qué tan sensible es SU cuerpo a la fatiga acumulada.' },
               firma_recuperacion?.disponible && { Icon:Moon, label:'HRV nocturno', color:GE.cyan,
@@ -6100,7 +6840,7 @@ function SeccionPerfil({ atletaId }) {
               rendimiento_por_dia?.disponible && { Icon:CalendarDays, label:'Mejor día', color:GE.green,
                 value:rendimiento_por_dia.mejor_dia, sub:'a igual fatiga',
                 nota:'En qué día de la semana rinde mejor, comparando solo momentos con el mismo nivel de fatiga — útil para poner ahí las sesiones clave (series, fondo largo).' },
-              progreso_tecnico?.disponible && { Icon:TrendingUp, label:'Eficiencia técnica', color:'#A855F7',
+              progreso_tecnico?.disponible && { Icon:TrendingUp, label:'Eficiencia técnica', color:'#4F8CC9',
                 value:progreso_tecnico.tendencia_eficiencia, sub:'running, últimos meses',
                 nota:'Tendencia del ritmo por latido de corazón en running. Si mejora, corre más rápido con el mismo esfuerzo cardíaco — la señal más confiable de progreso aeróbico real.' },
               umbral_tss_tecnica?.disponible && { Icon:Zap, label:'Técnica bajo carga', color:GE.warn,
@@ -6292,6 +7032,21 @@ function _saludoInicial(nombre) {
     : 'Hola, soy NOAH. Preguntame lo que quieras sobre tu entrenamiento.'
 }
 
+// Pantalla propia del Asistente en el chrome v2 (grafito, con header y back).
+function PantallaAsistente({ atletaId, nombre, onBack }) {
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg,#171C16,#101510)' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 10, padding: '14px', background: 'rgba(16,21,16,0.88)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.04)', color: '#F3F0E8', cursor: 'pointer', flex: '0 0 auto' }}><ChevronLeft size={18} /></button>
+        <div style={{ fontSize: 15, fontWeight: 800, color: '#F3F0E8', letterSpacing: 0.2 }}>Asistente NOAH</div>
+      </div>
+      <div style={{ padding: '6px 12px 18px' }}>
+        <SeccionAsistente atletaId={atletaId} nombre={nombre} />
+      </div>
+    </div>
+  )
+}
+
 function SeccionAsistente({ atletaId, nombre }) {
   const [mensajes, setMensajes] = useState([
     { rol: 'asistente', texto: _saludoInicial(nombre), hora: _horaAhora() }
@@ -6346,8 +7101,8 @@ function SeccionAsistente({ atletaId, nombre }) {
     <div style={{ display:'flex', flexDirection:'column', height:'70vh' }}>
       <style>{`
         @keyframes pulsoNoah {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(139,92,246,0.55); }
-          50% { box-shadow: 0 0 0 7px rgba(139,92,246,0); }
+          0%, 100% { box-shadow: 0 0 0 0 rgba(79,140,201,0.55); }
+          50% { box-shadow: 0 0 0 7px rgba(79,140,201,0); }
         }
         @keyframes puntitoParpadeo {
           0%, 100% { opacity: 0.25; }
@@ -6356,13 +7111,13 @@ function SeccionAsistente({ atletaId, nombre }) {
         .avatar-noah-wrap { position: relative; flex-shrink: 0; }
         .avatar-noah {
           width:36px; height:36px; border-radius:50%; object-fit:cover;
-          border:2px solid rgba(139,92,246,0.6);
+          border:2px solid rgba(79,140,201,0.6);
           animation: pulsoNoah 2.2s ease-in-out infinite;
         }
         .avatar-noah.pensando { animation: pulsoNoah 0.85s ease-in-out infinite; }
         .avatar-noah-online {
           position:absolute; bottom:-1px; right:-1px; width:11px; height:11px;
-          border-radius:50%; background:#22C55E; border:2px solid #0A0F1E;
+          border-radius:50%; background:#5FA574; border:2px solid #13160F;
         }
         .punto-pensando { animation: puntitoParpadeo 1.2s ease-in-out infinite; }
         .punto-pensando:nth-child(2) { animation-delay: 0.2s; }
@@ -6371,7 +7126,7 @@ function SeccionAsistente({ atletaId, nombre }) {
 
       <div style={{ display:'flex', alignItems:'center', gap:6, padding:'2px 4px 10px',
         borderBottom:'1px solid rgba(255,255,255,0.08)', marginBottom:8 }}>
-        <div style={{ width:7, height:7, borderRadius:'50%', background:'#22C55E' }}/>
+        <div style={{ width:7, height:7, borderRadius:'50%', background:'#5FA574' }}/>
         <span style={{ fontSize:12, color:'rgba(255,255,255,0.55)', fontWeight:600 }}>
           Online · Asistente NOAH
         </span>
@@ -6402,8 +7157,8 @@ function SeccionAsistente({ atletaId, nombre }) {
                 {m.hora && <span style={{ fontSize:10, color:'rgba(255,255,255,0.35)' }}>{m.hora}</span>}
               </div>
               <div style={{
-                background: m.rol === 'usuario' ? 'rgba(139,92,246,0.28)' : 'rgba(15,15,28,0.92)',
-                border: `1px solid ${m.rol === 'usuario' ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.10)'}`,
+                background: m.rol === 'usuario' ? 'rgba(79,140,201,0.22)' : '#1F241D',
+                border: `1px solid ${m.rol === 'usuario' ? 'rgba(79,140,201,0.45)' : 'rgba(255,255,255,0.10)'}`,
                 borderRadius: 14,
                 padding: '10px 14px',
                 color: 'rgba(255,255,255,0.92)',
@@ -6447,7 +7202,7 @@ function SeccionAsistente({ atletaId, nombre }) {
         />
         <button onClick={enviar} disabled={enviando || !input.trim()} style={{
           width:44, height:44, borderRadius:12, border:'none',
-          background: (enviando || !input.trim()) ? 'rgba(139,92,246,0.3)' : '#8B5CF6',
+          background: (enviando || !input.trim()) ? 'rgba(79,140,201,0.35)' : '#4F8CC9',
           color:'#fff', display:'flex', alignItems:'center', justifyContent:'center',
           cursor: (enviando || !input.trim()) ? 'default' : 'pointer',
         }}>
@@ -6456,4 +7211,4 @@ function SeccionAsistente({ atletaId, nombre }) {
       </div>
     </div>
   )
-}
+}

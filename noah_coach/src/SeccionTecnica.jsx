@@ -8,11 +8,12 @@
 //              evolución y consistencia. No se inventan curvas de segundo a segundo.
 // Datos: /tecnica (tarjetas, índice, evolución, comparación) + /tecnica_lab (series).
 // Base de conocimiento: tecnica_fuentes.json.
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ScatterChart, Scatter, ZAxis, ReferenceLine, ReferenceArea, BarChart, Bar, Cell,
 } from 'recharts'
+import { ChevronDown, Check, Info, ChevronRight, RotateCcw } from 'lucide-react'
 import fuentes from './tecnica_fuentes.json'
 
 const esLocal = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
@@ -27,28 +28,28 @@ function authFetch(url, o = {}) {
 // (violet/cian se conservan como nombres internos pero mapean a azul/verde salvia,
 //  para no tocar cada uso; la identidad visible es solo estos 3 colores + gris.)
 const C = {
-  bg: '#090D18', ink: '#EFF3ED', dim: '#AAB5C6', aux: '#AAB5C6',
+  bg: '#13160F', ink: '#F3F0E8', dim: 'rgba(243,240,232,0.56)', aux: 'rgba(243,240,232,0.46)',
   border: 'rgba(255,255,255,0.08)',
-  // identidad + paleta semántica de datos (cada color = un significado)
-  sage: '#B9C995',   // PROTAGONISTA · favorable · eficiente · fresco
-  blue: '#2454F4',   // secundario · variable del atleta · objetivo
-  amber: '#E6B655',  // atención · fuerza/torque · fatiga
-  slate: '#6E7689',  // neutral · recuperación · zona muerta
-  ivory: '#EFF3ED',  // cards y textos
-  green: '#35C07A',  // semáforo OK (dentro de gráficos)
-  red: '#E2726E',    // semáforo alerta (dentro de gráficos)
-  white: '#EFF3ED',
-  violet: '#B9C995', cian: '#2454F4',           // protagonista=salvia · secundario=azul
-  v: '#B9C995', vMut: '#9FB488', c: '#2454F4', cLit: '#5B79E8', blend: '#8FA0C0',
+  // paleta oficial NOAH v2 (sobre isla grafito): cada color = un significado
+  sage: '#9DB089',   // PROTAGONISTA · favorable · eficiente · fresco (salvia)
+  blue: '#4F8CC9',   // secundario · variable del atleta · objetivo (azul)
+  amber: '#E0A43C',  // atención · fuerza/torque · fatiga
+  slate: '#8A8D82',  // neutral · recuperación · zona muerta (gris cálido)
+  ivory: '#F3F0E8',  // cards y textos (marfil)
+  green: '#5FA574',  // semáforo OK (dentro de gráficos)
+  red: '#E65B45',    // semáforo alerta (coral)
+  white: '#F3F0E8',
+  violet: '#9DB089', cian: '#4F8CC9',           // protagonista=salvia · secundario=azul
+  v: '#9DB089', vMut: '#78866B', c: '#4F8CC9', cLit: '#6FA3D6', blend: '#9A9D91',
 }
+// Isla grafito flotante (lenguaje v2: gráficos científicos = islas oscuras sobre el marfil)
 const glass = {
-  background: 'linear-gradient(160deg, rgba(57,123,255,0.06), rgba(168,191,168,0.035) 58%, rgba(18,24,42,0) 100%), rgba(20,27,45,0.50)',
-  backdropFilter: 'blur(20px) saturate(145%)', WebkitBackdropFilter: 'blur(20px) saturate(145%)',
+  background: 'linear-gradient(165deg, #1C211C, #13160F)',
   border: `1px solid ${C.border}`, borderRadius: 20,
-  boxShadow: '0 20px 50px -22px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.05)',
+  boxShadow: '0 20px 48px -24px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05)',
 }
 const num = { fontVariantNumeric: 'tabular-nums' }
-const tip = { background: 'rgba(16,22,38,0.94)', backdropFilter: 'blur(14px)', border: `1px solid ${C.border}`, borderRadius: 12, fontSize: 14, color: C.ink, boxShadow: '0 12px 30px -10px rgba(0,0,0,0.6)' }
+const tip = { background: 'rgba(28,33,28,0.96)', backdropFilter: 'blur(14px)', border: `1px solid ${C.border}`, borderRadius: 12, fontSize: 14, color: C.ink, boxShadow: '0 12px 30px -10px rgba(0,0,0,0.6)' }
 
 const r1 = (x) => Math.round(x * 10) / 10
 const median = (a) => { const s = [...a].filter(x => x != null && isFinite(x)).sort((x, y) => x - y); const n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : 0 }
@@ -138,13 +139,13 @@ function Expander({ label, children, defaultOpen = false }) {
   return <div>
     <button onClick={() => setOpen(o => !o)} className="noah-exp" style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 0', color: open ? C.ink : C.dim }}>
       <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}>{label}</span>
-      <span style={{ fontSize: 13, transform: open ? 'rotate(180deg)' : 'none', color: C.violet }}>⌄</span>
+      <ChevronDown size={15} color={C.violet} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s', flex: '0 0 auto' }} />
     </button>
     {open && <div style={{ marginTop: 10 }}>{children}</div>}
   </div>
 }
 function SensorFalta({ sensor }) {
-  return <Glass style={{ border: `1px dashed ${C.border}`, background: 'rgba(22,29,46,0.30)' }}>
+  return <Glass style={{ border: `1px dashed ${C.border}`, background: 'linear-gradient(165deg, rgba(28,33,28,0.6), rgba(19,22,15,0.6))' }}>
     <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, textAlign: 'center' }}>Para este análisis necesitás <span style={{ color: C.ink }}>{sensor}</span>.<br />No lo mostramos con datos estimados.</div>
   </Glass>
 }
@@ -173,7 +174,7 @@ function Analisis({ eyebrow, titulo, subtitulo, children, interp }) {
     {subtitulo && <div style={{ fontSize: 12.5, color: C.dim, margin: '4px 0 14px', lineHeight: 1.5 }}>{subtitulo}</div>}
     {children}
     {interp && interp.significa && <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 14, background: `${C.sage}14`, border: `1px solid ${C.sage}3A`, borderRadius: 12, padding: '10px 13px' }}>
-      <span style={{ color: C.sage, fontSize: 15, fontWeight: 800, lineHeight: 1.4 }}>✓</span>
+      <Check size={16} color={C.sage} strokeWidth={3} style={{ flex: '0 0 auto', marginTop: 2 }} />
       <span style={{ fontSize: 14, color: C.ink, lineHeight: 1.5 }}>{interp.significa}</span>
     </div>}
     {interp && <div style={{ marginTop: 10 }}>
@@ -678,7 +679,7 @@ function PedalClock({ filas }) {
   return <Glass>
     <HeadG eyebrow="Ciclismo · Pedaleo" titulo="¿Cómo pedaleás?" subtitulo="Modelo del ciclo de pedalada. El relleno y el balance salen de datos REALES del medidor; la trayectoria del pie es un esquema, no una medición." />
     <div style={{ background: 'rgba(230,181,85,0.08)', border: `1px solid ${C.border}`, borderRadius: 12, padding: '9px 13px', fontSize: 12.5, color: C.dim, marginBottom: 14, lineHeight: 1.45 }}>
-      ⓘ El sensor mide <b style={{ color: C.ink }}>efectividad</b> y <b style={{ color: C.ink }}>balance izq/der</b>, no la posición del pie en cada punto del giro.
+      <Info size={13} color={C.sage} style={{ verticalAlign: -2, marginRight: 5, flex: '0 0 auto' }} />El sensor mide <b style={{ color: C.ink }}>efectividad</b> y <b style={{ color: C.ink }}>balance izq/der</b>, no la posición del pie en cada punto del giro.
     </div>
     <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', justifyContent: 'center' }}>
       {/* Gauge de efectividad (fuerza útil) */}
@@ -686,8 +687,8 @@ function PedalClock({ filas }) {
         <svg viewBox="0 0 160 160" width="160" height="160">
           <circle cx="80" cy="80" r="62" fill="none" stroke={C.slate} strokeOpacity="0.35" strokeWidth="14" />
           <path d={_arc(80, 80, 62, 0.01, Math.max(1, teDeg))} fill="none" stroke={C.sage} strokeWidth="14" strokeLinecap="round" />
-          <text x="80" y="74" fill={C.ink} fontSize="34" fontWeight="800" textAnchor="middle" fontFamily="Inter" style={num}>{te}<tspan fontSize="16" fill={C.dim}>%</tspan></text>
-          <text x="80" y="98" fill={C.dim} fontSize="12.5" textAnchor="middle" fontFamily="Inter">fuerza útil</text>
+          <text x="80" y="74" fill={C.ink} fontSize="34" fontWeight="800" textAnchor="middle" fontFamily="Archivo" style={num}>{te}<tspan fontSize="16" fill={C.dim}>%</tspan></text>
+          <text x="80" y="98" fill={C.dim} fontSize="12.5" textAnchor="middle" fontFamily="Archivo">fuerza útil</text>
         </svg>
         <div style={{ fontSize: 12.5, color: C.dim, maxWidth: 170 }}>Torque efectivo: parte de la pedalada que empuja.</div>
       </div>}
@@ -698,10 +699,10 @@ function PedalClock({ filas }) {
           <path d={_arc(80, 80, 60, 25, 155)} fill="none" stroke={C.sage} strokeWidth="12" strokeLinecap="round" opacity="0.92" />
           <path d={_arc(80, 80, 60, 205, 335)} fill="none" stroke={C.slate} strokeWidth="7" strokeLinecap="round" opacity="0.8" />
           {[0, 180].map((d, i) => { const [x, y] = _pol(80, 80, 60, d); return <circle key={i} cx={x} cy={y} r="5" fill={C.amber} /> })}
-          <text x="128" y="84" fill={C.sage} fontSize="12.5" fontWeight="700" textAnchor="middle" fontFamily="Inter">empuje</text>
-          <text x="34" y="84" fill={C.dim} fontSize="12" textAnchor="middle" fontFamily="Inter">recobro</text>
-          <text x="80" y="14" fill={C.amber} fontSize="11" textAnchor="middle" fontFamily="Inter">punto muerto</text>
-          <text x="80" y="154" fill={C.amber} fontSize="11" textAnchor="middle" fontFamily="Inter">punto muerto</text>
+          <text x="128" y="84" fill={C.sage} fontSize="12.5" fontWeight="700" textAnchor="middle" fontFamily="Archivo">empuje</text>
+          <text x="34" y="84" fill={C.dim} fontSize="12" textAnchor="middle" fontFamily="Archivo">recobro</text>
+          <text x="80" y="14" fill={C.amber} fontSize="11" textAnchor="middle" fontFamily="Archivo">punto muerto</text>
+          <text x="80" y="154" fill={C.amber} fontSize="11" textAnchor="middle" fontFamily="Archivo">punto muerto</text>
         </svg>
         <div style={{ fontSize: 12.5, color: C.dim, maxWidth: 170 }}>Esquema del giro: dónde producís fuerza y dónde hay punto muerto.</div>
       </div>
@@ -907,7 +908,7 @@ function FatigaPanel({ largos }) {
       })}
     </div>
     <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 14, background: `${C.sage}14`, border: `1px solid ${C.sage}3A`, borderRadius: 12, padding: '10px 13px' }}>
-      <span style={{ color: C.sage, fontSize: 15, fontWeight: 800 }}>✓</span>
+      <Check size={16} color={C.sage} strokeWidth={3} style={{ flex: '0 0 auto', marginTop: 2 }} />
       <span style={{ fontSize: 14, color: C.ink, lineHeight: 1.5 }}>{rows.some(r => r.malo) ? 'Tu técnica pierde algo de eficiencia con la fatiga: trabajá series largas manteniendo la distancia por brazada.' : 'Mantenés la técnica estable toda la sesión: buena resistencia del gesto.'}</span>
     </div>
   </Glass>
@@ -966,6 +967,236 @@ function SwimFreqAmplitud({ largos }) {
 }
 
 
+// ════════ MOMENTOS — animaciones cortas de curvas (técnica) ════════
+// Combos de TÉCNICA confirmadas (2 por deporte). Las claves existen en las
+// filas muestra-a-muestra (construirFilas); natación usa las curvas por largo.
+const COMBOS_MOMENTOS = {
+  running: [
+    { id: 'gct_cad', titulo: 'La pisada', s: [['gct', 'Contacto', 'ms', C.blue], ['cadence', 'Cadencia', 'spm', C.sage]] },
+    { id: 'vo_vel',  titulo: 'El rebote',  s: [['vo', 'Oscilación', 'cm', C.sage], ['kmh', 'Velocidad', 'km/h', C.blue]] },
+  ],
+  cycling: [
+    { id: 'torq_sm', titulo: 'Redondez del pedaleo', s: [['torque', 'Torque efectivo', '%', C.blue], ['pedal', 'Suavidad', '%', C.sage]] },
+    { id: 'cad_pow', titulo: 'Estilo de pedaleo',     s: [['cadence', 'Cadencia', 'rpm', C.sage], ['power', 'Potencia', 'W', C.blue]] },
+  ],
+  swimming: [
+    { id: 'rate_dps',   titulo: 'Frecuencia × amplitud', s: [['paladas', 'Brazadas/largo', '', C.blue], ['dps', 'Dist/brazada', 'm', C.sage]] },
+    { id: 'swolf_pace', titulo: 'Eficiencia del gesto',  s: [['swolf', 'SWOLF', '', C.sage], ['pace', 'Ritmo', '', C.blue]] },
+  ],
+}
+const M_MOMENTO = 180
+
+function _downsample(arr, m) {
+  if (arr.length <= m) return arr.slice()
+  const out = [], step = arr.length / m
+  for (let i = 0; i < m; i++) {
+    const seg = arr.slice(Math.floor(i * step), Math.floor((i + 1) * step)).filter(x => x != null && isFinite(x))
+    out.push(seg.length ? seg.reduce((a, b) => a + b, 0) / seg.length : null)
+  }
+  return out
+}
+function _meanMom(a) { const v = a.filter(x => x != null && isFinite(x)); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null }
+// Media móvil suave (preserva nulls) para que las curvas se vean fluidas y no escalonadas.
+function _smooth(arr, k = 3) {
+  return arr.map((v, i) => {
+    if (v == null) return null
+    let s = 0, n = 0
+    for (let j = i - k; j <= i + k; j++) { const x = arr[j]; if (x != null && isFinite(x)) { s += x; n++ } }
+    return n ? s / n : v
+  })
+}
+
+function prepararMomento(filas, combo, t0, t1, duracionMs = 14000) {
+  const win = filas.filter(r => r.t >= t0 && r.t <= t1)
+  const series = combo.s.map(([key, label, unit, color]) => {
+    const crudo = _downsample(win.map(r => r[key]), M_MOMENTO)
+    const valores = _smooth(crudo, 3)
+    const vv = valores.filter(x => x != null && isFinite(x))
+    return { key, label, unit, color, valores, dominio: vv.length ? [Math.min(...vv), Math.max(...vv)] : [0, 1] }
+  })
+  return { id: combo.id, titulo: combo.titulo, duracionMs, t0, t1, series }
+}
+
+// Lecturas en lenguaje claro por combo (qué significa el cruce de las 2 métricas)
+const LECTURA_MOM = {
+  gct_cad:    'Más contacto con el suelo y menos cadencia suelen marcar fatiga en la pisada.',
+  vo_vel:     'Si el rebote sube sin que suba la velocidad, estás gastando energía de más.',
+  torq_sm:    'Un pedaleo que pierde torque y suavidad se vuelve menos eficiente.',
+  cad_pow:    'El cruce de cadencia y potencia muestra si vas más a fuerza o a agilidad.',
+  rate_dps:   'Si sube la frecuencia pero baja la distancia por brazada, perdés eficiencia.',
+  swolf_pace: 'El SWOLF resume cuánto te cuesta cada largo a esa velocidad.',
+}
+function _explicarMom(combo, base, winMeans) {
+  const partes = combo.s.map(([, label], i) => {
+    const b = base[i], m = winMeans[i]
+    if (b == null || m == null || !isFinite(b) || !b) return null
+    const d = ((m - b) / b) * 100
+    const dir = Math.abs(d) < 1.5 ? 'se mantuvo' : (d > 0 ? `subió ${Math.round(Math.abs(d))}%` : `bajó ${Math.round(Math.abs(d))}%`)
+    return `${label.toLowerCase()} ${dir}`
+  }).filter(Boolean)
+  const frase = partes.length ? `En este tramo tu ${partes.join(' y tu ')}. ` : ''
+  return (frase + (LECTURA_MOM[combo.id] || '')).trim()
+}
+
+// Un momento por cada combo (siempre los 2 del deporte), centrado en la ventana
+// donde el gesto más se desvía del arranque, ampliada a ~1/3 de la sesión para
+// ver la variación con contexto.
+function detectarMomentos(filas, sport) {
+  const combos = COMBOS_MOMENTOS[sport] || []
+  if (!combos.length) return []
+  const ts = filas.map(r => r.t).filter(x => x != null)
+  if (ts.length < 8) return []
+  const t0 = Math.min(...ts), t1 = Math.max(...ts), dur = t1 - t0
+  if (dur <= 0) return []
+  const NW = 12, wl = dur / NW
+  const baseWin = filas.filter(r => r.t <= t0 + dur * 0.25)
+  const out = []
+  for (const combo of combos) {
+    const keys = combo.s.map(c => c[0])
+    const base = keys.map(k => _meanMom(baseWin.map(r => r[k])))
+    if (base.every(b => b == null)) continue
+    let best = { score: -1, a: t0, b: Math.min(t1, t0 + wl) }
+    for (let w = 0; w < NW; w++) {
+      const a = t0 + w * wl, b = a + wl
+      const win = filas.filter(r => r.t >= a && r.t < b)
+      if (win.length < 3) continue
+      const score = keys.reduce((s, k, ki) => {
+        const mn = _meanMom(win.map(r => r[k]))
+        return s + ((mn == null || !base[ki]) ? 0 : Math.abs((mn - base[ki]) / base[ki]) * 100)
+      }, 0)
+      if (score > best.score) best = { score, a, b }
+    }
+    const c = (best.a + best.b) / 2, half = Math.max(wl * 1.5, dur / 6)
+    const a = Math.max(t0, c - half), b = Math.min(t1, c + half)
+    const m = prepararMomento(filas, combo, a, b)
+    if (!m.series.some(s => s.valores.some(v => v != null))) continue
+    const winMeans = keys.map(k => _meanMom(filas.filter(r => r.t >= a && r.t <= b).map(r => r[k])))
+    m.explicacion = _explicarMom(combo, base, winMeans)
+    out.push(m)
+  }
+  return out
+}
+function detectarMomentosSwim(largos) {
+  const L = (largos || []).filter(x => x != null)
+  if (L.length < 6) return []
+  const filas = L.map((l, i) => ({ t: i, paladas: l.paladas, dps: l.dps, swolf: l.swolf, pace: l.pace, hr: l.hr }))
+  return detectarMomentos(filas, 'swimming')
+}
+
+// Dibuja una curva SUAVE (Catmull-Rom -> Bézier) por pts[from..to], cortando
+// en nulls. Da el efecto "más curvas que rectas".
+function segCurve(ctx, pts, from, to) {
+  ctx.beginPath()
+  let started = false
+  for (let i = from; i < to; i++) {
+    const p1 = pts[i], p2 = pts[i + 1]
+    if (!p1 || p1.y == null) { started = false; continue }
+    if (!started) { ctx.moveTo(p1.x, p1.y); started = true }
+    if (!p2 || p2.y == null) continue
+    const p0 = (pts[i - 1] && pts[i - 1].y != null) ? pts[i - 1] : p1
+    const p3 = (pts[i + 2] && pts[i + 2].y != null) ? pts[i + 2] : p2
+    ctx.bezierCurveTo(
+      p1.x + (p2.x - p0.x) / 6, p1.y + (p2.y - p0.y) / 6,
+      p2.x - (p3.x - p1.x) / 6, p2.y - (p3.y - p1.y) / 6,
+      p2.x, p2.y)
+  }
+  ctx.stroke()
+}
+
+// Canvas 2D + requestAnimationFrame: cada curva se dibuja despacio de izquierda
+// a derecha dejando una estela pintada (suave, con glow) y un tramo "cometa"
+// resaltado cerca de la cabeza. Los valores en vivo se escriben directo al DOM
+// en la propia leyenda (sin re-render de React), así cada color se asocia a su
+// métrica y a su valor actual.
+function CurvaAnimada({ momento, playing = true }) {
+  const canvasRef = useRef(null), valRefs = useRef([]), rafRef = useRef(0)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !momento) return
+    const ctx = canvas.getContext('2d')
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const cssW = canvas.clientWidth, cssH = canvas.clientHeight
+    if (!cssW) return
+    canvas.width = cssW * dpr; canvas.height = cssH * dpr; ctx.scale(dpr, dpr)
+    const P = 18, W = cssW - P * 2, H = cssH - P * 2, M = momento.series[0].valores.length
+    const xy = momento.series.map(s => {
+      const [mn, mx] = s.dominio, rg = (mx - mn) || 1
+      return s.valores.map((v, i) => ({ x: P + (i / (M - 1)) * W, y: v == null ? null : P + H - ((v - mn) / rg) * H }))
+    })
+    const EASE = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2   // easeInOutQuad, parejo
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const draw = (idx) => {
+      ctx.clearRect(0, 0, cssW, cssH)
+      ctx.strokeStyle = 'rgba(255,255,255,0.045)'; ctx.lineWidth = 1
+      for (let g = 1; g < 4; g++) { const y = P + H * g / 4; ctx.beginPath(); ctx.moveTo(P, y); ctx.lineTo(P + W, y); ctx.stroke() }
+      momento.series.forEach((s, si) => {
+        const pts = xy[si]
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = s.color
+        // estela completa (suave, glow sutil)
+        ctx.globalAlpha = 0.9; ctx.lineWidth = 2.6; ctx.shadowColor = s.color; ctx.shadowBlur = 6
+        segCurve(ctx, pts, 0, idx)
+        // tramo reciente resaltado (cometa)
+        ctx.globalAlpha = 1; ctx.lineWidth = 3.3; ctx.shadowBlur = 14
+        segCurve(ctx, pts, Math.max(0, idx - 16), idx)
+        ctx.shadowBlur = 0; ctx.globalAlpha = 1
+        // cabeza con glow
+        const head = pts[Math.min(idx, M - 1)]
+        if (head && head.y != null) {
+          ctx.fillStyle = s.color; ctx.shadowColor = s.color; ctx.shadowBlur = 16
+          ctx.beginPath(); ctx.arc(head.x, head.y, 4, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0
+        }
+      })
+      momento.series.forEach((s, i) => {
+        const el = valRefs.current[i]
+        if (el) { const v = s.valores[Math.min(idx, M - 1)]; el.textContent = (v == null ? '—' : Math.round(v)) + (s.unit ? ' ' + s.unit : '') }
+      })
+    }
+    if (reduce || !playing) { draw(M - 1); return }
+    let start = null; const durA = momento.duracionMs || 14000
+    const tick = (tsN) => { if (start == null) start = tsN; const p = Math.min(1, (tsN - start) / durA); draw(Math.max(1, Math.floor(EASE(p) * (M - 1)))); if (p < 1) rafRef.current = requestAnimationFrame(tick) }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [momento, playing])
+  return <div>
+    <canvas ref={canvasRef} style={{ width: '100%', height: 200, display: 'block' }} />
+    <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 12 }}>
+      {momento.series.map((s, i) => (
+        <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ width: 11, height: 11, borderRadius: 3, background: s.color, flex: '0 0 auto' }} />
+          <span style={{ fontSize: 12, color: C.dim }}>{s.label}</span>
+          <span ref={el => valRefs.current[i] = el} style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: C.ink, fontWeight: 600 }} />
+        </div>
+      ))}
+    </div>
+  </div>
+}
+
+function SlideMomento({ momento, activo }) {
+  const [run, setRun] = useState(0)
+  useEffect(() => { if (activo) setRun(r => r + 1) }, [activo])
+  return <Glass>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+      <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: C.sage }}>{momento.titulo}</span>
+      <button onClick={() => setRun(r => r + 1)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 999, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.dim, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}><RotateCcw size={12} />Repetir</button>
+    </div>
+    <CurvaAnimada key={run} momento={momento} playing={activo} />
+    {momento.explicacion && <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55, marginTop: 12 }}>{momento.explicacion}</div>}
+  </Glass>
+}
+function MomentosCarrusel({ momentos }) {
+  const [activo, setActivo] = useState(0)
+  if (!momentos || !momentos.length) return null
+  return <div>
+    <div onScroll={e => { const el = e.currentTarget; setActivo(Math.round(el.scrollLeft / (el.clientWidth * 0.9 + 12))) }}
+      style={{ display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory', gap: 12, paddingBottom: 4, WebkitOverflowScrolling: 'touch' }}>
+      {momentos.map((m, i) => <div key={m.id + '_' + i} style={{ flex: '0 0 90%', scrollSnapAlign: 'center' }}><SlideMomento momento={m} activo={i === activo} /></div>)}
+    </div>
+    {momentos.length > 1 && <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 8 }}>
+      {momentos.map((_, i) => <span key={i} style={{ width: 6, height: 6, borderRadius: 9, background: i === activo ? C.sage : 'rgba(255,255,255,0.18)', transition: 'background .2s' }} />)}
+    </div>}
+  </div>
+}
+
 export default function SeccionTecnica({ atletaId }) {
   const [sport, setSport] = useState('running')
   const [sesionId, setSesionId] = useState(null)
@@ -1008,6 +1239,8 @@ export default function SeccionTecnica({ atletaId }) {
   const aPedaleo = useMemo(() => (hayLab && sport === 'cycling') ? genPedaleo(filas) : null, [filas, hayLab, sport])
   const aCambios = useMemo(() => (hayLab && !esNado) ? genCambios(filas, sport) : null, [filas, hayLab, sport, esNado])
   const semanal = Semanal({ spark: d.sparkline, sport, sel: evolSel, setSel: setEvolSel })
+  const momentos = useMemo(() => (hayLab && !esNado) ? detectarMomentos(filas, sport) : [], [filas, hayLab, sport, esNado])
+  const momentosSwim = useMemo(() => (esNado && d.curva_sesion && Array.isArray(d.curva_sesion.largos)) ? detectarMomentosSwim(d.curva_sesion.largos) : [], [esNado, d.curva_sesion])
 
   const panelsApoyo = [
     { key: 'gct', label: 'Tiempo de contacto', unit: 'ms', color: C.cian },
@@ -1034,7 +1267,7 @@ export default function SeccionTecnica({ atletaId }) {
   ].filter(Boolean)
 
   return (
-    <div style={{ position: 'relative', maxWidth: 680, margin: '0 auto', width: '100%', overflowX: 'hidden', fontFamily: 'Inter, system-ui, sans-serif', color: C.ink }}>
+    <div style={{ position: 'relative', maxWidth: 680, margin: '0 auto', width: '100%', overflowX: 'hidden', fontFamily: 'Archivo, system-ui, sans-serif', color: C.ink }}>
       <style>{`
         .noah-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px}
         .noah-exp:hover{opacity:.85}
@@ -1053,7 +1286,7 @@ export default function SeccionTecnica({ atletaId }) {
 
         {!esNado && L.sesiones && L.sesiones.length > 1 && (
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
-            {L.sesiones.map(s => { const on = s.id === L.sesion_id; return <button key={s.id} onClick={() => setSesionId(s.id)} style={{ flex: '0 0 auto', padding: '8px 13px', borderRadius: 10, cursor: 'pointer', fontSize: 12, fontWeight: 700, border: `1px solid ${on ? C.cian : C.border}`, background: on ? `${C.cian}1F` : 'rgba(22,29,46,0.4)', color: on ? C.cian : C.dim }}>{String(s.fecha).slice(5, 10)}</button> })}
+            {L.sesiones.map(s => { const on = s.id === L.sesion_id; return <button key={s.id} onClick={() => setSesionId(s.id)} style={{ flex: '0 0 auto', padding: '8px 13px', borderRadius: 10, cursor: 'pointer', fontSize: 12, fontWeight: 700, border: `1px solid ${on ? C.cian : C.border}`, background: on ? `${C.cian}1F` : 'rgba(255,255,255,0.05)', color: on ? C.cian : C.dim }}>{String(s.fecha).slice(5, 10)}</button> })}
           </div>
         )}
 
@@ -1070,7 +1303,7 @@ export default function SeccionTecnica({ atletaId }) {
             <Glass style={{ position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 18 }}>
               <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(120% 120% at 0% 0%, ${colScore}14, transparent 55%)`, pointerEvents: 'none' }} />
               <div style={{ position: 'relative', width: 72, height: 72, borderRadius: '50%', flex: '0 0 auto', background: `conic-gradient(${colScore} ${score * 3.6}deg, rgba(255,255,255,0.06) 0)`, display: 'grid', placeItems: 'center', boxShadow: `0 0 24px -6px ${colScore}66` }}>
-                <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#0D1324', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 800, color: C.ink, ...num }}>{score}</div>
+                <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#13160F', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 800, color: C.ink, ...num }}>{score}</div>
               </div>
               <div style={{ position: 'relative' }}>
                 <div style={{ fontSize: 11, color: C.aux, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase' }}>Índice técnico</div>
@@ -1093,6 +1326,13 @@ export default function SeccionTecnica({ atletaId }) {
 
           {/* ───────── NATACIÓN (datos por largo) ───────── */}
           {esNado && <>
+            {momentosSwim.length > 0 && (
+              <div>
+                <TituloSeccion>Momentos de la sesión</TituloSeccion>
+                <div style={{ marginTop: 10 }}><MomentosCarrusel momentos={momentosSwim} /></div>
+              </div>
+            )}
+
             {estilos.length > 0 && (
               <div>
                 <TituloSeccion>Tus estilos</TituloSeccion>
@@ -1130,6 +1370,13 @@ export default function SeccionTecnica({ atletaId }) {
 
           {/* ───────── RUNNING / CICLISMO ───────── */}
           {!esNado && <>
+            {momentos.length > 0 && (
+              <div>
+                <TituloSeccion>Momentos de la sesión</TituloSeccion>
+                <div style={{ marginTop: 10 }}><MomentosCarrusel momentos={momentos} /></div>
+              </div>
+            )}
+
             {clavesMetricas.length > 0 && (
               <div>
                 <TituloSeccion>Estado técnico · semáforo</TituloSeccion>
@@ -1220,8 +1467,8 @@ export default function SeccionTecnica({ atletaId }) {
           {recs.length > 0 && (
             <div>
               <TituloSeccion>Qué trabajar ahora</TituloSeccion>
-              <Glass style={{ marginTop: 10, background: `linear-gradient(160deg, ${C.violet}10, rgba(22,29,46,0.48))` }}>
-                {recs.map((t, i) => <div key={i} style={{ display: 'flex', gap: 11, alignItems: 'flex-start', padding: '8px 0', borderTop: i ? `1px solid ${C.border}` : 'none' }}><span style={{ color: C.violet, fontWeight: 800, fontSize: 14, lineHeight: 1.5 }}>→</span><span style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.55 }}>{t}</span></div>)}
+              <Glass style={{ marginTop: 10, background: `linear-gradient(165deg, #1F241D, #13160F)` }}>
+                {recs.map((t, i) => <div key={i} style={{ display: 'flex', gap: 11, alignItems: 'flex-start', padding: '8px 0', borderTop: i ? `1px solid ${C.border}` : 'none' }}><ChevronRight size={16} color={C.violet} strokeWidth={2.5} style={{ flex: '0 0 auto', marginTop: 2 }} /><span style={{ fontSize: 13.5, color: C.ink, lineHeight: 1.55 }}>{t}</span></div>)}
               </Glass>
             </div>
           )}

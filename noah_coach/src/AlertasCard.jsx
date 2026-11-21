@@ -16,8 +16,8 @@ function authFetch(url, options = {}) {
 }
 
 const C = {
-  ink: 'rgba(255,255,255,0.92)', ink2: 'rgba(255,255,255,0.62)', ink3: 'rgba(255,255,255,0.38)',
-  alta: '#F87171', media: '#F59E0B', ok: '#34D399',
+  ink: '#292D29', ink2: 'rgba(41,45,41,0.60)', ink3: 'rgba(41,45,41,0.40)',
+  alta: '#E65B45', media: '#E0A43C', ok: '#78866B',
 }
 const ICONO = { intensidad: Activity, zonas: Waves, volumen: TrendingUp, acwr: Scale, monotonia: Waves }
 
@@ -90,8 +90,8 @@ export default function AlertasCard({ atletaId, compact = false }) {
 
 function glass(accent) {
   return {
-    background: 'linear-gradient(165deg, rgba(255,255,255,0.05), rgba(255,255,255,0.012))',
-    border: `1px solid ${accent}2e`, borderRadius: 16, padding: '13px 15px',
-    boxShadow: '0 10px 28px -12px rgba(0,0,0,0.5)',
+    background: '#FBFAF6', fontFamily: "'Archivo', system-ui, sans-serif",
+    border: `1px solid ${accent}40`, borderRadius: 16, padding: '13px 15px',
+    boxShadow: '0 8px 22px -14px rgba(41,45,41,0.25)',
   }
 }

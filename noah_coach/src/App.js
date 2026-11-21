@@ -3711,12 +3711,22 @@ axios.interceptors.response.use(
   }
 )
 
+// Isologo NOAH (identidad vectorial v1) — inlineado para no depender de un
+// asset y quedar nítido a cualquier tamaño. Sobre azul noche, los trazos
+// #101522 entre caras de distinto color quedan como costuras y el borde
+// exterior se funde con el fondo (el logo "flota").
+const NOAH_ISO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 730 700" width="100%" height="100%" role="img" aria-label="NOAH"><g transform="translate(-380,-60)"><g id="isotipo"><polygon points="460,223 553,169 650,222 552,275" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="553,169 643,116 741,173 650,222" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="460,223 552,275 552,395 460,344" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="552,275 650,222 650,344 552,395" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="460,351 552,402 552,522 460,472" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="552,402 650,349 650,469 552,522" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="460,480 552,530 552,648 460,597" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,349 742,401 742,522 650,470" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,401 839,349 936,400 839,453" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,401 839,453 839,577 742,524" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="839,453 936,400 936,522 839,577" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,224 741,173 830,224 738,275" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,224 738,275 738,395 650,344" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="738,275 830,224 830,345 738,395" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="552,529 650,475 650,597 552,648" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,475 742,528 742,650 650,597" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,528 839,580 936,527 839,474" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,528 839,580 839,704 742,650" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="839,580 936,527 936,650 839,704" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="830,207 927,153 1032,207 935,261" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="830,207 935,261 935,376 830,323" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="935,261 1032,207 1032,324 935,376" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="936,382 1032,331 1032,447 936,499" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="936,507 1032,454 1032,574 936,626" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/></g></g></svg>`
+function LogoNoahIso({ size = 108 }) {
+  return <div style={{ width: size, height: size * 700 / 730, lineHeight: 0, filter: 'drop-shadow(0 12px 28px rgba(0,0,0,0.45))' }} dangerouslySetInnerHTML={{ __html: NOAH_ISO_SVG }} />
+}
+
 function Login() {
   const navigate = useNavigate()
   const [usuario, setUsuario] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(false)
+  const [foco, setFoco] = useState('')
 
   // Si ya hay una sesión guardada (por ejemplo al abrir la app instalada en
   // el celular), saltar la pantalla de login y entrar directo al dashboard.
@@ -3748,67 +3758,78 @@ function Login() {
     setCargando(false)
   }
 
+  const inputStyle = (campo) => ({
+    width: '100%', marginTop: 7, marginBottom: 18, padding: '13px 15px',
+    borderRadius: 12, boxSizing: 'border-box', outline: 'none',
+    background: foco === campo ? 'rgba(120,134,107,0.08)' : '#FFFFFF',
+    border: `1px solid ${foco === campo ? '#78866B' : 'rgba(41,45,41,0.14)'}`,
+    color: '#292D29', fontSize: 14.5, fontFamily: 'inherit',
+    transition: 'border-color .18s, background .18s',
+  })
   return (
     <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'radial-gradient(circle at 30% 20%, #1a0533, #0A0F1E 60%)',
-      fontFamily: 'Inter, system-ui, sans-serif', padding: 20,
+      minHeight: '100vh', position: 'relative', overflow: 'hidden',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: '#F3F0E8',
+      fontFamily: "'Archivo', system-ui, -apple-system, sans-serif", padding: 20,
     }}>
+      {/* Glows de marca muy sutiles en paleta NOAH (salvia + coral) sobre marfil */}
+      <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', filter: 'blur(130px)', background: '#78866B', opacity: 0.14, left: -150, top: -130 }} />
+      <div style={{ position: 'absolute', width: 420, height: 420, borderRadius: '50%', filter: 'blur(130px)', background: '#E65B45', opacity: 0.08, right: -130, bottom: -130 }} />
+
       <form onSubmit={submit} style={{
-        width: '100%', maxWidth: 360, background: 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(20px)', borderRadius: 20, padding: '36px 28px',
-        border: '1px solid rgba(255,255,255,0.08)',
-        boxShadow: '0 24px 60px -10px rgba(0,0,0,0.6)',
+        position: 'relative', zIndex: 1, width: '100%', maxWidth: 360,
+        display: 'flex', flexDirection: 'column', alignItems: 'stretch',
+        background: '#FBFAF6', border: '1px solid rgba(41,45,41,0.10)', borderRadius: 24,
+        boxShadow: '0 2px 4px rgba(41,45,41,0.04), 0 30px 64px -34px rgba(41,45,41,0.5)',
+        padding: '34px 26px 30px',
       }}>
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{ display:'flex', justifyContent:'center', gap:1, marginBottom:6 }}>
-            {['N','O','A','H'].map((l,i)=>(
-              <span key={i} style={{ fontSize:28, fontWeight:900, letterSpacing:5,
-                color: i%2===1 ? '#A78BFA' : '#fff' }}>{l}</span>
+        {/* Marca */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 30 }}>
+          <div style={{ width: 92, height: 92, borderRadius: 22, background: '#101522', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 18px 36px -18px rgba(41,45,41,0.5)' }}>
+            <LogoNoahIso size={58} />
+          </div>
+          <div style={{ display: 'flex', gap: 3, marginTop: 18 }}>
+            {['N', 'O', 'A', 'H'].map((l, i) => (
+              <span key={i} style={{ fontSize: 30, fontWeight: 800, letterSpacing: 6, color: '#292D29' }}>{l}</span>
             ))}
           </div>
-          <div style={{ fontSize:9, color:'rgba(255,255,255,0.35)', letterSpacing:2, textTransform:'uppercase' }}>
+          <div style={{ fontSize: 9, color: 'rgba(41,45,41,0.5)', letterSpacing: 2.4, textTransform: 'uppercase', fontWeight: 700, marginTop: 8 }}>
             Never Over, Always Higher
           </div>
         </div>
 
-        <label style={{ fontSize:12, color:'rgba(255,255,255,0.6)', fontWeight:600 }}>Usuario</label>
+        <label style={{ fontSize: 12, color: 'rgba(41,45,41,0.6)', fontWeight: 700 }}>Usuario</label>
         <input
-          value={usuario} onChange={e=>setUsuario(e.target.value)}
+          value={usuario} onChange={e => setUsuario(e.target.value)}
+          onFocus={() => setFoco('usuario')} onBlur={() => setFoco('')}
           autoFocus autoComplete="username"
-          style={{
-            width:'100%', marginTop:6, marginBottom:16, padding:'11px 14px',
-            borderRadius:10, border:'1px solid rgba(255,255,255,0.15)',
-            background:'rgba(255,255,255,0.05)', color:'#fff', fontSize:14,
-            boxSizing:'border-box',
-          }}
+          style={inputStyle('usuario')}
         />
 
-        <label style={{ fontSize:12, color:'rgba(255,255,255,0.6)', fontWeight:600 }}>Contraseña</label>
+        <label style={{ fontSize: 12, color: 'rgba(41,45,41,0.6)', fontWeight: 700 }}>Contraseña</label>
         <input
-          type="password" value={password} onChange={e=>setPassword(e.target.value)}
+          type="password" value={password} onChange={e => setPassword(e.target.value)}
+          onFocus={() => setFoco('password')} onBlur={() => setFoco('')}
           autoComplete="current-password"
-          style={{
-            width:'100%', marginTop:6, marginBottom:20, padding:'11px 14px',
-            borderRadius:10, border:'1px solid rgba(255,255,255,0.15)',
-            background:'rgba(255,255,255,0.05)', color:'#fff', fontSize:14,
-            boxSizing:'border-box',
-          }}
+          style={inputStyle('password')}
         />
 
         {error && (
-          <div style={{ fontSize:12, color:'#F87171', background:'rgba(248,113,113,0.1)',
-            border:'1px solid rgba(248,113,113,0.25)', borderRadius:8, padding:'8px 12px', marginBottom:16 }}>
+          <div style={{ fontSize: 12.5, color: '#B23A2A', background: 'rgba(230,91,69,0.10)',
+            border: '1px solid rgba(230,91,69,0.30)', borderRadius: 10, padding: '10px 13px', marginBottom: 16 }}>
             {error}
           </div>
         )}
 
         <button type="submit" disabled={cargando} style={{
-          width:'100%', padding:'12px', borderRadius:10, border:'none',
-          background: cargando ? 'rgba(139,92,246,0.5)' : 'linear-gradient(135deg,#8B5CF6,#6D28D9)',
-          color:'#fff', fontSize:14, fontWeight:700, cursor: cargando?'default':'pointer',
+          width: '100%', padding: '14px', borderRadius: 12, border: 'none', marginTop: 4,
+          background: cargando ? 'rgba(41,45,41,0.45)' : '#292D29',
+          color: '#F3F0E8', fontSize: 14.5, fontWeight: 800, fontFamily: 'inherit',
+          cursor: cargando ? 'default' : 'pointer', letterSpacing: 0.3,
+          boxShadow: '0 14px 30px -14px rgba(41,45,41,0.55)',
         }}>
-          {cargando ? 'Ingresando...' : 'Ingresar'}
+          {cargando ? 'Ingresando…' : 'Ingresar'}
         </button>
       </form>
     </div>

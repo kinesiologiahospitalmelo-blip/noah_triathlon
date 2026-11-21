@@ -52,22 +52,22 @@ export default function AlertaPopup({ atletaId }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>
       <div onClick={e => e.stopPropagation()} style={{
-        width: '100%', maxWidth: 440, borderRadius: 20, overflow: 'hidden',
-        background: 'linear-gradient(160deg, rgba(24,22,40,0.98), rgba(12,12,20,0.99))',
+        width: '100%', maxWidth: 440, borderRadius: 20, overflow: 'hidden', fontFamily: "'Archivo', system-ui, sans-serif",
+        background: 'linear-gradient(165deg, #1C211C, #13160F)',
         border: '1px solid rgba(255,255,255,0.10)',
         boxShadow: '0 30px 80px -20px rgba(0,0,0,0.85)',
       }}>
         <div style={{
           padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 12,
           borderBottom: '1px solid rgba(255,255,255,0.07)',
-          background: altas ? 'rgba(248,113,113,0.08)' : 'rgba(245,158,11,0.07)',
+          background: altas ? 'rgba(230,91,69,0.08)' : 'rgba(224,164,60,0.07)',
         }}>
           <div style={{
             width: 38, height: 38, borderRadius: 11, flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: altas ? 'rgba(248,113,113,0.16)' : 'rgba(245,158,11,0.16)',
+            background: altas ? 'rgba(230,91,69,0.16)' : 'rgba(224,164,60,0.16)',
           }}>
-            <AlertTriangle size={20} color={altas ? '#F87171' : '#F59E0B'} />
+            <AlertTriangle size={20} color={altas ? '#E65B45' : '#E0A43C'} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14.5, fontWeight: 800, color: 'rgba(255,255,255,0.95)' }}>
@@ -88,7 +88,7 @@ export default function AlertaPopup({ atletaId }) {
           maxHeight: '58vh', overflowY: 'auto',
         }}>
           {alertas.map((a, i) => {
-            const col = a.severidad === 'alta' ? '#F87171' : '#F59E0B'
+            const col = a.severidad === 'alta' ? '#E65B45' : '#E0A43C'
             const Icon = ICONO[a.tipo] || AlertTriangle
             return (
               <div key={i} style={{
@@ -109,8 +109,8 @@ export default function AlertaPopup({ atletaId }) {
         <div style={{ padding: '12px 16px 16px' }}>
           <button onClick={cerrar} style={{
             width: '100%', padding: '11px', borderRadius: 12, border: 'none', cursor: 'pointer',
-            fontSize: 13, fontWeight: 800, color: '#0A0A0F',
-            background: 'linear-gradient(90deg, #F59E0B, #F87171)',
+            fontSize: 13, fontWeight: 800, color: '#13160F',
+            background: 'linear-gradient(90deg, #E0A43C, #E65B45)',
           }}>
             Entendido
           </button>
