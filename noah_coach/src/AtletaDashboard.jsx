@@ -26,6 +26,7 @@ import CicloMenstrual from './CicloMenstrual'
 import PantallaNoah from './PantallaNoah'
 import SeccionAnalisis from './SeccionAnalisis'
 import EficienciaMetabolica from './EficienciaMetabolica'
+import HistoriaNoah from './HistoriaNoah'
 import { NOAH, FONT } from './noahTheme'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
@@ -6634,6 +6635,10 @@ function SeccionPerfil({ atletaId }) {
   return (
     <div style={{ padding:'4px 2px 20px' }}>
       {styleTag}
+
+      {/* ── HERO NARRATIVO: "Tu historia NOAH" (resumen visual, arriba de todo) ── */}
+      <HistoriaNoah perfil={perfil} />
+
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:16 }}>
 
         {/* Datos físicos editables (conectado con coach) */}
