@@ -3322,7 +3322,7 @@ function DashboardAtleta({ atletaId, atleta }) {
 
       {tab==='clustering'&&atletaId&&<ClusteringPanel atletaId={atletaId} atleta={atleta} />}
       {tab==='optimizer'&&atletaId&&<OptimizerPanel atletaId={atletaId} atleta={atleta} />}
-      {tab==='perfil'&&atletaId&&(<><AccesoAtleta atletaId={atletaId} /><PerfilFisiologico atletaId={atletaId} atleta={atleta} /><PerfilDisponibilidad atletaId={atletaId} atleta={atleta} /></>)}
+      {tab==='perfil'&&atletaId&&(<><PerfilFisiologico atletaId={atletaId} atleta={atleta} /><PerfilDisponibilidad atletaId={atletaId} atleta={atleta} /></>)}
       {tab==='twin'&&atletaId&&<TwinAtleta atletaId={atletaId} />}
       {tab==='aprendizaje'&&atletaId&&<AprendizajePanel atletaId={atletaId} atleta={atleta} />}
       {tab==='tecnica'&&atletaId&&<SeccionTecnica atletaId={atletaId} />}
@@ -3715,9 +3715,9 @@ axios.interceptors.response.use(
 // asset y quedar nítido a cualquier tamaño. Sobre azul noche, los trazos
 // #101522 entre caras de distinto color quedan como costuras y el borde
 // exterior se funde con el fondo (el logo "flota").
-const NOAH_ISO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 730 700" width="100%" height="100%" role="img" aria-label="NOAH"><g transform="translate(-380,-60)"><g id="isotipo"><polygon points="460,223 553,169 650,222 552,275" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="553,169 643,116 741,173 650,222" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="460,223 552,275 552,395 460,344" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="552,275 650,222 650,344 552,395" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="460,351 552,402 552,522 460,472" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="552,402 650,349 650,469 552,522" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="460,480 552,530 552,648 460,597" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,349 742,401 742,522 650,470" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,401 839,349 936,400 839,453" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,401 839,453 839,577 742,524" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="839,453 936,400 936,522 839,577" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,224 741,173 830,224 738,275" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,224 738,275 738,395 650,344" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="738,275 830,224 830,345 738,395" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="552,529 650,475 650,597 552,648" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,475 742,528 742,650 650,597" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,528 839,580 936,527 839,474" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,528 839,580 839,704 742,650" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="839,580 936,527 936,650 839,704" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="830,207 927,153 1032,207 935,261" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="830,207 935,261 935,376 830,323" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="935,261 1032,207 1032,324 935,376" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="936,382 1032,331 1032,447 936,499" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="936,507 1032,454 1032,574 936,626" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/></g></g></svg>`
+const NOAH_ISO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 580" width="100%" height="100%" role="img" aria-label="NOAH"><g stroke="#111827" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"><path d="M 13 116 L 111 173 L 198 120 L 331 201 L 413 154 L 410 137 L 197 13 Z" fill="#8464D8"/><path d="M 13 118 L 12 456 L 98 513 L 107 514 L 111 521 L 112 176 L 121 169 L 111 174 Z" fill="#6449B9"/><path d="M 186 127 L 198 123 L 198 247 L 330 326 L 332 201 L 198 121 Z" fill="#6449B9"/><path d="M 197 123 L 113 176 L 111 522 L 112 298 L 198 248 Z" fill="#523CA1"/><path d="M 639 89 L 646 94 L 555 148 L 556 257 L 489 300 L 490 423 L 464 409 L 489 427 L 489 533 L 646 439 L 646 93 Z" fill="#288264"/><path d="M 336 203 L 335 330 L 489 423 L 491 297 L 486 299 Z" fill="#369474"/><path d="M 418 68 L 418 174 L 543 248 L 553 259 L 549 261 L 555 257 L 554 148 L 559 145 L 554 148 Z" fill="#369474"/><path d="M 418 67 L 554 147 L 644 94 L 511 16 Z" fill="#48B592"/><path d="M 336 204 L 486 298 L 554 257 L 418 175 L 417 158 Z" fill="#48B592"/><path d="M 116 300 L 120 297 L 116 300 L 116 525 L 212 476 L 215 437 L 424 569 L 486 534 L 485 425 L 400 476 Z" fill="#D6D7DC"/><path d="M 117 300 L 400 475 L 484 427 L 198 253 Z" fill="#F3F4F6"/></g></svg>`
 function LogoNoahIso({ size = 108 }) {
-  return <div style={{ width: size, height: size * 700 / 730, lineHeight: 0, filter: 'drop-shadow(0 12px 28px rgba(0,0,0,0.45))' }} dangerouslySetInnerHTML={{ __html: NOAH_ISO_SVG }} />
+  return <div style={{ width: size, height: size * 580 / 660, lineHeight: 0, filter: 'drop-shadow(0 12px 28px rgba(0,0,0,0.45))' }} dangerouslySetInnerHTML={{ __html: NOAH_ISO_SVG }} />
 }
 
 function Login() {
@@ -4306,68 +4306,6 @@ function AprendizajePanel({ atletaId, atleta }) {
   )
 }
 
-
-// Acceso del atleta: crea/actualiza usuario+contraseña de login (tabla
-// usuarios_login) pegando al endpoint seguro que ya existe. Solo presentación —
-// no cambia la lógica del backend.
-function AccesoAtleta({ atletaId }) {
-  const [usuario, setUsuario]   = useState('')
-  const [password, setPassword] = useState('')
-  const [verPass, setVerPass]   = useState(false)
-  const [saving, setSaving]     = useState(false)
-  const [msg, setMsg]           = useState(null) // { ok, text }
-
-  useEffect(() => { setUsuario(''); setPassword(''); setMsg(null); setVerPass(false) }, [atletaId])
-
-  const guardar = async () => {
-    if (!usuario.trim() || !password) { setMsg({ ok: false, text: 'Completá usuario y contraseña.' }); return }
-    if (password.length < 4)          { setMsg({ ok: false, text: 'La contraseña debe tener al menos 4 caracteres.' }); return }
-    setSaving(true); setMsg(null)
-    try {
-      await axios.post(`${API}/admin/crear_usuario_login`, { atleta_id: atletaId, usuario: usuario.trim(), password })
-      setMsg({ ok: true, text: `Listo. El atleta entra con el usuario "${usuario.trim()}".` })
-      setPassword('')
-    } catch (e) {
-      setMsg({ ok: false, text: e?.response?.data?.error || e.message || 'Error al guardar' })
-    }
-    setSaving(false)
-  }
-
-  const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg2, color: C.text, fontSize: 14 }
-
-  return (
-    <div style={{ marginBottom: 28, paddingBottom: 24, borderBottom: `1px solid ${C.border}` }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Acceso del atleta</div>
-      <div style={{ fontSize: 12, color: C.text2, marginBottom: 16, lineHeight: 1.5 }}>
-        Usuario y contraseña con los que el atleta inicia sesión en la app. Guardar crea el acceso
-        (o lo reemplaza, pisando también la contraseña). El usuario es único.
-      </div>
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 12, color: C.text2, marginBottom: 4 }}>Usuario</div>
-        <input type="text" value={usuario} placeholder="ej: juanperez" autoCapitalize="none" autoCorrect="off"
-          onChange={e => setUsuario(e.target.value)} style={inp} />
-      </div>
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 12, color: C.text2, marginBottom: 4 }}>Contraseña</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input type={verPass ? 'text' : 'password'} value={password} placeholder="mínimo 4 caracteres"
-            onChange={e => setPassword(e.target.value)} style={{ ...inp, flex: 1 }} />
-          <button type="button" onClick={() => setVerPass(v => !v)}
-            style={{ padding: '0 12px', borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg2, color: C.text2, fontSize: 12, cursor: 'pointer' }}>
-            {verPass ? 'Ocultar' : 'Ver'}
-          </button>
-        </div>
-      </div>
-      {msg && (
-        <div style={{ fontSize: 12, marginBottom: 12, color: msg.ok ? C.done : '#F85149' }}>{msg.text}</div>
-      )}
-      <button onClick={guardar} disabled={saving}
-        style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: C.purple, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
-        {saving ? 'Guardando...' : 'Guardar acceso'}
-      </button>
-    </div>
-  )
-}
 
 function PerfilFisiologico({ atletaId, atleta }) {
   const [lthrRun,  setLthrRun]  = useState(atleta?.lthr_run  || '')

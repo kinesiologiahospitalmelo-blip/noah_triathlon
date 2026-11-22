@@ -1,9 +1,43 @@
-// PantallaCarga.jsx — Splash inicial de NOAH (identidad v2)
-// Isologo de cubos + wordmark sobre marfil #F3F0E8, con barra de progreso.
-// A juego con el Login en estilo NOAH. Isologo inlineado (nítido, sin asset).
+// PantallaCarga.jsx — Splash inicial de NOAH.
+// Isotipo maestro (3D) sobre marfil, girando en 3D real (placa con espesor),
+// wordmark + barra de progreso. A juego con el Login en estilo NOAH.
 import { useEffect, useState } from 'react'
 
-const NOAH_ISO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 730 700" width="100%" height="100%" role="img" aria-label="NOAH"><g transform="translate(-380,-60)"><g id="isotipo"><polygon points="460,223 553,169 650,222 552,275" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="553,169 643,116 741,173 650,222" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="460,223 552,275 552,395 460,344" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="552,275 650,222 650,344 552,395" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="460,351 552,402 552,522 460,472" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="552,402 650,349 650,469 552,522" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="460,480 552,530 552,648 460,597" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,349 742,401 742,522 650,470" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,401 839,349 936,400 839,453" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,401 839,453 839,577 742,524" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="839,453 936,400 936,522 839,577" fill="#7054C7" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,224 741,173 830,224 738,275" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,224 738,275 738,395 650,344" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="738,275 830,224 830,345 738,395" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="552,529 650,475 650,597 552,648" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="650,475 742,528 742,650 650,597" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,528 839,580 936,527 839,474" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="742,528 839,580 839,704 742,650" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="839,580 936,527 936,650 839,704" fill="#F3F4F6" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="830,207 927,153 1032,207 935,261" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="830,207 935,261 935,376 830,323" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="935,261 1032,207 1032,324 935,376" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="936,382 1032,331 1032,447 936,499" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/><polygon points="936,507 1032,454 1032,574 936,626" fill="#399B7B" stroke="#101522" stroke-width="3" stroke-linejoin="round"/></g></g></svg>`
+const NOAH_ISO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 580" width="100%" height="100%" role="img" aria-label="NOAH"><g stroke="#111827" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"><path d="M 13 116 L 111 173 L 198 120 L 331 201 L 413 154 L 410 137 L 197 13 Z" fill="#8464D8"/><path d="M 13 118 L 12 456 L 98 513 L 107 514 L 111 521 L 112 176 L 121 169 L 111 174 Z" fill="#6449B9"/><path d="M 186 127 L 198 123 L 198 247 L 330 326 L 332 201 L 198 121 Z" fill="#6449B9"/><path d="M 197 123 L 113 176 L 111 522 L 112 298 L 198 248 Z" fill="#523CA1"/><path d="M 639 89 L 646 94 L 555 148 L 556 257 L 489 300 L 490 423 L 464 409 L 489 427 L 489 533 L 646 439 L 646 93 Z" fill="#288264"/><path d="M 336 203 L 335 330 L 489 423 L 491 297 L 486 299 Z" fill="#369474"/><path d="M 418 68 L 418 174 L 543 248 L 553 259 L 549 261 L 555 257 L 554 148 L 559 145 L 554 148 Z" fill="#369474"/><path d="M 418 67 L 554 147 L 644 94 L 511 16 Z" fill="#48B592"/><path d="M 336 204 L 486 298 L 554 257 L 418 175 L 417 158 Z" fill="#48B592"/><path d="M 116 300 L 120 297 L 116 300 L 116 525 L 212 476 L 215 437 L 424 569 L 486 534 L 485 425 L 400 476 Z" fill="#D6D7DC"/><path d="M 117 300 L 400 475 L 484 427 L 198 253 Z" fill="#F3F4F6"/></g></svg>`
+
+const S = 120, T = 30   // lado de la placa y espesor (px)
+
+function Logo3D() {
+  const faceBase = { position: 'absolute', top: '50%', left: '50%', backfaceVisibility: 'hidden' }
+  const tile = {
+    ...faceBase, width: S, height: S, borderRadius: 8, background: '#0B1020',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05)',
+  }
+  const lado = (tf, w, h) => ({
+    ...faceBase, width: w, height: h,
+    background: 'linear-gradient(#0A0E1A,#05070E)', transform: tf,
+  })
+  return (
+    <div style={{ perspective: '900px', animation: 'noahFloat 3.6s ease-in-out infinite' }}>
+      <div className="noah3d" style={{ position: 'relative', width: S, height: S, transformStyle: 'preserve-3d', animation: 'noahSpin 8s linear infinite' }}>
+        {/* cara frontal */}
+        <div style={{ ...tile, transform: `translate(-50%,-50%) translateZ(${T / 2}px)` }}>
+          <div style={{ width: '74%', height: '74%', lineHeight: 0 }} dangerouslySetInnerHTML={{ __html: NOAH_ISO_SVG }} />
+        </div>
+        {/* cara trasera (logo espejado para que se lea bien) */}
+        <div style={{ ...tile, transform: `translate(-50%,-50%) rotateY(180deg) translateZ(${T / 2}px)` }}>
+          <div style={{ width: '74%', height: '74%', lineHeight: 0, transform: 'scaleX(-1)' }} dangerouslySetInnerHTML={{ __html: NOAH_ISO_SVG }} />
+        </div>
+        {/* cantos (espesor) */}
+        <div style={lado(`translate(-50%,-50%) rotateY(90deg) translateZ(${S / 2}px)`, T, S)} />
+        <div style={lado(`translate(-50%,-50%) rotateY(-90deg) translateZ(${S / 2}px)`, T, S)} />
+        <div style={lado(`translate(-50%,-50%) rotateX(90deg) translateZ(${S / 2}px)`, S, T)} />
+        <div style={lado(`translate(-50%,-50%) rotateX(-90deg) translateZ(${S / 2}px)`, S, T)} />
+      </div>
+    </div>
+  )
+}
 
 export default function PantallaCarga({ onTerminar, duracionMs = 5000 }) {
   const [progreso, setProgreso] = useState(0)
@@ -28,7 +62,11 @@ export default function PantallaCarga({ onTerminar, duracionMs = 5000 }) {
       fontFamily: "'Archivo', system-ui, -apple-system, sans-serif",
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
     }}>
-      <style>{`@keyframes noahFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}`}</style>
+      <style>{`
+        @keyframes noahSpin{from{transform:rotateX(-14deg) rotateY(0deg)}to{transform:rotateX(-14deg) rotateY(360deg)}}
+        @keyframes noahFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+        @media (prefers-reduced-motion: reduce){.noah3d{animation:none !important;transform:rotateX(-14deg) rotateY(-26deg)}}
+      `}</style>
 
       {/* Glows de marca sutiles (salvia + coral) sobre marfil */}
       <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', filter: 'blur(130px)', background: '#78866B', opacity: 0.14, left: -150, top: -130 }} />
@@ -36,22 +74,18 @@ export default function PantallaCarga({ onTerminar, duracionMs = 5000 }) {
 
       {/* Marca */}
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <div style={{
-          width: 110, height: 110, borderRadius: 26, background: '#101522',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          animation: 'noahFloat 3.2s ease-in-out infinite',
-          boxShadow: '0 20px 40px -18px rgba(41,45,41,0.5)',
-        }}>
-          <div style={{ width: '64%', height: '64%', lineHeight: 0 }}
-            dangerouslySetInnerHTML={{ __html: NOAH_ISO_SVG }} />
+        <div style={{ height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Logo3D />
         </div>
-        <div style={{ display: 'flex', gap: 4, marginTop: 24 }}>
+        {/* sombra de contacto */}
+        <div style={{ width: 90, height: 14, borderRadius: '50%', background: 'rgba(41,45,41,0.16)', filter: 'blur(8px)', marginTop: -6 }} />
+        <div style={{ display: 'flex', gap: 4, marginTop: 22 }}>
           {['N', 'O', 'A', 'H'].map((l, i) => (
             <span key={i} style={{ fontSize: 34, fontWeight: 800, letterSpacing: 7, color: '#292D29' }}>{l}</span>
           ))}
         </div>
         <div style={{ fontSize: 9.5, color: 'rgba(41,45,41,0.5)', letterSpacing: 2.6, textTransform: 'uppercase', fontWeight: 700, marginTop: 9 }}>
-          Never Over, Always Higher  V 2.0
+          Never Over, Always Higher
         </div>
       </div>
 
