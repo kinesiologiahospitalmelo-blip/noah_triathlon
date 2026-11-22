@@ -1006,15 +1006,56 @@ function _smooth(arr, k = 3) {
   })
 }
 
-function prepararMomento(filas, combo, t0, t1, duracionMs = 14000) {
+function prepararMomento(filas, combo, t0, t1, duracionMs = 15000, esLap = false) {
   const win = filas.filter(r => r.t >= t0 && r.t <= t1)
   const series = combo.s.map(([key, label, unit, color]) => {
     const crudo = _downsample(win.map(r => r[key]), M_MOMENTO)
-    const valores = _smooth(crudo, 3)
+    // Suavizado más fuerte (k=5): resumen "grueso" de toda la sesión, sin ruido.
+    const valores = _smooth(crudo, 5)
     const vv = valores.filter(x => x != null && isFinite(x))
-    return { key, label, unit, color, valores, dominio: vv.length ? [Math.min(...vv), Math.max(...vv)] : [0, 1] }
+    const start = vv.length ? vv[0] : null, end = vv.length ? vv[vv.length - 1] : null
+    const trend = (start != null && end != null && start) ? ((end - start) / Math.abs(start)) * 100 : null
+    return { key, label, unit, color, valores, start, end, trend,
+             dominio: vv.length ? [Math.min(...vv), Math.max(...vv)] : [0, 1] }
   })
-  return { id: combo.id, titulo: combo.titulo, duracionMs, t0, t1, series }
+  return { id: combo.id, titulo: combo.titulo, duracionMs, t0, t1, esLap, series }
+}
+
+// Formato de eje de tiempo: mm:ss para run/bike (segundos), "L{n}" para nado.
+function _fmtT(v, esLap) {
+  if (v == null) return ''
+  if (esLap) return 'L' + Math.round(v + 1)
+  const s = Math.max(0, Math.round(v)); const m = Math.floor(s / 60)
+  return m + ':' + String(s % 60).padStart(2, '0')
+}
+
+// Relación entre las 2 curvas normalizadas a lo largo de la sesión: ¿se acercan,
+// se separan o se cruzan? Es "lo más grueso" que el atleta tiene que ver.
+function _relacionSeries(series) {
+  if (series.length < 2) return null
+  const norm = series.map(s => {
+    const [mn, mx] = s.dominio, rg = (mx - mn) || 1
+    return s.valores.map(v => v == null ? null : (v - mn) / rg)
+  })
+  const n = norm[0].length, gaps = []
+  let cruces = 0, prevSign = null
+  for (let i = 0; i < n; i++) {
+    const a = norm[0][i], b = norm[1][i]
+    if (a == null || b == null) continue
+    const diff = a - b
+    gaps.push(Math.abs(diff))
+    const sign = diff === 0 ? prevSign : (diff > 0 ? 1 : -1)
+    if (prevSign != null && sign != null && sign !== prevSign) cruces++
+    if (sign != null) prevSign = sign
+  }
+  if (gaps.length < 4) return null
+  const half = Math.floor(gaps.length / 2)
+  const gIni = _meanMom(gaps.slice(0, half)), gFin = _meanMom(gaps.slice(half))
+  const l0 = series[0].label.toLowerCase(), l1 = series[1].label.toLowerCase()
+  if (cruces >= 2) return { dir: 'cruzan', txt: `Las dos curvas se cruzan ${cruces} veces: la relación entre ${l0} y ${l1} se invierte a lo largo de la sesión.` }
+  if (gFin > gIni * 1.3) return { dir: 'separan', txt: `Las curvas se separan hacia el final: ${l0} y ${l1} se desacoplan a medida que avanza la sesión (suele marcar fatiga).` }
+  if (gFin < gIni * 0.7) return { dir: 'acercan', txt: `Las curvas se acercan hacia el final: ${l0} y ${l1} empiezan a moverse juntas.` }
+  return { dir: 'estable', txt: `Las dos curvas mantienen su relación durante toda la sesión.` }
 }
 
 // Lecturas en lenguaje claro por combo (qué significa el cruce de las 2 métricas)
@@ -1031,16 +1072,16 @@ function _explicarMom(combo, base, winMeans) {
     const b = base[i], m = winMeans[i]
     if (b == null || m == null || !isFinite(b) || !b) return null
     const d = ((m - b) / b) * 100
-    const dir = Math.abs(d) < 1.5 ? 'se mantuvo' : (d > 0 ? `subió ${Math.round(Math.abs(d))}%` : `bajó ${Math.round(Math.abs(d))}%`)
+    const dir = Math.abs(d) < 1.5 ? 'se mantuvo' : (d > 0 ? 'subió' : 'bajó')
     return `${label.toLowerCase()} ${dir}`
   }).filter(Boolean)
-  const frase = partes.length ? `En este tramo tu ${partes.join(' y tu ')}. ` : ''
+  const frase = partes.length ? `De principio a fin tu ${partes.join(' y tu ')}. ` : ''
   return (frase + (LECTURA_MOM[combo.id] || '')).trim()
 }
 
-// Un momento por cada combo (siempre los 2 del deporte), centrado en la ventana
-// donde el gesto más se desvía del arranque, ampliada a ~1/3 de la sesión para
-// ver la variación con contexto.
+// Resumen de la SESIÓN COMPLETA por cada combo (los 2 del deporte): curvas
+// suavizadas y promediadas de punta a punta, para ver lo grueso — si las dos
+// métricas se acercan, se separan o se cruzan, y hacia dónde va cada una.
 function detectarMomentos(filas, sport) {
   const combos = COMBOS_MOMENTOS[sport] || []
   if (!combos.length) return []
@@ -1048,30 +1089,19 @@ function detectarMomentos(filas, sport) {
   if (ts.length < 8) return []
   const t0 = Math.min(...ts), t1 = Math.max(...ts), dur = t1 - t0
   if (dur <= 0) return []
-  const NW = 12, wl = dur / NW
-  const baseWin = filas.filter(r => r.t <= t0 + dur * 0.25)
+  const esLap = sport === 'swimming'
+  const baseWin = filas.filter(r => r.t <= t0 + dur * 0.25)   // primer cuarto
+  const finWin = filas.filter(r => r.t >= t0 + dur * 0.75)    // último cuarto
   const out = []
   for (const combo of combos) {
     const keys = combo.s.map(c => c[0])
     const base = keys.map(k => _meanMom(baseWin.map(r => r[k])))
+    const fin = keys.map(k => _meanMom(finWin.map(r => r[k])))
     if (base.every(b => b == null)) continue
-    let best = { score: -1, a: t0, b: Math.min(t1, t0 + wl) }
-    for (let w = 0; w < NW; w++) {
-      const a = t0 + w * wl, b = a + wl
-      const win = filas.filter(r => r.t >= a && r.t < b)
-      if (win.length < 3) continue
-      const score = keys.reduce((s, k, ki) => {
-        const mn = _meanMom(win.map(r => r[k]))
-        return s + ((mn == null || !base[ki]) ? 0 : Math.abs((mn - base[ki]) / base[ki]) * 100)
-      }, 0)
-      if (score > best.score) best = { score, a, b }
-    }
-    const c = (best.a + best.b) / 2, half = Math.max(wl * 1.5, dur / 6)
-    const a = Math.max(t0, c - half), b = Math.min(t1, c + half)
-    const m = prepararMomento(filas, combo, a, b)
+    const m = prepararMomento(filas, combo, t0, t1, 15000, esLap)   // sesión completa
     if (!m.series.some(s => s.valores.some(v => v != null))) continue
-    const winMeans = keys.map(k => _meanMom(filas.filter(r => r.t >= a && r.t <= b).map(r => r[k])))
-    m.explicacion = _explicarMom(combo, base, winMeans)
+    m.explicacion = _explicarMom(combo, base, fin)   // arranque vs final
+    m.relacion = _relacionSeries(m.series)
     out.push(m)
   }
   return out
@@ -1129,6 +1159,10 @@ function CurvaAnimada({ momento, playing = true }) {
       ctx.clearRect(0, 0, cssW, cssH)
       ctx.strokeStyle = 'rgba(255,255,255,0.045)'; ctx.lineWidth = 1
       for (let g = 1; g < 4; g++) { const y = P + H * g / 4; ctx.beginPath(); ctx.moveTo(P, y); ctx.lineTo(P + W, y); ctx.stroke() }
+      // Eje de tiempo: 3 marcas (inicio · mitad · fin), elapsed desde t0.
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.font = "10px 'IBM Plex Mono', monospace"; ctx.textBaseline = 'alphabetic'
+      const _tv = [momento.t0, (momento.t0 + momento.t1) / 2, momento.t1]
+      ;[[P, 'left'], [P + W / 2, 'center'], [P + W, 'right']].forEach(([x, al], ti) => { ctx.textAlign = al; ctx.fillText(_fmtT(_tv[ti] - momento.t0, momento.esLap), x, cssH - 3) })
       momento.series.forEach((s, si) => {
         const pts = xy[si]
         ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = s.color
@@ -1152,7 +1186,7 @@ function CurvaAnimada({ momento, playing = true }) {
       })
     }
     if (reduce || !playing) { draw(M - 1); return }
-    let start = null; const durA = momento.duracionMs || 14000
+    let start = null; const durA = momento.duracionMs || 15000
     const tick = (tsN) => { if (start == null) start = tsN; const p = Math.min(1, (tsN - start) / durA); draw(Math.max(1, Math.floor(EASE(p) * (M - 1)))); if (p < 1) rafRef.current = requestAnimationFrame(tick) }
     rafRef.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafRef.current)
@@ -1165,6 +1199,11 @@ function CurvaAnimada({ momento, playing = true }) {
           <span style={{ width: 11, height: 11, borderRadius: 3, background: s.color, flex: '0 0 auto' }} />
           <span style={{ fontSize: 12, color: C.dim }}>{s.label}</span>
           <span ref={el => valRefs.current[i] = el} style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: C.ink, fontWeight: 600 }} />
+          {s.trend != null && Math.abs(s.trend) >= 1 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1, fontSize: 11, fontWeight: 700, color: s.color }} title="tendencia de la sesión">
+              {s.trend > 0 ? '▲' : '▼'}{Math.abs(Math.round(s.trend))}%
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -1181,6 +1220,11 @@ function SlideMomento({ momento, activo }) {
     </div>
     <CurvaAnimada key={run} momento={momento} playing={activo} />
     {momento.explicacion && <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55, marginTop: 12 }}>{momento.explicacion}</div>}
+    {momento.relacion && (
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginTop: 10, padding: '9px 11px', borderRadius: 10, background: 'rgba(120,134,107,0.10)', border: `1px solid ${C.border}` }}>
+        <span style={{ fontSize: 12.5, color: C.ink, lineHeight: 1.5, fontWeight: 500 }}>{momento.relacion.txt}</span>
+      </div>
+    )}
   </Glass>
 }
 function MomentosCarrusel({ momentos }) {
