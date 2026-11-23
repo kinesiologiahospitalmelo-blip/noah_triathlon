@@ -15,6 +15,8 @@ import { TwinAtleta } from './SeccionTwin'
 import OnboardingAtleta from './OnboardingAtleta'
 import GraficoActividadStreams from './GraficoActividadStreams'
 import PantallaCarga from './PantallaCarga'
+import CoachHome from './CoachHome'
+import SeccionesCoach from './SeccionesCoach'
 
 // API — en la PC/celular de casa (red local) sigue usando el puerto 5000,
 // como ya funcionaba. En Vercel (1 sola dirección para front y backend)
@@ -46,15 +48,16 @@ function authFetch(url, options = {}) {
 }
 
 const C = {
-  bg:      '#0D1117',
-  bg2:     '#161B22',
-  bg3:     '#21262D',
-  bg4:     '#2D333B',
+  // Paleta NOAH original: fondo navy, acento violeta de marca, verde NOAH.
+  bg:      '#0B1020',   // contenido navy
+  bg2:     '#111735',   // paneles / superficies sobre el navy
+  bg3:     '#1A2144',
+  bg4:     '#232B55',
   border:  'rgba(240,246,252,0.10)',
   border2: 'rgba(240,246,252,0.18)',
-  text:    '#E6EDF3',
-  text2:   '#8B949E',
-  text3:   '#58A6FF',
+  text:    '#F5F7FA',
+  text2:   '#9AA3C4',
+  text3:   '#8057D8',
   run:     '#8B5CF6', runL: 'rgba(139,92,246,0.15)',
   bike:    '#38BDF8', bikeL: 'rgba(56,189,248,0.12)',
   swim:    '#34D399', swimL: 'rgba(52,211,153,0.12)',
@@ -62,11 +65,16 @@ const C = {
   miss:    '#F85149', missL: 'rgba(248,81,73,0.15)',
   partial: '#D29922', partialL: 'rgba(210,153,34,0.15)',
   planned: '#58A6FF', plannedL: 'rgba(88,166,255,0.12)',
-  purple:  '#8B5CF6',
+  purple:  '#8057D8',
   blue:    '#1F6FEB',
   teal:    '#20B2AA',
   amber:   '#D29922',
   red:     '#F85149',
+  // Marca
+  violet:  '#8057D8', violetD: '#6449B9',
+  navy:    '#0B1020',
+  green:   '#35C29B', greenD: '#288264',
+  sidebarA:'#2C7A62', sidebarB:'#1C5A48',
 }
 
 const IconRun = ({ size=16, color='currentColor' }) => (
@@ -3100,7 +3108,7 @@ function NOAHIntelPanel({ atletaId }) {
 }
 
 // ── Dashboard Coach de un atleta ──────────────────────────────────────────────
-function DashboardAtleta({ atletaId, atleta }) {
+function DashboardAtleta({ atletaId, atleta, tabInicial = 'semana', onInicio }) {
   const [estado, setEstado]     = useState(null)
   const [presc, setPresc]       = useState(null)
   const [zonas, setZonas]       = useState(null)
@@ -3110,9 +3118,12 @@ function DashboardAtleta({ atletaId, atleta }) {
   const [diag, setDiag]         = useState(null)
   const [loadingCiclo, setLoadingCiclo] = useState(false)
   const [syncLoading, setSyncLoading] = useState(false)
-  const [tab, setTab]           = useState('semana')
+  const [tab, setTab]           = useState(tabInicial)
   const [menuOpen, setMenuOpen] = useState(window.innerWidth > 768)
   const [subTabZonas, setSubTabZonas] = useState('running')
+
+  // Cuando se entra a una sección desde los botones del Home, sincronizar el tab.
+  useEffect(() => { if (tabInicial) setTab(tabInicial) }, [tabInicial])
 
   const cargarPresc = () => axios.get(`${API}/atletas/${atletaId}/prescripcion`).then(r=>setPresc(r.data.data)).catch(()=>{})
 
@@ -3190,55 +3201,58 @@ function DashboardAtleta({ atletaId, atleta }) {
   ]
 
   return (
-    <div style={{ flex:1, overflow:'auto' }}>
-      {/* Banner NOAH -- imagen de marca arriba de todo */}
-      <div style={{ position:'relative', width:'100%', height:240, overflow:'hidden' }}>
-        <img src="/assets/noah_banner_header.png" alt=""
-          onError={e=>{e.target.parentElement.style.display='none'}}
-          style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'center 25%', display:'block' }} />
-        <div style={{ position:'absolute', inset:0, background:`linear-gradient(to bottom, transparent 55%, ${C.bg} 100%)` }}/>
+    <div style={{ flex:1, overflow:'auto', background:C.bg }}>
+      {/* Header violeta — marca NOAH + volver al inicio del coach */}
+      <div style={{ position:'relative', overflow:'hidden', background:`linear-gradient(135deg, ${C.violet}, ${C.violetD})`, padding:'15px 26px' }}>
+        <div style={{ position:'absolute', inset:0, background:'radial-gradient(120% 130% at 90% 0%, rgba(53,194,155,0.32), transparent 55%)', pointerEvents:'none' }}/>
+        <div style={{ position:'relative', display:'flex', justifyContent:'space-between', alignItems:'center', gap:14, flexWrap:'wrap' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:14, minWidth:0 }}>
+            {onInicio && (
+              <button onClick={onInicio} title="Volver al inicio" style={{
+                flexShrink:0, display:'flex', alignItems:'center', gap:6, padding:'8px 13px', borderRadius:10,
+                border:'1px solid rgba(255,255,255,0.28)', background:'rgba(255,255,255,0.12)', color:'#fff',
+                cursor:'pointer', fontSize:12.5, fontWeight:700, backdropFilter:'blur(6px)', WebkitBackdropFilter:'blur(6px)',
+              }}>← Inicio</button>
+            )}
+            <div style={{ minWidth:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+                <h1 style={{ fontSize:22, fontWeight:800, color:'#fff', margin:0 }}>{atleta.nombre}</h1>
+                <div style={{ display:'flex', alignItems:'center', gap:5, background:'rgba(255,255,255,0.16)', borderRadius:7, padding:'4px 10px', border:'1px solid rgba(255,255,255,0.22)' }}>
+                  <s.Icon size={15} color="#fff" />
+                  <span style={{ fontSize:11, fontWeight:700, color:'#fff', letterSpacing:0.8 }}>{s.label.toUpperCase()}</span>
+                </div>
+              </div>
+              <div style={{ fontSize:12, color:'rgba(255,255,255,0.78)', marginTop:4 }}>{atleta.deporte} · LTHR {atleta.lthr_run} · {atleta.email}</div>
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            <a href={`/atleta/${atleta.id}`} target="_blank" rel="noreferrer" style={{ textDecoration:'none' }}>
+              <button style={{ padding:'7px 14px', borderRadius:9, border:'1px solid rgba(255,255,255,0.28)', background:'rgba(255,255,255,0.12)', color:'#fff', cursor:'pointer', fontSize:12, fontWeight:600 }}>
+                👤 Ver como atleta
+              </button>
+            </a>
+            <button onClick={generarCiclo} disabled={loadingCiclo} style={{ padding:'7px 14px', borderRadius:9, border:'none', background:'#fff', color:C.violetD, cursor:'pointer', fontSize:12, fontWeight:700 }}>
+              {loadingCiclo?'Generando...':'⚡ Nuevo ciclo'}
+            </button>
+            <button onClick={async () => {
+              if (!atletaId) return alert('Seleccioná un atleta primero')
+              setSyncLoading(true)
+              try {
+                const r = await axios.post(`${API}/atletas/${atletaId}/sincronizar`, {modo:'todo'})
+                const out = r.data.data?.output || ''
+                const msg = out.includes('nueva') ? `✓ Actividad nueva sincronizada` : 'Sin actividades nuevas hoy'
+                alert(msg)
+                cargarPresc()
+              } catch { alert('Error al sincronizar') }
+              setSyncLoading(false)
+            }} disabled={syncLoading} style={{ padding:'7px 14px', borderRadius:9, border:'1px solid rgba(255,255,255,0.28)', background:'rgba(255,255,255,0.12)', color:'#fff', cursor:'pointer', fontSize:12, fontWeight:600 }}>
+              {syncLoading ? '⏳ Sincronizando...' : '🔄 Sync'}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div style={{ padding:'18px 26px 22px' }}>
-      {/* Header atleta */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:18 }}>
-        <div>
-          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:5 }}>
-            <h1 style={{ fontSize:22, fontWeight:800, color:C.text }}>{atleta.nombre}</h1>
-            {/* Ícono deporte grande y claro */}
-            <div style={{ display:'flex', alignItems:'center', gap:5, background:s.light, borderRadius:7, padding:'4px 10px', border:`1px solid ${s.color}33` }}>
-              <s.Icon size={16} color={s.color} />
-              <span style={{ fontSize:11, fontWeight:700, color:s.color, letterSpacing:0.8 }}>{s.label.toUpperCase()}</span>
-            </div>
-          </div>
-          <div style={{ fontSize:12, color:C.text2 }}>{atleta.deporte} · LTHR {atleta.lthr_run} · {atleta.email}</div>
-        </div>
-        <div style={{ display:'flex', gap:8 }}>
-          <a href={`/atleta/${atleta.id}`} target="_blank" rel="noreferrer" style={{ textDecoration:'none' }}>
-            <button style={{ padding:'7px 14px', borderRadius:7, border:`1px solid ${C.border}`, background:C.bg3, color:C.text2, cursor:'pointer', fontSize:12, fontWeight:500 }}>
-              👤 Ver como atleta
-            </button>
-          </a>
-          <button onClick={generarCiclo} disabled={loadingCiclo} style={{ padding:'7px 14px', borderRadius:7, border:'none', background:C.purple, color:'#fff', cursor:'pointer', fontSize:12, fontWeight:600 }}>
-            {loadingCiclo?'Generando...':'⚡ Nuevo ciclo'}
-          </button>
-          <button onClick={async () => {
-            if (!atletaId) return alert('Seleccioná un atleta primero')
-            setSyncLoading(true)
-            try {
-              const r = await axios.post(`${API}/atletas/${atletaId}/sincronizar`, {modo:'todo'})
-              const out = r.data.data?.output || ''
-              const msg = out.includes('nueva') ? `✓ Actividad nueva sincronizada` : 'Sin actividades nuevas hoy'
-              alert(msg)
-              cargarPresc()
-            } catch { alert('Error al sincronizar') }
-            setSyncLoading(false)
-          }} disabled={syncLoading} style={{ padding:'7px 14px', borderRadius:7, border:`1px solid ${C.border}`, background:C.bg3, color:C.text2, cursor:'pointer', fontSize:12, fontWeight:500 }}>
-            {syncLoading ? '⏳ Sincronizando...' : '🔄 Sync'}
-          </button>
-        </div>
-      </div>
-
       {/* Métricas -- badges circulares con vidrio esmerilado */}
       <div style={{
         display:'flex', justifyContent:'space-around', flexWrap:'wrap', gap:14,
@@ -3502,6 +3516,8 @@ function CoachApp() {
   const [loading, setLoading] = useState(true)
   const [colapsado, setColapsado] = useState(false)  // sidebar dinamico: abierto/cerrado
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)  // drawer mobile: abierto/cerrado (no afecta PC)
+  const [vista, setVista] = useState('home')          // 'home' (panorama) | 'seccion' (pagina de una seccion)
+  const [tabCoach, setTabCoach] = useState('semana')  // seccion activa cuando vista==='seccion'
 
   const cargarAtletas = async () => {
     try { const r=await axios.get(`${API}/atletas`); setAtletas(r.data.data); if(!selectedId&&r.data.data.length>0)setSelectedId(r.data.data[0].id) }
@@ -3510,6 +3526,15 @@ function CoachApp() {
   }
   useEffect(()=>{cargarAtletas()},[])
   const selectedAtleta = atletas.find(a=>a.id===selectedId)||null
+
+  // Navegación del coach: Home (panorama) -> seccion (pagina sola) y vuelta.
+  const irAInicio = () => { setVista('home'); setMobileMenuOpen(false) }
+  const irASeccion = (secId) => {
+    // Las secciones son por atleta: si no hay uno elegido, tomar el primero.
+    if (!selectedId && atletas.length) setSelectedId(atletas[0].id)
+    setTabCoach(secId); setVista('seccion'); setMobileMenuOpen(false)
+  }
+  const irAtleta = (id) => { setSelectedId(id); setVista('seccion'); setMobileMenuOpen(false) }
 
   return (
     <>
@@ -3546,48 +3571,57 @@ function CoachApp() {
       <div style={{ display:'flex', height:'100vh', overflow:'hidden' }}>
         {/* Sidebar -- ancho dinamico: 268px abierto, 64px colapsado (PC).
             En mobile se convierte en panel deslizable via CSS de arriba. */}
-        <div className={`coach-sidebar${mobileMenuOpen ? ' mobile-open' : ''}`} style={{ width: colapsado ? 64 : 268, flexShrink:0, background:C.bg2, borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column', transition:'width 0.2s' }}>
-          <div style={{ padding: colapsado ? '18px 0 14px' : '18px 16px 14px', borderBottom:`1px solid ${C.border}`, display:'flex', flexDirection:'column', alignItems: colapsado ? 'center' : 'stretch' }}>
+        <div className={`coach-sidebar${mobileMenuOpen ? ' mobile-open' : ''}`} style={{ width: colapsado ? 64 : 268, flexShrink:0, background:`linear-gradient(180deg, ${C.sidebarA}, ${C.sidebarB})`, borderRight:'1px solid rgba(255,255,255,0.10)', display:'flex', flexDirection:'column', transition:'width 0.2s' }}>
+          <div style={{ padding: colapsado ? '18px 0 14px' : '18px 16px 14px', borderBottom:'1px solid rgba(255,255,255,0.14)', display:'flex', flexDirection:'column', alignItems: colapsado ? 'center' : 'stretch' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               {!colapsado && (
-                <div style={{ display:'flex', alignItems:'baseline' }}>
-                  <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:C.text }}>N</span>
-                  <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:C.run }}>O</span>
-                  <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:C.text }}>A</span>
-                  <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:C.run }}>H</span>
+                <div style={{ display:'flex', alignItems:'baseline', cursor:'pointer' }} onClick={irAInicio} title="Inicio">
+                  <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:'#fff' }}>N</span>
+                  <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:'#CFF3E6' }}>O</span>
+                  <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:'#fff' }}>A</span>
+                  <span style={{ fontSize:22, fontWeight:800, letterSpacing:6, color:'#CFF3E6' }}>H</span>
                 </div>
               )}
               <button onClick={()=>setColapsado(c=>!c)} title={colapsado?'Expandir':'Colapsar'} style={{
-                background:'transparent', border:`1px solid ${C.border}`, borderRadius:6,
+                background:'transparent', border:'1px solid rgba(255,255,255,0.25)', borderRadius:6,
                 width:22, height:22, display:'flex', alignItems:'center', justifyContent:'center',
-                cursor:'pointer', color:C.text2, fontSize:11, flexShrink:0,
+                cursor:'pointer', color:'rgba(255,255,255,0.8)', fontSize:11, flexShrink:0,
               }}>{colapsado?'›':'‹'}</button>
             </div>
-            {!colapsado && <div style={{ fontSize:9, color:C.text2, letterSpacing:2.5, marginTop:2, textTransform:'uppercase' }}>NOAH Coach</div>}
+            {!colapsado && <div style={{ fontSize:9, color:'rgba(255,255,255,0.65)', letterSpacing:2.5, marginTop:2, textTransform:'uppercase' }}>NOAH Coach</div>}
           </div>
 
-          {/* Imagen de marca NOAH -- interactiva y liviana: reutiliza datos
-              ya cargados (selectedAtleta), sin llamadas nuevas ni librerias. */}
           {/* Imagen de marca NOAH -- alterna al azar entre masculino/femenino en cada carga. */}
           {!colapsado && (
-            <div style={{ position:'relative', width:'100%', height:280, overflow:'hidden' }}>
+            <div style={{ position:'relative', width:'100%', height:200, overflow:'hidden' }}>
               <img src={Math.random() < 0.5 ? '/assets/noah_avatar_m.png' : '/assets/noah_avatar_f.png'}
                 alt="" onError={e=>{e.target.parentElement.style.display='none'}}
                 style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition:'top center', display:'block' }} />
               <div style={{
-                position:'absolute', left:0, right:0, bottom:0, height:'50%',
-                background:`linear-gradient(to bottom, transparent, ${C.bg2}CC 60%, ${C.bg2} 100%)`,
+                position:'absolute', left:0, right:0, bottom:0, height:'55%',
+                background:`linear-gradient(to bottom, transparent, ${C.sidebarB})`,
                 pointerEvents:'none',
               }}/>
             </div>
           )}
 
-          <div style={{ flex:1, overflow:'auto' }}>
-            {loading?(!colapsado && <div style={{ padding:14, color:C.text2, fontSize:13 }}>Cargando...</div>)
-              :atletas.map(a=><AtletaItem key={a.id} atleta={a} selected={selectedId===a.id} onClick={()=>{setSelectedId(a.id); setMobileMenuOpen(false)}} colapsado={colapsado} />)}
+          {/* Botón Inicio (panorama) */}
+          <div style={{ padding: colapsado ? '8px 6px 4px' : '10px 10px 4px' }}>
+            <button onClick={irAInicio} title="Inicio" style={{
+              width:'100%', display:'flex', alignItems:'center', justifyContent: colapsado ? 'center' : 'flex-start', gap:9,
+              padding: colapsado ? '9px 0' : '9px 12px', borderRadius:10, cursor:'pointer',
+              border:`1px solid ${vista==='home' ? 'rgba(255,255,255,0.0)' : 'rgba(255,255,255,0.18)'}`,
+              background: vista==='home' ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.06)',
+              color:'#fff', fontSize:13, fontWeight:700,
+            }}>🏠{!colapsado && <span>Inicio</span>}</button>
           </div>
-          <div style={{ padding:10, borderTop:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:6 }}>
-            <button onClick={()=>setShowModal(true)} title="Agregar atleta" style={{ width:'100%', padding:'9px', borderRadius:8, border:'none', background:C.purple, color:'#fff', cursor:'pointer', fontSize:13, fontWeight:600 }}>
+
+          <div style={{ flex:1, overflow:'auto' }}>
+            {loading?(!colapsado && <div style={{ padding:14, color:'rgba(255,255,255,0.75)', fontSize:13 }}>Cargando...</div>)
+              :atletas.map(a=><AtletaItem key={a.id} atleta={a} selected={vista==='seccion' && selectedId===a.id} onClick={()=>irAtleta(a.id)} colapsado={colapsado} />)}
+          </div>
+          <div style={{ padding:10, borderTop:'1px solid rgba(255,255,255,0.14)', display:'flex', flexDirection:'column', gap:7 }}>
+            <button onClick={()=>setShowModal(true)} title="Agregar atleta" style={{ width:'100%', padding:'10px', borderRadius:10, border:'none', background:C.violet, color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
               {colapsado ? '+' : '+ Agregar atleta'}
             </button>
             <button onClick={()=>{
@@ -3596,12 +3630,32 @@ function CoachApp() {
               if (s?.token) axios.post(`${API}/logout`, {}).catch(()=>{})
               limpiarSesion()
               window.location.href = '/login'
-            }} title="Cerrar sesión" style={{ width:'100%', padding:'8px', borderRadius:8, border:`1px solid ${C.border}`, background:'transparent', color:C.text2, cursor:'pointer', fontSize:12, fontWeight:600 }}>
+            }} title="Cerrar sesión" style={{ width:'100%', padding:'9px', borderRadius:10, border:'1px solid rgba(255,255,255,0.25)', background:'transparent', color:'rgba(255,255,255,0.85)', cursor:'pointer', fontSize:12, fontWeight:600 }}>
               {colapsado ? '⏻' : 'Cerrar sesión'}
             </button>
           </div>
         </div>
-        <DashboardAtleta key={selectedId} atletaId={selectedId} atleta={selectedAtleta} />
+
+        {vista === 'home' ? (
+          <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', background:C.bg, overflow:'hidden' }}>
+            {/* Header violeta con glow verde */}
+            <div style={{ position:'relative', overflow:'hidden', background:`linear-gradient(135deg, ${C.violet}, ${C.violetD})`, padding:'20px 26px 18px', flexShrink:0 }}>
+              <div style={{ position:'absolute', inset:0, background:'radial-gradient(120% 130% at 90% 0%, rgba(53,194,155,0.33), transparent 55%)', pointerEvents:'none' }}/>
+              <div style={{ position:'relative' }}>
+                <div style={{ fontSize:10.5, fontWeight:700, letterSpacing:2, color:'rgba(255,255,255,0.72)', textTransform:'uppercase' }}>Coach</div>
+                <div style={{ fontSize:23, fontWeight:800, color:'#fff', letterSpacing:-0.3, marginTop:2 }}>Tus atletas</div>
+              </div>
+            </div>
+            {/* Contenido: panorama + secciones */}
+            <div style={{ flex:1, overflow:'auto', padding:'20px 26px 44px' }}>
+              <CoachHome onSelect={irAtleta} />
+              <div style={{ margin:'24px 0 12px', fontSize:12, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase', color:'rgba(245,247,250,0.5)' }}>Secciones</div>
+              <SeccionesCoach onSelect={irASeccion} activo={null} />
+            </div>
+          </div>
+        ) : (
+          <DashboardAtleta key={selectedId} atletaId={selectedId} atleta={selectedAtleta} tabInicial={tabCoach} onInicio={irAInicio} />
+        )}
       </div>
       {showModal&&<OnboardingAtleta onClose={()=>setShowModal(false)} onCreado={cargarAtletas} />}
     </>
