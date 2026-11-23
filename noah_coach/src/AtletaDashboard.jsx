@@ -471,7 +471,7 @@ function resumenTextoPlan(bloques) {
   }).join(' + ')
 }
 
-function WorkoutChart({ sesion, atletaId, mostrarGrafico = true }) {
+function WorkoutChart({ sesion, atletaId, mostrarGrafico = true, graphBleed = 0 }) {
   const sport = sesion?.sport || 'running'
   const zonas = useZonasAtletaDash(atletaId, sport)
   if (!sesion?.bloques?.length) return null
@@ -535,18 +535,20 @@ function WorkoutChart({ sesion, atletaId, mostrarGrafico = true }) {
   return (
     <div>
       {/* Resumen del plan — una línea legible */}
-      <div style={{ fontSize:13, fontWeight:600, color:NOAH_C.ink, marginBottom:4, lineHeight:1.5 }}>
+      <div style={{ fontSize:13, fontWeight:600, color:NOAH.ink, marginBottom:4, lineHeight:1.5 }}>
         {resumenTextoPlan(sesion.bloques)}
       </div>
-      <div style={{ fontSize:11, color:NOAH_C.ink3, marginBottom:mostrarGrafico?14:10 }}>
+      <div style={{ fontSize:11, color:NOAH.ink45, marginBottom:mostrarGrafico?14:10 }}>
         ⏱ {Math.round(sesion.duracion)} min total · TSS {sesion.tss}
       </div>
 
       {mostrarGrafico && (
         <div style={{
-          background:'linear-gradient(160deg, #1A1F2E 0%, #11151F 100%)',
-          borderRadius:14, padding:'16px 14px 8px', marginBottom:12,
-          boxShadow:'0 8px 24px -8px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04)',
+          background:'linear-gradient(165deg, #1C211C 0%, #13160F 100%)',
+          borderRadius:20, padding:'16px 14px 8px', marginBottom:12,
+          marginLeft:-graphBleed, marginRight:-graphBleed,
+          border:'1px solid rgba(255,255,255,0.08)',
+          boxShadow:'0 14px 34px -18px rgba(41,45,41,0.55)',
         }}>
           <ResponsiveContainer width="100%" height={170}>
             <AreaChart data={perfil} margin={{top:4,right:4,left:-18,bottom:0}}>
@@ -589,21 +591,21 @@ function WorkoutChart({ sesion, atletaId, mostrarGrafico = true }) {
 
       {/* Referencia de zona del atleta — SOLO watts/pace, nunca HR */}
       {(refZonaStr || sugerenciaPisoTecho) && (
-        <div style={{ fontSize:11, color:'rgba(255,255,255,0.55)', marginBottom:10, padding:'8px 12px',
-          background:'rgba(255,255,255,0.04)', borderRadius:8, border:`1px solid ${NOAH_C.border}` }}>
-          {refZonaStr && <span>Referencia {zonaPrincipal}: <b style={{color:sc.color}}>{refZonaStr}</b></span>}
+        <div style={{ fontSize:11, color:NOAH.ink70, marginBottom:10, padding:'8px 12px',
+          background:NOAH.surfaceAlt, borderRadius:10, border:`1px solid ${NOAH.border}` }}>
+          {refZonaStr && <span>Referencia {zonaPrincipal}: <b style={{color:NOAH.salvia}}>{refZonaStr}</b></span>}
           {refZonaStr && sugerenciaPisoTecho && <span> · </span>}
           {sugerenciaPisoTecho && <span style={{fontStyle:'italic'}}>{sugerenciaPisoTecho}</span>}
         </div>
       )}
 
-      {/* Nutrición */}
+      {/* Nutrición — estilo app (salvia), no naranja */}
       {sesion.descripcion && sesion.descripcion.includes('Nutrición:') && (
-        <div style={{ padding:'10px 14px', background:NOAH_C.warningL,
-          border:`1px solid ${NOAH_C.warning}40`, borderRadius:8, fontSize:12, color:NOAH_C.warning, lineHeight:1.5,
-          display:'flex', alignItems:'flex-start', gap:6 }}>
-          <Banana size={14} style={{flexShrink:0, marginTop:1}}/>
-          <span><b>Nutrición sugerida:</b> {sesion.descripcion.split('Nutrición:')[1].trim()}</span>
+        <div style={{ padding:'10px 13px', background:'rgba(120,134,107,0.10)',
+          border:`1px solid rgba(120,134,107,0.30)`, borderRadius:12, fontSize:12, color:NOAH.ink70, lineHeight:1.5,
+          display:'flex', alignItems:'flex-start', gap:7 }}>
+          <Banana size={14} color={NOAH.salvia} style={{flexShrink:0, marginTop:1}}/>
+          <span><b style={{color:NOAH.salvia}}>Nutrición sugerida:</b> {sesion.descripcion.split('Nutrición:')[1].trim()}</span>
         </div>
       )}
     </div>
@@ -4609,7 +4611,7 @@ function SesionDelDiaV2({ atletaId, presc }) {
                     <div style={{ fontFamily: FONT.base, fontSize: 11.5, color: NOAH.ink45 }}>{Math.round(ses.duracion)}min · TSS {ses.tss}</div>
                   </div>
                 </div>
-                <WorkoutChart sesion={ses} atletaId={atletaId} />
+                <WorkoutChart sesion={ses} atletaId={atletaId} graphBleed={12} />
               </div>
             )
           })}
