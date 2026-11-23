@@ -102,6 +102,19 @@ def error(msg, code=400):
 def ok(data):
     return jsonify({'ok': True, 'data': data})
 
+def _subprocess_env():
+    """Env para subprocesos Python. En Vercel las dependencias (numpy, pandas,
+    etc.) viven en el sys.path del handler, pero un subproceso lanzado con
+    sys.executable arranca con su path por defecto y NO las encuentra (por eso
+    fallaba 'No module named numpy' al generar el ciclo). Le reenviamos el
+    sys.path del proceso padre via PYTHONPATH para que importe igual que app.py."""
+    env = os.environ.copy()
+    env['PYTHONIOENCODING'] = 'utf-8'
+    extra = os.pathsep.join([p for p in sys.path if p])
+    prev = env.get('PYTHONPATH', '')
+    env['PYTHONPATH'] = (extra + ((os.pathsep + prev) if prev else '')) if extra else prev
+    return env
+
 def _query_rollback_safe(conn, sql, params):
     """Ejecuta un SELECT; si falla (p.ej. columna inexistente en este
     entorno), hace rollback para no dejar la conexión en estado 'aborted'
@@ -1366,8 +1379,7 @@ def generar_ciclo(atleta_id):
             '--atleta', str(atleta_id),
         ]
 
-        env = os.environ.copy()
-        env['PYTHONIOENCODING'] = 'utf-8'
+        env = _subprocess_env()
         result = subprocess.run(
             cmd,
             capture_output=True, text=True,
@@ -1486,7 +1498,8 @@ def importar_actividades(atleta_id):
     result = subprocess.run(
         [sys.executable, str(BASE_DIR / 'importar_activities.py'),
          '--atleta', str(atleta_id), '--csv', str(tmp_path)],
-        capture_output=True, text=True, cwd=str(BASE_DIR), encoding='utf-8', errors='replace'
+        capture_output=True, text=True, cwd=str(BASE_DIR), encoding='utf-8', errors='replace',
+        env=_subprocess_env()
     )
     tmp_path.unlink(missing_ok=True)
 
@@ -5492,7 +5505,7 @@ def auto_sync(atleta_id):
             try:
                 result = subprocess.run(
                     [sys.executable, str(script), '--atleta_id', str(atleta_id)],
-                    capture_output=True, text=True, timeout=60)
+                    capture_output=True, text=True, timeout=60, env=_subprocess_env())
                 if result.returncode == 0:
                     sincronizadas = fechas_sin_datos[:3]
                 else:
@@ -5509,7 +5522,7 @@ def auto_sync(atleta_id):
             try:
                 result = subprocess.run(
                     [sys.executable, str(script), '--atleta', str(atleta_id), '--modo', 'todo', '--fecha', fecha],
-                    capture_output=True, text=True, timeout=60)
+                    capture_output=True, text=True, timeout=60, env=_subprocess_env())
                 if result.returncode == 0:
                     sincronizadas.append(fecha)
                 else:
