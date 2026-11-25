@@ -3119,7 +3119,6 @@ function DashboardAtleta({ atletaId, atleta, tabInicial = 'semana', onInicio }) 
   const [loadingCiclo, setLoadingCiclo] = useState(false)
   const [syncLoading, setSyncLoading] = useState(false)
   const [tab, setTab]           = useState(tabInicial)
-  const [menuOpen, setMenuOpen] = useState(window.innerWidth > 768)
   const [subTabZonas, setSubTabZonas] = useState('running')
 
   // Cuando se entra a una sección desde los botones del Home, sincronizar el tab.
@@ -3267,9 +3266,26 @@ function DashboardAtleta({ atletaId, atleta, tabInicial = 'semana', onInicio }) 
         <MetricBadgeCircular label="Diagnóstico" value={diag?.score_general?`${diag.score_general}`:'--'} sub={diag?.color||'calculando'} color={{verde:C.done,amarillo:C.amber,rojo:C.miss}[diag?.color]||C.text2} />
       </div>
 
-      {/* Tabs -- ahora en columna vertical a la derecha (ver cierre mas abajo) */}
-      <div style={{ display:'flex', gap:16, alignItems:'flex-start' }}>
-        <div style={{ flex:1, minWidth:0 }}>
+      {/* Barra de secciones -- horizontal, en filas, neutra (sin colores) y compacta.
+          Se acomoda sola en PC y en mobile (una fila arriba de otra). */}
+      <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:16 }}>
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} title={t.label} style={{
+            display:'flex', alignItems:'center', gap:7,
+            padding:'7px 12px', borderRadius:9,
+            border:`1px solid ${tab===t.id ? 'rgba(255,255,255,0.30)' : 'rgba(255,255,255,0.10)'}`,
+            background: tab===t.id ? 'rgba(255,255,255,0.11)' : 'rgba(255,255,255,0.03)',
+            color: tab===t.id ? '#fff' : C.text2, cursor:'pointer',
+            fontWeight: tab===t.id?700:500, fontSize:12, whiteSpace:'nowrap',
+            transition:'all 0.15s',
+          }}>
+            <span style={{display:'flex',alignItems:'center'}} dangerouslySetInnerHTML={tabIcons[t.id] || {__html:''}} />
+            <span>{t.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div>
 
       {tab==='semana'&&(
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
@@ -3456,53 +3472,6 @@ function DashboardAtleta({ atletaId, atleta, tabInicial = 'semana', onInicio }) 
         </div>
       )}
         </div>
-
-        {/* Boton hamburguesa mobile */}
-        {window.innerWidth <= 768 && (
-          <button onClick={()=>setMenuOpen(!menuOpen)} style={{
-            position:'fixed', bottom:16, right:16, zIndex:100,
-            width:48, height:48, borderRadius:24, border:'none',
-            background:C.purple, color:'#fff', cursor:'pointer',
-            boxShadow:'0 4px 16px rgba(139,92,246,0.4)', fontSize:20,
-            display:'flex', alignItems:'center', justifyContent:'center',
-          }}>
-            {menuOpen ? '✕' : '☰'}
-          </button>
-        )}
-
-        {/* Rail vertical de tabs */}
-        <div style={{
-          width: window.innerWidth <= 768 ? (menuOpen ? 52 : 0) : 140,
-          flexShrink:0, display:'flex', flexDirection:'column', gap:4,
-          position: window.innerWidth <= 768 ? 'fixed' : 'sticky',
-          top: window.innerWidth <= 768 ? 0 : 0,
-          right: window.innerWidth <= 768 ? 0 : 'auto',
-          bottom: window.innerWidth <= 768 ? 60 : 'auto',
-          zIndex: window.innerWidth <= 768 ? 99 : 'auto',
-          background: window.innerWidth <= 768 ? C.bg2 : 'transparent',
-          borderLeft: window.innerWidth <= 768 ? `1px solid ${C.border}` : 'none',
-          padding: window.innerWidth <= 768 ? '8px 4px' : 0,
-          overflowY:'auto',
-          transition:'width 0.2s',
-          ...(window.innerWidth <= 768 && !menuOpen ? {width:0, padding:0, overflow:'hidden'} : {}),
-        }}>
-          {tabs.map(t=>(
-            <button key={t.id} onClick={()=>{setTab(t.id); if(window.innerWidth<=768) setMenuOpen(false)}} title={t.label} style={{
-              display:'flex', alignItems:'center', gap:8,
-              padding: window.innerWidth <= 768 ? '8px 10px' : '8px 12px',
-              borderRadius:10, border:`1px solid ${tab===t.id?C.purple:C.border}`,
-              background: tab===t.id ? `${C.purple}18` : 'rgba(255,255,255,0.02)',
-              backdropFilter:'blur(6px)', WebkitBackdropFilter:'blur(6px)',
-              color: tab===t.id?C.purple:C.text2, cursor:'pointer',
-              fontWeight: tab===t.id?700:500, fontSize:11.5, textAlign:'left',
-              transition:'all 0.15s', whiteSpace:'nowrap',
-            }}>
-              <span style={{display:'flex',alignItems:'center'}} dangerouslySetInnerHTML={tabIcons[t.id] || {__html:''}} />
-              {window.innerWidth > 768 && <span>{t.label}</span>}
-            </button>
-          ))}
-        </div>
-      </div>
       </div>
     </div>
   )
