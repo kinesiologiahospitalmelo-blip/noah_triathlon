@@ -229,7 +229,11 @@ function AtletaCard({ a, carrera, onSelect }) {
   const est = estado?.estado || {}
   const hanna = est.hanna_life
   const cuerpo = a.cuerpo
-  const riesgoViral = est.riesgo_viral
+  // Riesgo de enfermedad UNIFICADO (viral + centinela) con fuente; cae al viral
+  // viejo solo si el backend todavía no recalculó.
+  const riesgoEnf = est.riesgo_enf != null ? est.riesgo_enf : est.riesgo_viral
+  const enfFuente = est.riesgo_enf_fuente   // medido / estimado / no_evaluable
+  const enfTag = enfFuente === 'estimado' ? ' · estimativo' : enfFuente === 'no_evaluable' ? ' · no eval.' : ''
   const ctl = est.ctl, atl = est.atl, tsb = est.tsb
   const tsbCol = tsb == null ? P.ink3 : tsb >= 5 ? P.green : tsb >= -15 ? P.amber : P.red
   const km = est.km_semana
@@ -292,7 +296,7 @@ function AtletaCard({ a, carrera, onSelect }) {
 
       {/* Riesgos: enfermedad + lesión */}
       <div style={{ display: 'flex', gap: 7 }}>
-        <Chip Icon={ShieldAlert} label="Riesgo enfermedad" value={riesgoViral != null ? `${Math.round(riesgoViral)}%` : '—'} col={colRiesgo(riesgoViral)} />
+        <Chip Icon={ShieldAlert} label={`Riesgo enfermedad${enfTag}`} value={enfFuente === 'no_evaluable' ? 'no eval.' : riesgoEnf != null ? `${Math.round(riesgoEnf)}%` : '—'} col={enfFuente === 'no_evaluable' ? P.ink3 : colRiesgo(riesgoEnf)} />
         <Chip Icon={Bone} label={acwr?.disponible ? `Lesión · ACWR ${acwr.acwr ?? '—'}` : 'Riesgo lesión'} value={nivelLesion ? nivelLesion.charAt(0).toUpperCase() + nivelLesion.slice(1) : '—'} col={colLesion(nivelLesion)} />
       </div>
 
