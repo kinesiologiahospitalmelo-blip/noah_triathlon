@@ -5106,7 +5106,8 @@ def get_hanna_life(atleta_id):
                    estado_autonomico, modificador_carga,
                    centinela_nivel, centinela_msg, fc_reposo_delta, hrv_cv,
                    impacto_carga, carga_estado, hanna_veredicto,
-                   riesgo_enf_pct, riesgo_enf_nivel, riesgo_enf_fuente, bb_alerta_msg
+                   riesgo_enf_pct, riesgo_enf_nivel, riesgo_enf_fuente, bb_alerta_msg,
+                   deep_h, rem_h, light_h, awake_h
             FROM sleep_hrv
             WHERE atleta_id=%s AND fecha >= %s
             ORDER BY fecha ASC
@@ -5145,6 +5146,10 @@ def get_hanna_life(atleta_id):
                 'riesgo_enf_nivel':r[23],
                 'riesgo_enf_fuente':r[24],     # medido / estimado / no_evaluable
                 'bb_alerta':       r[25],      # aviso de divergencia body battery (texto)
+                'deep_h':          r[26],      # sueño profundo (h)
+                'rem_h':           r[27],      # sueño REM (h)
+                'light_h':         r[28],      # sueño liviano (h)
+                'awake_h':         r[29],      # tiempo despierto (h)
             })
 
         # Hanna hoy — tomar el último punto calculado

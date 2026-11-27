@@ -1202,7 +1202,8 @@ def get_hanna_hoy(conn, atleta_id: int,
                body_battery, stress_avg, sleep_h, hr_reposo, spo2_avg,
                centinela_nivel, centinela_msg, fc_reposo_delta, hrv_cv,
                impacto_carga, carga_estado, hanna_veredicto,
-               riesgo_enf_pct, riesgo_enf_nivel, riesgo_enf_fuente, bb_alerta_msg
+               riesgo_enf_pct, riesgo_enf_nivel, riesgo_enf_fuente, bb_alerta_msg,
+               deep_h, rem_h, light_h, awake_h
         FROM sleep_hrv WHERE atleta_id=%s
         AND fecha <= %s AND hanna_life IS NOT NULL
         ORDER BY fecha DESC LIMIT 1
@@ -1248,6 +1249,10 @@ def get_hanna_hoy(conn, atleta_id: int,
         'riesgo_enf_nivel':     row[27],
         'riesgo_enf_fuente':    row[28],
         'bb_alerta_msg':        row[29],
+        'deep_h':               row[30],
+        'rem_h':                row[31],
+        'light_h':              row[32],
+        'awake_h':              row[33],
     }
 
 
