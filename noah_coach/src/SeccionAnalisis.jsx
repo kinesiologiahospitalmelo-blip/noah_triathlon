@@ -505,6 +505,27 @@ export default function SeccionAnalisis({ atletaId }) {
   const enfColor = enf == null ? NOAH.ink45 : enf >= 60 ? SEMA.bad : enf >= 30 ? SEMA.warn : SEMA.ok
   const fuenteLabel = { medido: 'medido', estimado: 'estimativo', no_evaluable: 'no evaluable' }[enfFuente] || null
 
+  // ── Arquitectura del sueño (REM / profundo / liviano) — hoy + 7 días ──────
+  // Norma de arquitectura adulta (Ohayon 2004): REM ~20-25%, profundo ~13-23%.
+  const slH = hoy?.sleep_h ?? e.sleep_h
+  const pctDe = h => (h != null && slH) ? Math.round((h / slH) * 100) : null
+  const remPct = pctDe(hoy?.rem_h), deepPct = pctDe(hoy?.deep_h), lightPct = pctDe(hoy?.light_h)
+  const sueCal = hoy?.hanna_scores?.sueno_cal
+  const stageCol = (p, lo) => p == null ? NOAH.ink45 : p >= lo ? SEMA.ok : p >= lo * 0.72 ? SEMA.warn : NOAH.coral
+  const remCol = stageCol(remPct, 18), deepCol = stageCol(deepPct, 12)
+  const sleep7 = (hanna?.puntos || []).filter(p => p.sleep && (p.rem_h != null || p.deep_h != null)).slice(-7)
+  const prom7 = key => { const vs = sleep7.map(p => (p.sleep ? (p[key] / p.sleep) * 100 : null)).filter(v => v != null && isFinite(v)); return vs.length ? Math.round(vs.reduce((a, b) => a + b, 0) / vs.length) : null }
+  const rem7 = prom7('rem_h'), deep7 = prom7('deep_h')
+  const lecturaSueno = (() => {
+    if (remPct == null && deepPct == null) return null
+    const partes = []
+    if (remPct != null) partes.push(remPct >= 18 ? `REM ${remPct}% (bien)` : `REM ${remPct}% bajo (ideal 20-25%)`)
+    if (deepPct != null) partes.push(deepPct >= 12 ? `profundo ${deepPct}% (bien)` : `profundo ${deepPct}% bajo (ideal 13-23%)`)
+    let txt = `Dormiste ${slH != null ? slH.toFixed(1) : '—'}h — ${partes.join(' · ')}.`
+    if (rem7 != null || deep7 != null) txt += ` Promedio 7 días: ${rem7 != null ? `REM ${rem7}%` : ''}${rem7 != null && deep7 != null ? ' · ' : ''}${deep7 != null ? `profundo ${deep7}%` : ''}.`
+    return txt
+  })()
+
   // Centinela de aviso temprano (complementa al riesgo viral, no lo reemplaza):
   // FC reposo en alza + variabilidad (CV) de HRV subiendo. Datos del backend.
   const cent = { nivel: hoy.centinela_nivel, msg: hoy.centinela_msg, dFC: hoy.fc_reposo_delta, cv: hoy.hrv_cv }
@@ -747,6 +768,34 @@ export default function SeccionAnalisis({ atletaId }) {
           <MiniRing Icon={Activity} label="Recovery" value={rc != null ? Math.round(rc) : null} max={100} unit="/100" color={colRC} delay={60} />
           <MiniRing Icon={Brain} label="Estrés" value={st != null ? Math.round(st) : null} max={100} unit="/100" color={colST} delay={120} />
         </div>
+
+        {/* Arquitectura del sueño — REM / profundo / liviano en anillos + lectura 7d */}
+        {(remPct != null || deepPct != null) && (
+          <div style={{ ...surface({ padding: '14px 14px 12px', marginBottom: 10 }) }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, padding: '0 2px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Moon size={13} color={NOAH.salvia} strokeWidth={2.3} />
+                <span style={eyebrow}>Arquitectura del sueño</span>
+              </div>
+              {sueCal != null && (
+                <span style={{ fontFamily: M, fontSize: 12, fontWeight: 700, color: sueCal >= 62 ? SEMA.ok : sueCal >= 40 ? SEMA.warn : NOAH.coral }}>
+                  calidad {Math.round(sueCal)}<span style={{ fontSize: 9, color: NOAH.ink45, fontWeight: 400 }}>/100</span>
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              <MiniRing Icon={Moon} label="REM" value={remPct} max={35} unit={hoy?.rem_h != null ? `${hoy.rem_h.toFixed(1)}h · ideal 20-25%` : '%'} color={remCol} delay={0} />
+              <MiniRing Icon={Moon} label="Profundo" value={deepPct} max={30} unit={hoy?.deep_h != null ? `${hoy.deep_h.toFixed(1)}h · ideal 13-23%` : '%'} color={deepCol} delay={60} />
+              <MiniRing Icon={Moon} label="Liviano" value={lightPct} max={70} unit={hoy?.light_h != null ? `${hoy.light_h.toFixed(1)}h` : '%'} color={NOAH.salvia} delay={120} />
+            </div>
+            {lecturaSueno && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginTop: 11, padding: '9px 11px', borderRadius: 10, background: 'rgba(120,134,107,0.08)', border: `1px solid ${NOAH.border}` }}>
+                <Brain size={12} color={NOAH.salvia} strokeWidth={2.3} style={{ flex: '0 0 auto', marginTop: 1 }} />
+                <span style={{ fontFamily: F, fontSize: 11, color: NOAH.ink70, lineHeight: 1.45 }}>{lecturaSueno}</span>
+              </div>
+            )}
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {/* Sueño — barra */}
           <div style={{ ...surface({ padding: '13px 14px' }) }}>
