@@ -38,6 +38,12 @@ function authFetch(url, options = {}) {
 
 const F = FONT.base, M = FONT.mono
 const SEMA = { ok: '#35C07A', warn: '#E8A24B', bad: '#E2726E' }
+const AZUL_CLARO = '#7FC0F2'   // línea CUERPO (biomarcadores) — azul clara
+const VEREDICTO = {
+  cargar:  { label: 'Cargá normal', col: '#35C07A' },
+  reducir: { label: 'Reducí / ajustá', col: '#E8A24B' },
+  revisar: { label: 'Revisá / recuperá', col: '#E2726E' },
+}
 const NIVEL = { 'Óptimo': SEMA.ok, 'Bueno': NOAH.azul, 'Moderado': SEMA.warn, 'Bajo': NOAH.coral, 'Crítico': SEMA.bad }
 const RIESGO = { bajo: SEMA.ok, moderado: SEMA.warn, alto: NOAH.coral, critico: SEMA.bad }
 
@@ -118,7 +124,6 @@ function HannaPrediccion({ puntos, hoy, dias }) {
 
   const hl = hoy?.hanna_life ?? pts[pts.length - 1].hanna_life
   const tsb = hoy?.hanna_scores?.tsb ?? 0
-  const rvHoy = hoy?.riesgo_viral ?? 0
 
   // Línea base personal (media real de los últimos 30 días) y umbral de riesgo.
   const vals = pts.map(p => p.hanna_life)
@@ -189,11 +194,24 @@ function HannaPrediccion({ puntos, hoy, dias }) {
     : ''
   const cuerpoHoy = hoy?.cuerpo ?? pts[pts.length - 1]?.cuerpo
   const gap = (hl != null && cuerpoHoy != null) ? hl - cuerpoHoy : null
+  // Área de IMPACTO entre cuerpo (azul) e integrada (HANNA): el relleno = cuánto
+  // la carga/estado mueve al cuerpo. Se pinta claro para que se lea el área.
+  const impactoD = tieneCuerpo
+    ? real.map((s, i) => `${i === 0 ? 'M' : 'L'}${xs(i).toFixed(1)},${ys(s.hl).toFixed(1)}`).join(' ') +
+      ' ' + real.slice().reverse().map((s, k) => { const i = real.length - 1 - k; return `L${xs(i).toFixed(1)},${ys(s.cuerpo ?? s.hl).toFixed(1)}` }).join(' ') + ' Z'
+    : ''
+  const impactoNum = gap != null ? Math.round(gap) : null
+  // El TEXTO sale del estado de carga del backend (separa sobrecarga de
+  // desentrenamiento) — ya no se adivina por el signo del gap.
+  const cEstado = hoy?.carga_estado
+  const impactoCol = gap == null ? NOAH.ink45
+    : gap > 4 ? SEMA.ok : gap < -4 ? SEMA.warn : NOAH.salvia
   let divTxt = null, divCol = NOAH.ink45
   if (gap != null) {
     if (cuerpoHoy < umbral && gap >= -3) { divTxt = 'Tu cuerpo está bajo y la carga no lo explica — ojo con enfermedad o carga que no quedó registrada.'; divCol = NOAH.coral }
-    else if (gap < -6) { divTxt = 'La carga de entrenamiento te está pesando: la curva integrada cae por debajo de tu cuerpo.'; divCol = SEMA.warn }
-    else if (gap > 6) { divTxt = 'Estás fresco de carga: tu cuerpo rinde mejor que lo que marca la carga — hay margen para cargar.'; divCol = SEMA.ok }
+    else if (cEstado === 'sobrecarga') { divTxt = 'La carga te está pesando: fatiga acumulada, la integrada cae por debajo de tu cuerpo.'; divCol = SEMA.warn }
+    else if (cEstado === 'desentrenamiento') { divTxt = 'Venís frenado: la falta de carga —no la carga— explica el bajón de la integrada.'; divCol = SEMA.warn }
+    else if (cEstado === 'fresco' || gap > 6) { divTxt = 'Fresco de carga: tu cuerpo rinde mejor que lo que marca la carga — hay margen para cargar.'; divCol = SEMA.ok }
     else { divTxt = 'Cuerpo y carga alineados: la lectura es estable.'; divCol = NOAH.salvia }
   }
 
@@ -226,8 +244,14 @@ function HannaPrediccion({ puntos, hoy, dias }) {
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontFamily: M, fontSize: 30, fontWeight: 700, color: NIVEL[nivelHoy] || NOAH.ink, letterSpacing: -1, lineHeight: 1 }}>{hl != null ? Math.round(hl) : '—'}</div>
+          {hoy?.veredicto && VEREDICTO[hoy.veredicto] && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 5, padding: '3px 9px', borderRadius: 20, background: `${VEREDICTO[hoy.veredicto].col}18`, border: `1px solid ${VEREDICTO[hoy.veredicto].col}40` }}>
+              <span style={{ width: 6, height: 6, borderRadius: 3, background: VEREDICTO[hoy.veredicto].col }} />
+              <span style={{ fontFamily: F, fontSize: 10.5, fontWeight: 700, color: VEREDICTO[hoy.veredicto].col }}>{VEREDICTO[hoy.veredicto].label}</span>
+            </div>
+          )}
           {tendProy && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontFamily: M, fontSize: 11, fontWeight: 700, marginTop: 3, color: tendProy === 'baja' ? NOAH.coral : tendProy === 'sube' ? SEMA.ok : NOAH.ink45 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3, fontFamily: M, fontSize: 11, fontWeight: 700, marginTop: 4, color: tendProy === 'baja' ? NOAH.coral : tendProy === 'sube' ? SEMA.ok : NOAH.ink45 }}>
               {tendProy === 'baja' ? <TrendingDown size={12} /> : tendProy === 'sube' ? <TrendingUp size={12} /> : <Activity size={11} />}
               {pFinal != null ? `→ ${Math.round(pFinal)}` : ''}
             </div>
@@ -262,10 +286,14 @@ function HannaPrediccion({ puntos, hoy, dias }) {
         {/* Área bajo la curva real */}
         <path d={areaD} fill="url(#hpArea)" />
 
-        {/* Curva CUERPO (estado autónomico, solo biomarcadores) — azul, continua
-            y más tenue para que se lea por debajo de la integrada */}
+        {/* ÁREA DE IMPACTO entre cuerpo e integrada — relleno claro */}
+        {impactoD && (
+          <path d={impactoD} fill={AZUL_CLARO} opacity="0.14" />
+        )}
+
+        {/* Curva CUERPO (estado autónomico, solo biomarcadores) — AZUL CLARA */}
         {cuerpoD && (
-          <path d={cuerpoD} fill="none" stroke={NOAH.azul} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
+          <path d={cuerpoD} fill="none" stroke={AZUL_CLARO} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.95" />
         )}
 
         {/* Curva histórica — tramos coloreados según posición vs. base */}
@@ -291,9 +319,9 @@ function HannaPrediccion({ puntos, hoy, dias }) {
           <circle key={`p${i}`} cx={xs(pts.length + i)} cy={ys(p.hl)} r="2.4" fill={NOAH.marfil} stroke={NOAH.coral} strokeWidth="1.5" />
         ))}
 
-        {/* Punto de HOY — cuerpo (azul) e integrada */}
+        {/* Punto de HOY — cuerpo (azul clara) e integrada */}
         {cuerpoHoy != null && (
-          <circle cx={xHoy} cy={ys(cuerpoHoy)} r="3.2" fill={NOAH.azul} stroke="#fff" strokeWidth="1.5" opacity="0.9" />
+          <circle cx={xHoy} cy={ys(cuerpoHoy)} r="3.2" fill={AZUL_CLARO} stroke="#fff" strokeWidth="1.5" opacity="0.95" />
         )}
         <circle cx={xHoy} cy={ys(hl)} r="4.5" fill={NIVEL[nivelHoy] || NOAH.salvia} stroke="#fff" strokeWidth="2" />
 
@@ -317,7 +345,7 @@ function HannaPrediccion({ puntos, hoy, dias }) {
               <text x={tx + 9} y={ty + 14} fontSize="9" fontFamily={F} fill={NOAH.ink45}>{s.real ? s.fecha : 'predicción'}</text>
               <text x={tx + 9} y={ty + 30} fontSize="14" fontFamily={M} fontWeight="700" fill={col}>{Math.round(s.hl)}<tspan fontSize="8.5" fontFamily={F} fontWeight="400" fill={NOAH.ink45}> integrada</tspan></text>
               {tieneC && (
-                <text x={tx + 9} y={ty + 46} fontSize="12" fontFamily={M} fontWeight="700" fill={NOAH.azul}>{Math.round(s.cuerpo)}<tspan fontSize="8.5" fontFamily={F} fontWeight="400" fill={NOAH.ink45}> cuerpo</tspan></text>
+                <text x={tx + 9} y={ty + 46} fontSize="12" fontFamily={M} fontWeight="700" fill={AZUL_CLARO}>{Math.round(s.cuerpo)}<tspan fontSize="8.5" fontFamily={F} fontWeight="400" fill={NOAH.ink45}> cuerpo</tspan></text>
               )}
               {s.real && s.rv != null && (
                 <text x={tx + 9} y={ty + (tieneC ? 64 : 48)} fontSize="9.5" fontFamily={F} fill={s.rv >= 30 ? NOAH.coral : SEMA.ok}>Riesgo viral {Math.round(s.rv)}%</text>
@@ -337,7 +365,10 @@ function HannaPrediccion({ puntos, hoy, dias }) {
         <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: F, fontSize: 10, color: NOAH.ink45 }}><span style={{ width: 12, height: 3, borderRadius: 3, background: SEMA.ok }} />integrada · sobre la base</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: F, fontSize: 10, color: NOAH.ink45 }}><span style={{ width: 12, height: 3, borderRadius: 3, background: NOAH.coral }} />integrada · bajo la base</span>
         {tieneCuerpo && (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: F, fontSize: 10, color: NOAH.ink45 }}><span style={{ width: 12, height: 3, borderRadius: 3, background: NOAH.azul, opacity: 0.8 }} />cuerpo · solo biomarcadores</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: F, fontSize: 10, color: NOAH.ink45 }}><span style={{ width: 12, height: 3, borderRadius: 3, background: AZUL_CLARO }} />cuerpo · solo biomarcadores</span>
+        )}
+        {impactoNum != null && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: F, fontSize: 10, color: NOAH.ink45 }}><span style={{ width: 12, height: 10, borderRadius: 2, background: AZUL_CLARO, opacity: 0.25 }} />área = impacto de carga</span>
         )}
         <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: F, fontSize: 10, color: NOAH.ink45 }}><span style={{ width: 14, height: 0, borderTop: `2px dashed ${NOAH.coral}` }} />predicción 7d</span>
       </div>
@@ -349,36 +380,50 @@ function HannaPrediccion({ puntos, hoy, dias }) {
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: F, fontSize: 9.5, color: NOAH.ink45 }}><BatteryLow size={12} color={SEMA.bad} />alerta</span>
       </div>
 
-      {/* Lectura de divergencia cuerpo ↔ carga */}
+      {/* Lectura de divergencia cuerpo ↔ carga + número de impacto */}
       {divTxt && (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginTop: 10, padding: '9px 11px', borderRadius: 12, background: `${divCol}12`, border: `1px solid ${divCol}30` }}>
-          <Activity size={13} color={divCol} strokeWidth={2.3} style={{ flex: '0 0 auto', marginTop: 1 }} />
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 10, padding: '10px 12px', borderRadius: 12, background: `${divCol}12`, border: `1px solid ${divCol}30` }}>
+          {impactoNum != null && (
+            <div style={{ flex: '0 0 auto', textAlign: 'center', minWidth: 52, paddingRight: 9, borderRight: `1px solid ${divCol}33` }}>
+              <div style={{ fontFamily: M, fontSize: 20, fontWeight: 700, color: impactoCol, lineHeight: 1 }}>{impactoNum > 0 ? '+' : ''}{impactoNum}</div>
+              <div style={{ fontFamily: F, fontSize: 8, color: NOAH.ink45, letterSpacing: 0.4, textTransform: 'uppercase', marginTop: 3 }}>impacto carga</div>
+            </div>
+          )}
           <div style={{ fontFamily: F, fontSize: 11.5, color: NOAH.ink, lineHeight: 1.45 }}>
             <span style={{ fontWeight: 700, color: divCol }}>Cuerpo {cuerpoHoy != null ? Math.round(cuerpoHoy) : '—'} · integrada {hl != null ? Math.round(hl) : '—'}</span> — {divTxt}
           </div>
         </div>
       )}
 
-      {/* Lectura NOAH — MISMA narrativa que ya tiene el proyecto (genNarrativa). */}
+      {/* Lectura NOAH — alineada con el cálculo del backend (sin contradicciones). */}
       {(() => {
         const frases = []
-        if (hl >= 75) frases.push(`Tu HANNA LIFE es ${hl.toFixed(0)} — sistema autónomo en condiciones óptimas.`)
-        else if (hl >= 55) frases.push(`Tu HANNA LIFE es ${hl.toFixed(0)} — estado aceptable, podés entrenar con carga moderada.`)
-        else if (hl >= 40) frases.push(`Tu HANNA LIFE es ${hl.toFixed(0)} — hay señales de fatiga acumulada. Reducí la carga.`)
-        else frases.push(`Tu HANNA LIFE es ${hl.toFixed(0)} — sistema autónomo comprometido. Priorizar recuperación.`)
+        // 1) Titular: el MISMO mensaje que el semáforo del backend (nunca contradice).
+        const band = hl >= 75 ? 'sistema en condiciones óptimas'
+          : hl >= 55 ? 'estado aceptable, carga moderada'
+          : hl >= 40 ? 'hay fatiga acumulada, reducí la carga'
+          : 'sistema comprometido, priorizá recuperación'
+        frases.push(`Tu HANNA LIFE es ${hl.toFixed(0)} — ${hoy?.semaforo_msg || band}.`)
         const hrv = hoy?.hrv || 0
         if (hrv > 0) {
           if (hrv < 25) frases.push(`HRV de ${hrv.toFixed(0)}ms es bajo — posible sobrecarga autonómica o mala calidad de sueño.`)
           else if (hrv < 40) frases.push(`HRV de ${hrv.toFixed(0)}ms es moderado — el sistema nervioso autónomo está respondiendo.`)
           else frases.push(`HRV de ${hrv.toFixed(0)}ms es bueno — parasimpático activo, buena recuperación.`)
         }
-        if (tsb < -20) frases.push(`TSB ${tsb.toFixed(0)}: carga muy alta. Riesgo de lesión si continuás en zonas 5-6.`)
-        else if (tsb < -10) frases.push(`TSB ${tsb.toFixed(0)}: en carga. Tolerás Z3-Z4 pero moderá volumen en zonas altas.`)
-        else if (tsb > 10) frases.push(`TSB ${tsb.toFixed(0)}: buena frescura. Podés atacar entrenamientos de calidad.`)
-        const sleep = hoy?.hanna_scores?.sueno || 50
-        if (sleep < 40) frases.push(`Calidad de sueño baja (${sleep.toFixed(0)}/100). Intentá llegar a 7-8h de sueño reparador.`)
-        if (rvHoy >= 50) frases.push(`Riesgo viral ${rvHoy.toFixed(0)}% — RMSSD bajo. Si hay síntomas, no entrenar.`)
-        else if (rvHoy >= 30) frases.push(`Riesgo viral moderado (${rvHoy.toFixed(0)}%). Monitoreá síntomas en las próximas 48h.`)
+        // 2) Carga: separa frescura real de desentrenamiento y de sobrecarga
+        //    (usa el estado de carga del backend, no el signo del gap).
+        if (cEstado === 'desentrenamiento') frases.push(`Venís de poca carga — es desentrenamiento, no frescura real. Reactivá progresivo.`)
+        else if (cEstado === 'sobrecarga') frases.push(`La carga está alta y la fatiga pesa — bajá volumen e intensidad.`)
+        else if (cEstado === 'fresco') frases.push(`Fresco por descanso planificado — hay margen para entrenamientos de calidad.`)
+        else if (cEstado === 'carga') frases.push(`En carga de entrenamiento — tolerás calidad, moderá el volumen en zonas altas.`)
+        const sleep = hoy?.hanna_scores?.sueno_dur || hoy?.hanna_scores?.sueno
+        if (sleep != null && sleep < 40) frases.push(`Sueño por debajo de lo recomendado (${sleep.toFixed(0)}/100). Apuntá a 7-8h de calidad.`)
+        // 3) Enfermedad unificada, con fuente etiquetada (medido / estimado).
+        const enfPct = hoy?.riesgo_enf_pct, enfFuente = hoy?.riesgo_enf_fuente
+        const nota = enfFuente === 'estimado' ? ' (HRV estimado — orientativo)' : ''
+        if (enfPct != null && enfPct >= 50) frases.push(`Riesgo de enfermedad alto (${Math.round(enfPct)}%)${nota}. Si hay síntomas, no entrenar.`)
+        else if (enfPct != null && enfPct >= 30) frases.push(`Riesgo de enfermedad moderado (${Math.round(enfPct)}%)${nota}. Monitoreá síntomas 48h.`)
+        else if (enfFuente === 'no_evaluable') frases.push(`Riesgo de enfermedad: no evaluable (sin HRV de reloj ni señales tempranas).`)
         const pF = proy.length ? proy[proy.length - 1].hl : null
         if (pF != null) {
           if (pF < hl - 5) frases.push(`Proyección a 7 días: tendencia a la baja (${pF.toFixed(0)}). Revisá la carga semanal.`)
@@ -409,6 +454,16 @@ export default function SeccionAnalisis({ atletaId }) {
   const [hanna, setHanna] = useState(null)
   const [loading, setLoading] = useState(true)
   const [rango, setRango] = useState(1)
+  const [recalc, setRecalc] = useState('idle')
+
+  const recalcularHanna = () => {
+    if (!atletaId || recalc === 'run') return
+    setRecalc('run')
+    authFetch(`${API}/atletas/${atletaId}/recalcular_hanna`, { method: 'POST' })
+      .then(r => r.json())
+      .then(() => { setRecalc('done'); setTimeout(() => window.location.reload(), 500) })
+      .catch(() => setRecalc('idle'))
+  }
 
   useEffect(() => {
     if (!atletaId) return
@@ -444,7 +499,11 @@ export default function SeccionAnalisis({ atletaId }) {
   const hLife = e.hanna_life ?? hoy.hanna_life
   const hNivel = e.hanna_nivel ?? hoy.hanna_nivel
   const hrvSerie = (hanna?.puntos || []).filter(p => p.hrv != null).slice(-dias).map((p, i) => ({ i, hrv: p.hrv }))
-  const rv = hoy.riesgo_viral
+  // Riesgo de enfermedad UNIFICADO (viral + centinela) con fuente etiquetada.
+  const enf = hoy.riesgo_enf_pct
+  const enfFuente = hoy.riesgo_enf_fuente     // medido / estimado / no_evaluable
+  const enfColor = enf == null ? NOAH.ink45 : enf >= 60 ? SEMA.bad : enf >= 30 ? SEMA.warn : SEMA.ok
+  const fuenteLabel = { medido: 'medido', estimado: 'estimativo', no_evaluable: 'no evaluable' }[enfFuente] || null
 
   // Centinela de aviso temprano (complementa al riesgo viral, no lo reemplaza):
   // FC reposo en alza + variabilidad (CV) de HRV subiendo. Datos del backend.
@@ -470,6 +529,18 @@ export default function SeccionAnalisis({ atletaId }) {
     <div style={{ color: NOAH.ink, fontFamily: F, margin: '-14px -12px 0' }}>
       <style>{`@keyframes aRise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
         @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}`}</style>
+
+      {/* Recalcular HANNA sobre todo el historial (ver el efecto de la lógica nueva) */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 4px 8px' }}>
+        <button onClick={recalcularHanna} disabled={recalc === 'run'} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 999,
+          border: `1px solid ${NOAH.border}`, background: NOAH.surface, cursor: recalc === 'run' ? 'default' : 'pointer',
+          fontFamily: F, fontSize: 11, fontWeight: 600, color: NOAH.ink70,
+        }}>
+          <Activity size={12} color={NOAH.salvia} strokeWidth={2.3} />
+          {recalc === 'run' ? 'Recalculando…' : recalc === 'done' ? 'Listo ✓' : 'Recalcular HANNA'}
+        </button>
+      </div>
 
       {/* ───── A. ENCABEZADO EDITORIAL + HANNA LIFE ───── */}
       <section style={{ position: 'relative' }}>
@@ -602,16 +673,21 @@ export default function SeccionAnalisis({ atletaId }) {
             {mono?.strain != null && <div style={{ fontFamily: M, fontSize: 11, color: NOAH.ink45, marginTop: 5 }}>Strain {Math.round(mono.strain)}</div>}
           </div>
           <div style={{ ...surface({ padding: '14px' }) }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8 }}><ShieldAlert size={13} color={rv == null ? NOAH.ink45 : rv >= 60 ? SEMA.bad : rv >= 30 ? SEMA.warn : SEMA.ok} strokeWidth={2.2} /><span style={eyebrow}>Riesgo viral</span></div>
-            {rv != null ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}><ShieldAlert size={13} color={enfColor} strokeWidth={2.2} /><span style={eyebrow}>Riesgo de enfermedad</span></div>
+              {fuenteLabel && (
+                <span style={{ fontFamily: F, fontSize: 8.5, fontWeight: 700, color: enfFuente === 'medido' ? NOAH.salvia : NOAH.ink45, textTransform: 'uppercase', letterSpacing: 0.4, padding: '2px 6px', borderRadius: 999, background: enfFuente === 'medido' ? 'rgba(120,134,107,0.12)' : 'rgba(41,45,41,0.05)', border: `1px solid ${NOAH.border}` }}>{fuenteLabel}</span>
+              )}
+            </div>
+            {enf != null ? (
               <>
-                <div style={{ fontFamily: M, fontSize: 28, fontWeight: 700, color: rv >= 60 ? SEMA.bad : rv >= 30 ? SEMA.warn : SEMA.ok, letterSpacing: -1, lineHeight: 1 }}>{Math.round(rv)}<span style={{ fontSize: 12, color: NOAH.ink45 }}>%</span></div>
-                <div style={{ fontFamily: F, fontSize: 10.5, color: NOAH.ink45, marginTop: 5 }}>probabilidad</div>
+                <div style={{ fontFamily: M, fontSize: 28, fontWeight: 700, color: enfColor, letterSpacing: -1, lineHeight: 1 }}>{Math.round(enf)}<span style={{ fontSize: 12, color: NOAH.ink45 }}>%</span></div>
+                <div style={{ fontFamily: F, fontSize: 10.5, color: NOAH.ink45, marginTop: 5 }}>{enfFuente === 'estimado' ? 'probabilidad · HRV estimado' : 'viral + aviso temprano'}</div>
               </>
             ) : (
               <>
-                <div style={{ fontFamily: M, fontSize: 20, fontWeight: 700, color: NOAH.ink45, letterSpacing: -0.5, lineHeight: 1.1 }}>sin datos</div>
-                <div style={{ fontFamily: F, fontSize: 10, color: NOAH.ink45, marginTop: 5, lineHeight: 1.35 }}>faltan noches de HRV para evaluarlo</div>
+                <div style={{ fontFamily: M, fontSize: 20, fontWeight: 700, color: NOAH.ink45, letterSpacing: -0.5, lineHeight: 1.1 }}>no evaluable</div>
+                <div style={{ fontFamily: F, fontSize: 10, color: NOAH.ink45, marginTop: 5, lineHeight: 1.35 }}>sin HRV de reloj ni señales tempranas</div>
               </>
             )}
           </div>
@@ -629,15 +705,23 @@ export default function SeccionAnalisis({ atletaId }) {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div style={{ padding: '10px 12px', borderRadius: 12, background: 'rgba(41,45,41,0.035)', border: `1px solid ${NOAH.border}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}><HeartPulse size={12} color={cent.dFC >= 3 ? NOAH.coral : NOAH.salvia} strokeWidth={2.3} /><span style={{ fontFamily: F, fontSize: 10, color: NOAH.ink45, letterSpacing: 0.3 }}>FC reposo vs base</span></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}><HeartPulse size={12} color={cent.dFC >= 3 ? NOAH.coral : NOAH.salvia} strokeWidth={2.3} /><span style={{ fontFamily: F, fontSize: 10, color: NOAH.ink45, letterSpacing: 0.3 }}>Pulso en reposo vs tu base</span></div>
                 <div style={{ fontFamily: M, fontSize: 24, fontWeight: 700, color: cent.dFC >= 3 ? NOAH.coral : NOAH.ink, letterSpacing: -0.6, lineHeight: 1 }}>
                   {cent.dFC != null ? `${cent.dFC > 0 ? '+' : ''}${cent.dFC.toFixed(0)}` : '—'}<span style={{ fontSize: 11, color: NOAH.ink45, fontWeight: 400 }}> lpm</span>
                 </div>
+                <div style={{ fontFamily: F, fontSize: 9, color: NOAH.ink45, marginTop: 5, lineHeight: 1.35 }}>
+                  {cent.dFC == null ? 'latidos por minuto respecto de tu promedio'
+                    : cent.dFC <= 0 ? 'por debajo de tu base = buena señal'
+                    : 'por encima de tu base = posible aviso de infección'}
+                </div>
               </div>
               <div style={{ padding: '10px 12px', borderRadius: 12, background: 'rgba(41,45,41,0.035)', border: `1px solid ${NOAH.border}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}><Activity size={12} color={NOAH.azul} strokeWidth={2.3} /><span style={{ fontFamily: F, fontSize: 10, color: NOAH.ink45, letterSpacing: 0.3 }}>Variabilidad HRV</span></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}><Activity size={12} color={AZUL_CLARO} strokeWidth={2.3} /><span style={{ fontFamily: F, fontSize: 10, color: NOAH.ink45, letterSpacing: 0.3 }}>Estabilidad del HRV</span></div>
                 <div style={{ fontFamily: M, fontSize: 24, fontWeight: 700, color: NOAH.ink, letterSpacing: -0.6, lineHeight: 1 }}>
-                  {cent.cv != null ? `${cent.cv.toFixed(0)}` : '—'}<span style={{ fontSize: 11, color: NOAH.ink45, fontWeight: 400 }}>% CV</span>
+                  {cent.cv != null ? `${cent.cv.toFixed(0)}` : '—'}<span style={{ fontSize: 11, color: NOAH.ink45, fontWeight: 400 }}>%</span>
+                </div>
+                <div style={{ fontFamily: F, fontSize: 9, color: NOAH.ink45, marginTop: 5, lineHeight: 1.35 }}>
+                  cuánto varía tu HRV día a día — sube = sistema inestable
                 </div>
               </div>
             </div>
