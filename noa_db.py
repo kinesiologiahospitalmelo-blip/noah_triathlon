@@ -1142,6 +1142,10 @@ class NOADatabase:
             'hanna_nivel' : bio_val('hanna_nivel'),
             'riesgo_viral': bio_val('riesgo_viral'),
             'riesgo_viral_nivel': bio_val('riesgo_viral_nivel'),
+            # Riesgo de enfermedad UNIFICADO (viral + centinela) con fuente
+            'riesgo_enf'       : bio_val('riesgo_enf_pct'),
+            'riesgo_enf_nivel' : bio_val('riesgo_enf_nivel'),
+            'riesgo_enf_fuente': bio_val('riesgo_enf_fuente'),
             # Semana
             'km_semana'   : round(df_ses['distance_km'].sum() / (1000 if df_ses['distance_km'].sum() > 500 else 1), 1) if len(df_ses) > 0 else 0,
             'tss_semana'  : round(df_ses['tss_total'].sum(), 0) if len(df_ses) > 0 else 0,

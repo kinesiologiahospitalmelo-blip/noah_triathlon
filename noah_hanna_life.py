@@ -129,25 +129,27 @@ def _score_fallback_zscore(val: float, media: float, std: float,
 # Estas normas dan un piso fisiológico real: un valor bajo en términos absolutos
 # no puede leerse como "óptimo" aunque sea habitual para ese atleta.
 #
-# rMSSD (ms) desciende con la edad; mujeres tienden a valores algo mayores que
-# hombres a igual edad. Rangos de referencia de población sana en reposo.
-# Fuente: Nunan, Sandercock & Brodie (2010), "A quantitative systematic review
-# of normal values for short-term HRV in healthy adults" (meta-análisis).
-# NOTA: los valores son ANCLAS conservadoras; revisar contra la tabla del paper
-# antes de dar por cerrada la calibración (no son cifras clínicas finales).
+# rMSSD (ms) desciende con la edad. Valores de referencia de población sana en
+# reposo (5 min), VALIDADOS contra datos poblacionales medidos:
+#   Dantas et al. (2018), ELSA-Brasil, n≈2.800 — rMSSD medio por tramo:
+#     35-44: 34.9 ms | 45-54: 30.0 | 55-64: 26.7 | 65-74: 27.7 (p10 ≈ 17/14/13)
+#   Nunan, Sandercock & Brodie (2010) — revisión sistemática (media agrupada ~42 ms).
+# Diferencia por sexo: pequeña y mixta en la literatura; Koenig & Thayer (2016)
+# hallan rMSSD algo MAYOR en mujeres. Usamos un ajuste modesto (+3 ms), no fuerte.
+# El "piso" (ref×0.52) queda cerca del percentil 10 sano de ELSA-Brasil → por
+# debajo de eso es un HRV bajo en términos absolutos, no solo "bajo para uno".
 def _norma_edad_sexo(edad: Optional[float], sexo: Optional[str]) -> dict:
     e = float(edad) if edad else 40.0
     s = (sexo or 'M').upper()[:1]
-    # rMSSD medio de referencia por tramo etario (hombres); mujeres +~4ms
-    if   e < 30: ref = 48.0
-    elif e < 40: ref = 42.0
-    elif e < 50: ref = 35.0
-    elif e < 60: ref = 29.0
-    else:        ref = 24.0
+    # rMSSD medio de referencia por tramo etario (alineado a ELSA-Brasil 2018)
+    if   e < 30: ref = 45.0   # <35 extrapolado hacia arriba (jóvenes ~40-50)
+    elif e < 40: ref = 38.0   # ~30-39 (35-44 medido ≈ 35)
+    elif e < 50: ref = 32.0   # ~40-49 (entre 35 y 30 medidos)
+    elif e < 60: ref = 28.0   # ~50-59 (45-54≈30, 55-64≈27)
+    else:        ref = 25.0   # 60+ (55-64≈27, 65-74≈28; conservador)
     if s == 'F':
-        ref += 4.0
-    # "piso" = rMSSD claramente bajo para la edad (≈ mitad de la referencia);
-    # "sano" = referencia. Entre ambos interpolamos el score absoluto.
+        ref += 3.0            # Koenig & Thayer 2016 (modesto, evidencia mixta)
+    # "piso" ≈ percentil 10 sano; "sano" = referencia. Interpolamos entre ambos.
     hrv_piso = ref * 0.52
     hrv_sano = ref
     return {
