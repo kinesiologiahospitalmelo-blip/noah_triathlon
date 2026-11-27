@@ -740,9 +740,38 @@ _init_auth_tables()
 
 @app.route('/api/atletas', methods=['GET'])
 def listar_atletas():
-    """Lista todos los atletas activos."""
+    """Lista todos los atletas activos (con HANNA + riesgo para el home del coach)."""
     db = NOADatabase(DB_PATH)
     atletas = db.get_atletas()
+
+    # HANNA + riesgo viral (último disponible) por atleta, en una sola conexión.
+    hanna_map = {}
+    try:
+        _c = get_conn()
+        for _, a in atletas.iterrows():
+            aid = int(a['id'])
+            r = _c.execute("""
+                SELECT hanna_life, hanna_nivel, estado_autonomico, riesgo_viral, riesgo_viral_nivel
+                FROM sleep_hrv WHERE atleta_id=%s AND hanna_life IS NOT NULL
+                ORDER BY fecha DESC LIMIT 1
+            """, (aid,)).fetchone()
+            d = {'hanna': r[0], 'hanna_nivel': r[1], 'cuerpo': r[2],
+                 'riesgo_viral': r[3], 'riesgo_viral_nivel': r[4]} if r else {}
+            # Serie corta de CTL (últimos ~30 días) para la curva del home.
+            try:
+                sc = _c.execute("""
+                    SELECT fecha, ctl FROM sesiones
+                    WHERE atleta_id=%s AND ctl IS NOT NULL
+                    ORDER BY fecha DESC LIMIT 30
+                """, (aid,)).fetchall()
+                d['ctl_serie'] = [float(x[1]) for x in reversed(sc) if x[1] is not None]
+            except Exception:
+                d['ctl_serie'] = []
+            hanna_map[aid] = d
+        _c.close()
+    except Exception as e:
+        print(f"[listar_atletas] hanna map: {e}")
+
     result = []
     for _, a in atletas.iterrows():
         estado = db.get_estado_actual(int(a['id']))
@@ -751,6 +780,7 @@ def listar_atletas():
             if v is None: return None
             if isinstance(v, float) and math.isnan(v): return None
             return v
+        h = hanna_map.get(int(a['id']), {})
         result.append({
             'id'          : int(a['id']),
             'nombre'      : _clean(a['nombre']),
@@ -762,6 +792,12 @@ def listar_atletas():
             'tsb'         : estado.get('tsb'),
             'hrv_flag'    : estado.get('hrv_flag'),
             'km_semana'   : estado.get('km_semana'),
+            'hanna'       : _clean(h.get('hanna')),
+            'hanna_nivel' : h.get('hanna_nivel'),
+            'cuerpo'      : _clean(h.get('cuerpo')),
+            'riesgo_viral': _clean(h.get('riesgo_viral')),
+            'riesgo_viral_nivel': h.get('riesgo_viral_nivel'),
+            'ctl_serie'   : h.get('ctl_serie') or [],
         })
     return ok(result)
 
@@ -5068,7 +5104,9 @@ def get_hanna_life(atleta_id):
                    hrv_rmssd, hrv_estimado_valor, body_battery,
                    stress_avg, sleep_h, hr_reposo,
                    estado_autonomico, modificador_carga,
-                   centinela_nivel, centinela_msg, fc_reposo_delta, hrv_cv
+                   centinela_nivel, centinela_msg, fc_reposo_delta, hrv_cv,
+                   impacto_carga, carga_estado, hanna_veredicto,
+                   riesgo_enf_pct, riesgo_enf_nivel, riesgo_enf_fuente, bb_alerta_msg
             FROM sleep_hrv
             WHERE atleta_id=%s AND fecha >= %s
             ORDER BY fecha ASC
@@ -5100,6 +5138,13 @@ def get_hanna_life(atleta_id):
                 'centinela_msg':   r[16],
                 'fc_reposo_delta': r[17],      # FC reposo reciente vs base personal (lpm)
                 'hrv_cv':          r[18],      # variabilidad de HRV (coef. variación %)
+                'impacto_carga':   r[19],      # HANNA - cuerpo (área: - pesa / + fresco)
+                'carga_estado':    r[20],      # sobrecarga / desentrenamiento / carga / fresco
+                'veredicto':       r[21],      # cargar / reducir / revisar
+                'riesgo_enf':      r[22],      # riesgo enfermedad unificado (%)
+                'riesgo_enf_nivel':r[23],
+                'riesgo_enf_fuente':r[24],     # medido / estimado / no_evaluable
+                'bb_alerta':       r[25],      # aviso de divergencia body battery (texto)
             })
 
         # Hanna hoy — tomar el último punto calculado
@@ -5121,7 +5166,8 @@ def get_hanna_life(atleta_id):
             if not isinstance(hanna_hoy, dict):
                 hanna_hoy = {}
             for campo in ('hanna_life', 'cuerpo', 'riesgo_viral', 'hrv', 'bb', 'stress', 'sleep', 'hr_reposo',
-                          'centinela_nivel', 'centinela_msg', 'fc_reposo_delta', 'hrv_cv'):
+                          'centinela_nivel', 'centinela_msg', 'fc_reposo_delta', 'hrv_cv',
+                          'impacto_carga', 'carga_estado', 'veredicto'):
                 if hanna_hoy.get(campo) is None:
                     for p in reversed(puntos):
                         if p.get(campo) is not None:
@@ -5137,6 +5183,24 @@ def get_hanna_life(atleta_id):
     except Exception as e:
         conn.close()
         return error(str(e))
+
+
+@app.route('/api/atletas/<int:atleta_id>/recalcular_hanna', methods=['POST'])
+@requiere_login
+def recalcular_hanna(atleta_id):
+    """Recalcula HANNA LIFE sobre TODO el historial con la lógica vigente.
+    Permite ver el efecto de cambios de cálculo sin esperar la próxima sync."""
+    conn = get_conn()
+    try:
+        from noah_hanna_life import calcular_y_guardar_hanna_life
+        n = calcular_y_guardar_hanna_life(conn, atleta_id, recalcular_todo=True)
+        conn.close()
+        return ok({'recalculados': n})
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        import traceback
+        return error(str(e) + '\n' + traceback.format_exc()[-300:])
 
 
 @app.route('/api/atletas/<int:atleta_id>/alertas', methods=['GET'])
