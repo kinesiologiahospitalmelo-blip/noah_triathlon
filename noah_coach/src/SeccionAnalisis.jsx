@@ -208,7 +208,7 @@ function HannaPrediccion({ puntos, hoy, dias }) {
     : gap > 4 ? SEMA.ok : gap < -4 ? SEMA.warn : NOAH.salvia
   let divTxt = null, divCol = NOAH.ink45
   if (gap != null) {
-    if (cuerpoHoy < umbral && gap >= -3) { divTxt = 'Tu cuerpo está bajo y la carga no lo explica — ojo con enfermedad o carga que no quedó registrada.'; divCol = NOAH.coral }
+    if (cuerpoHoy < umbral && gap >= -3) { divTxt = 'Tu cuerpo está bajo y la carga no lo explica — cuidá la recuperación o revisá si quedó carga sin registrar.'; divCol = NOAH.coral }
     else if (cEstado === 'sobrecarga') { divTxt = 'La carga te está pesando: fatiga acumulada, la integrada cae por debajo de tu cuerpo.'; divCol = SEMA.warn }
     else if (cEstado === 'desentrenamiento') { divTxt = 'Venís frenado: la falta de carga —no la carga— explica el bajón de la integrada.'; divCol = SEMA.warn }
     else if (cEstado === 'fresco' || gap > 6) { divTxt = 'Fresco de carga: tu cuerpo rinde mejor que lo que marca la carga — hay margen para cargar.'; divCol = SEMA.ok }
@@ -239,7 +239,7 @@ function HannaPrediccion({ puntos, hoy, dias }) {
             <span style={eyebrow}>HANNA · proyección 7 días</span>
           </div>
           <div style={{ fontFamily: F, fontSize: 11, color: NOAH.ink45, marginTop: 4 }}>
-            Línea base {Math.round(baseline)} · por debajo = riesgo de enfermedad
+            Línea base {Math.round(baseline)} · por debajo = señales de alerta
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -376,7 +376,7 @@ function HannaPrediccion({ puntos, hoy, dias }) {
       {/* Referencia de los íconos del eje */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginTop: 6, padding: '0 2px' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: F, fontSize: 9.5, color: NOAH.ink45 }}><BatteryFull size={12} color={SEMA.ok} />óptimo</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: F, fontSize: 9.5, color: NOAH.ink45 }}><Thermometer size={11} color={NOAH.coral} />riesgo de enfermedad</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: F, fontSize: 9.5, color: NOAH.ink45 }}><Thermometer size={11} color={NOAH.coral} />señales de alerta</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: F, fontSize: 9.5, color: NOAH.ink45 }}><BatteryLow size={12} color={SEMA.bad} />alerta</span>
       </div>
 
@@ -421,9 +421,9 @@ function HannaPrediccion({ puntos, hoy, dias }) {
         // 3) Enfermedad unificada, con fuente etiquetada (medido / estimado).
         const enfPct = hoy?.riesgo_enf_pct, enfFuente = hoy?.riesgo_enf_fuente
         const nota = enfFuente === 'estimado' ? ' (HRV estimado — orientativo)' : ''
-        if (enfPct != null && enfPct >= 50) frases.push(`Riesgo de enfermedad alto (${Math.round(enfPct)}%)${nota}. Si hay síntomas, no entrenar.`)
-        else if (enfPct != null && enfPct >= 30) frases.push(`Riesgo de enfermedad moderado (${Math.round(enfPct)}%)${nota}. Monitoreá síntomas 48h.`)
-        else if (enfFuente === 'no_evaluable') frases.push(`Riesgo de enfermedad: no evaluable (sin HRV de reloj ni señales tempranas).`)
+        if (enfPct != null && enfPct >= 50) frases.push(`Varias señales de alerta en tu recuperación${nota}. Aflojá la carga; si no te sentís bien, consultá a un profesional. No es un diagnóstico.`)
+        else if (enfPct != null && enfPct >= 30) frases.push(`Algunas señales de alerta en tu recuperación${nota}. Cuidá la carga y observá cómo evolucionás estos días.`)
+        else if (enfFuente === 'no_evaluable') frases.push(`Recuperación: sin datos suficientes para evaluar señales de alerta.`)
         const pF = proy.length ? proy[proy.length - 1].hl : null
         if (pF != null) {
           if (pF < hl - 5) frases.push(`Proyección a 7 días: tendencia a la baja (${pF.toFixed(0)}). Revisá la carga semanal.`)
@@ -695,7 +695,7 @@ export default function SeccionAnalisis({ atletaId }) {
           </div>
           <div style={{ ...surface({ padding: '14px' }) }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}><ShieldAlert size={13} color={enfColor} strokeWidth={2.2} /><span style={eyebrow}>Riesgo de enfermedad</span></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}><ShieldAlert size={13} color={enfColor} strokeWidth={2.2} /><span style={eyebrow}>Alerta de recuperación</span></div>
               {fuenteLabel && (
                 <span style={{ fontFamily: F, fontSize: 8.5, fontWeight: 700, color: enfFuente === 'medido' ? NOAH.salvia : NOAH.ink45, textTransform: 'uppercase', letterSpacing: 0.4, padding: '2px 6px', borderRadius: 999, background: enfFuente === 'medido' ? 'rgba(120,134,107,0.12)' : 'rgba(41,45,41,0.05)', border: `1px solid ${NOAH.border}` }}>{fuenteLabel}</span>
               )}
@@ -703,7 +703,7 @@ export default function SeccionAnalisis({ atletaId }) {
             {enf != null ? (
               <>
                 <div style={{ fontFamily: M, fontSize: 28, fontWeight: 700, color: enfColor, letterSpacing: -1, lineHeight: 1 }}>{Math.round(enf)}<span style={{ fontSize: 12, color: NOAH.ink45 }}>%</span></div>
-                <div style={{ fontFamily: F, fontSize: 10.5, color: NOAH.ink45, marginTop: 5 }}>{enfFuente === 'estimado' ? 'probabilidad · HRV estimado' : 'viral + aviso temprano'}</div>
+                <div style={{ fontFamily: F, fontSize: 10.5, color: NOAH.ink45, marginTop: 5 }}>{enfFuente === 'estimado' ? 'señales · HRV estimado' : 'señales de alerta (no es diagnóstico)'}</div>
               </>
             ) : (
               <>
