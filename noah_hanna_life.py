@@ -833,9 +833,9 @@ def calcular_riesgo_viral(
         'nivel':         nivel,
         'alertas':       alertas,
         'recomendacion': (
-            'Descanso absoluto. Consultar médico si hay síntomas.' if riesgo >= 60 else
-            'Reducir carga 30-50%. Monitorear síntomas.'          if riesgo >= 30 else
-            'Sin señales de alerta. Continuar plan.'
+            'Priorizá descanso. Si no te sentís bien, consultá a un profesional.' if riesgo >= 60 else
+            'Bajá la carga y observá cómo evolucionás estos días.'                if riesgo >= 30 else
+            'Sin señales de alerta. Seguí tu plan.'
         )
     }
 
@@ -952,14 +952,18 @@ def calcular_riesgo_enfermedad(
         'estimado': ' (HRV estimado — leer como orientativo)',
         'no_evaluable': '',
     }[fuente]
+    # IMPORTANTE: NO es un diagnóstico. Son señales fisiológicas (HRV, FC, sueño)
+    # que suelen anticipar un bajón. HANNA SUGIERE, no afirma una enfermedad.
     if fuente == 'no_evaluable':
         msg = 'Sin HRV de reloj ni señales tempranas — no evaluable con confianza.'
     elif nivel == 'alto':
-        msg = 'Riesgo alto — descanso y controlar síntomas.' + nota_fuente
+        msg = ('Varias señales de alerta en tu recuperación. Aflojá la carga y, '
+               'si no te sentís bien, consultá a un profesional.') + nota_fuente
     elif nivel == 'moderado':
-        msg = 'Señales de alerta — reducí carga y observá.' + nota_fuente
+        msg = ('Algunas señales de alerta. Cuidá la recuperación y observá cómo '
+               'evolucionás estos días.') + nota_fuente
     else:
-        msg = 'Sin señales relevantes.' + nota_fuente
+        msg = 'Sin señales de alerta relevantes.' + nota_fuente
 
     return {
         'pct': pct if evaluable else None,
