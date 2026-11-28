@@ -332,6 +332,16 @@ function AtletaCard({ a, carrera, onSelect }) {
 export default function CoachHome({ onSelect }) {
   const [atletas, setAtletas] = useState(null)
   const [carreras, setCarreras] = useState({})   // atleta_id -> próxima carrera futura
+  const [recalc, setRecalc] = useState('idle')
+
+  const recalcularTodos = () => {
+    if (recalc === 'run') return
+    setRecalc('run')
+    authFetch(`${API}/recalcular_hanna_todos`, { method: 'POST' })
+      .then(r => r.json())
+      .then(() => { setRecalc('done'); setTimeout(() => window.location.reload(), 600) })
+      .catch(() => setRecalc('idle'))
+  }
 
   useEffect(() => {
     authFetch(`${API}/atletas`).then(j => setAtletas(Array.isArray(j?.data) ? j.data : []))
@@ -364,6 +374,15 @@ export default function CoachHome({ onSelect }) {
           <div style={{ fontFamily: M, fontSize: 26, fontWeight: 700, color: enRiesgo ? P.red : P.green, lineHeight: 1 }}>{enRiesgo}</div>
           <div style={{ fontFamily: F, fontSize: 10.5, color: P.ink2, marginTop: 4 }}>requieren atención</div>
         </div>
+        {/* Recalcular HANNA de TODOS los atletas (temporal) */}
+        <button onClick={recalcularTodos} disabled={recalc === 'run'} title="Recalcular HANNA de todos los atletas" style={{
+          flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+          minWidth: 110, borderRadius: 18, padding: '13px 16px', cursor: recalc === 'run' ? 'default' : 'pointer',
+          background: 'rgba(255,255,255,0.05)', border: `1px solid ${P.glassBorder}`, color: P.ink,
+        }}>
+          <Activity size={18} color={P.green} strokeWidth={2.2} />
+          <span style={{ fontFamily: F, fontSize: 10.5, fontWeight: 700, textAlign: 'center' }}>{recalc === 'run' ? 'Recalculando…' : recalc === 'done' ? 'Listo ✓' : 'Recalcular todos'}</span>
+        </button>
       </div>
 
       {/* Grilla de atletas */}

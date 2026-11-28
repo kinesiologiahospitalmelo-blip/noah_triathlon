@@ -60,6 +60,10 @@ export default function RegistroDiario({ atletaId, hannaPuntos = null }) {
   const [intens, setIntens] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const [serie, setSerie] = useState(hannaPuntos)
+  // Una vez registrado hoy, el bloque se colapsa (no se vuelve a tocar por error).
+  // "cambiar" lo reabre.
+  const [edCara, setEdCara] = useState(false)
+  const [edFuerza, setEdFuerza] = useState(false)
 
   useEffect(() => {
     let vivo = true
@@ -82,6 +86,7 @@ export default function RegistroDiario({ atletaId, hannaPuntos = null }) {
 
   const elegirCara = (v) => {
     setCara(v)
+    setEdCara(false)   // registrado → colapsa
     authFetch(`${API}/atletas/${atletaId}/registro/checkin`, {
       method: 'POST', body: JSON.stringify({ cara: v }),
     })
@@ -98,95 +103,117 @@ export default function RegistroDiario({ atletaId, hannaPuntos = null }) {
 
   const elegirFuerza = (f) => {
     setFuerza(f)
-    if (!f) { setIntens(null); postFuerza(false) }
-    // si es Sí, esperamos a que elija intensidad (o la deja sin intensidad)
-    else postFuerza(true, null)
+    if (!f) { setIntens(null); setEdFuerza(false); postFuerza(false) }   // No → colapsa
+    else { setEdFuerza(true); postFuerza(true, null) }                   // Sí → pedir intensidad
   }
-  const elegirIntens = (k) => { setIntens(k); postFuerza(true, k) }
+  const elegirIntens = (k) => { setIntens(k); setEdFuerza(false); postFuerza(true, k) }
 
   const caraSel = CARAS.find(c => c.v === cara)
+  const intensSel = INTENS.find(i => i.k === intens)
+  const caraListo = cara != null && !edCara
+  const fuerzaListo = fuerza != null && !edFuerza
+
+  const btnCambiar = { fontFamily: F, fontSize: 10.5, fontWeight: 700, color: NOAH.ink45, background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* ── Check-in de 5 caras ── */}
-      <div style={card({ borderColor: pide ? `${NOAH.salvia}55` : NOAH.border })}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+      {/* ── Check-in de 5 caras (se colapsa una vez elegido) ── */}
+      <div style={card({ borderColor: pide && !caraListo ? `${NOAH.salvia}55` : NOAH.border })}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: caraListo ? 0 : 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Sparkles size={13} color={NOAH.salvia} strokeWidth={2.3} />
-            <span style={eyebrow}>¿Cómo te sentís hoy?</span>
+            <span style={eyebrow}>{caraListo ? 'Check-in de hoy' : '¿Cómo te sentís hoy?'}</span>
           </div>
-          {pide && (
+          {pide && !caraListo && (
             <span style={{ fontFamily: F, fontSize: 9.5, fontWeight: 700, color: NOAH.salvia, padding: '3px 9px', borderRadius: 999, background: `${NOAH.salvia}16`, border: `1px solid ${NOAH.salvia}33` }}>HANNA quiere confirmar</span>
           )}
+          {caraListo && <button onClick={() => setEdCara(true)} style={btnCambiar}>cambiar</button>}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-          {CARAS.map(c => {
-            const sel = cara === c.v
-            return (
-              <button key={c.v} onClick={() => elegirCara(c.v)} aria-label={c.lbl}
-                style={{
-                  flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-                  padding: '10px 0', borderRadius: 14, cursor: 'pointer',
-                  border: `1px solid ${sel ? c.col : NOAH.border}`,
-                  background: sel ? `${c.col}16` : 'transparent',
-                  transform: sel ? 'translateY(-2px)' : 'none',
-                  transition: 'all .16s ease',
-                }}>
-                <c.Icon size={26} color={sel ? c.col : NOAH.ink45} strokeWidth={sel ? 2.4 : 1.9} />
-                <span style={{ fontFamily: F, fontSize: 9, fontWeight: sel ? 700 : 500, color: sel ? c.col : NOAH.ink45 }}>{c.lbl}</span>
-              </button>
-            )
-          })}
-        </div>
-        {caraSel && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontFamily: F, fontSize: 11, color: NOAH.ink45 }}>
-            <Check size={12} color={caraSel.col} /> Registrado — gracias, esto ayuda a afinar HANNA.
+        {!caraListo ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+            {CARAS.map(c => {
+              const sel = cara === c.v
+              return (
+                <button key={c.v} onClick={() => elegirCara(c.v)} aria-label={c.lbl}
+                  style={{
+                    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                    padding: '10px 0', borderRadius: 14, cursor: 'pointer',
+                    border: `1px solid ${sel ? c.col : NOAH.border}`,
+                    background: sel ? `${c.col}16` : 'transparent',
+                    transform: sel ? 'translateY(-2px)' : 'none',
+                    transition: 'all .16s ease',
+                  }}>
+                  <c.Icon size={26} color={sel ? c.col : NOAH.ink45} strokeWidth={sel ? 2.4 : 1.9} />
+                  <span style={{ fontFamily: F, fontSize: 9, fontWeight: sel ? 700 : 500, color: sel ? c.col : NOAH.ink45 }}>{c.lbl}</span>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+            {caraSel && <caraSel.Icon size={22} color={caraSel.col} strokeWidth={2.3} />}
+            <span style={{ fontFamily: F, fontSize: 12.5, color: NOAH.ink70 }}>Hoy te sentís <b style={{ color: caraSel?.col }}>{caraSel?.lbl}</b></span>
+            <Check size={13} color={NOAH.salvia} style={{ marginLeft: 'auto' }} />
           </div>
         )}
       </div>
 
-      {/* ── Toggle de fuerza / cross-training ── */}
+      {/* ── Fuerza / cross-training (se colapsa una vez respondido) ── */}
       <div style={card()}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-          <Dumbbell size={13} color={NOAH.coral} strokeWidth={2.3} />
-          <span style={{ ...eyebrow, color: NOAH.coral }}>¿Entrenaste fuerza hoy?</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: fuerzaListo ? 0 : 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Dumbbell size={13} color={NOAH.coral} strokeWidth={2.3} />
+            <span style={{ ...eyebrow, color: NOAH.coral }}>¿Entrenaste fuerza hoy?</span>
+          </div>
+          {fuerzaListo && <button onClick={() => setEdFuerza(true)} style={btnCambiar}>cambiar</button>}
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {[['Sí', true], ['No', false]].map(([lbl, val]) => {
-            const sel = fuerza === val
-            const col = val ? NOAH.salvia : NOAH.ink45
-            return (
-              <button key={lbl} onClick={() => elegirFuerza(val)} disabled={guardando}
-                style={{
-                  flex: 1, padding: '11px 0', borderRadius: 14, cursor: 'pointer',
-                  fontFamily: F, fontSize: 13, fontWeight: 700,
-                  border: `1px solid ${sel ? col : NOAH.border}`,
-                  background: sel ? (val ? NOAH.grafito : 'rgba(41,45,41,0.05)') : 'transparent',
-                  color: sel ? (val ? '#F3F0E8' : NOAH.ink70) : NOAH.ink70,
-                  transition: 'all .16s ease',
-                }}>{lbl}</button>
-            )
-          })}
-        </div>
-        {fuerza === true && (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ fontFamily: F, fontSize: 10.5, color: NOAH.ink45, marginBottom: 7 }}>Intensidad (opcional)</div>
-            <div style={{ display: 'flex', gap: 7 }}>
-              {INTENS.map(i => {
-                const sel = intens === i.k
+        {!fuerzaListo ? (
+          <>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[['Sí', true], ['No', false]].map(([lbl, val]) => {
+                const sel = fuerza === val
+                const col = val ? NOAH.salvia : NOAH.ink45
                 return (
-                  <button key={i.k} onClick={() => elegirIntens(i.k)}
+                  <button key={lbl} onClick={() => elegirFuerza(val)} disabled={guardando}
                     style={{
-                      flex: 1, padding: '8px 0', borderRadius: 999, cursor: 'pointer',
-                      fontFamily: F, fontSize: 11.5, fontWeight: 700,
-                      border: `1px solid ${sel ? NOAH.coral : NOAH.border}`,
-                      background: sel ? `${NOAH.coral}16` : 'transparent',
-                      color: sel ? NOAH.coral : NOAH.ink70,
+                      flex: 1, padding: '11px 0', borderRadius: 14, cursor: 'pointer',
+                      fontFamily: F, fontSize: 13, fontWeight: 700,
+                      border: `1px solid ${sel ? col : NOAH.border}`,
+                      background: sel ? (val ? NOAH.grafito : 'rgba(41,45,41,0.05)') : 'transparent',
+                      color: sel ? (val ? '#F3F0E8' : NOAH.ink70) : NOAH.ink70,
                       transition: 'all .16s ease',
-                    }}>{i.lbl}</button>
+                    }}>{lbl}</button>
                 )
               })}
             </div>
+            {fuerza === true && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontFamily: F, fontSize: 10.5, color: NOAH.ink45, marginBottom: 7 }}>Intensidad (opcional)</div>
+                <div style={{ display: 'flex', gap: 7 }}>
+                  {INTENS.map(i => {
+                    const sel = intens === i.k
+                    return (
+                      <button key={i.k} onClick={() => elegirIntens(i.k)}
+                        style={{
+                          flex: 1, padding: '8px 0', borderRadius: 999, cursor: 'pointer',
+                          fontFamily: F, fontSize: 11.5, fontWeight: 700,
+                          border: `1px solid ${sel ? NOAH.coral : NOAH.border}`,
+                          background: sel ? `${NOAH.coral}16` : 'transparent',
+                          color: sel ? NOAH.coral : NOAH.ink70,
+                          transition: 'all .16s ease',
+                        }}>{i.lbl}</button>
+                    )
+                  })}
+                </div>
+                <button onClick={() => setEdFuerza(false)} style={{ ...btnCambiar, marginTop: 9, color: NOAH.salvia }}>listo</button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+            <Dumbbell size={18} color={fuerza ? NOAH.salvia : NOAH.ink45} strokeWidth={2.3} />
+            <span style={{ fontFamily: F, fontSize: 12.5, color: NOAH.ink70 }}>Hoy: <b style={{ color: fuerza ? NOAH.salvia : NOAH.ink70 }}>{fuerza ? `Sí${intensSel ? `, ${intensSel.lbl}` : ''}` : 'No'}</b></span>
+            <Check size={13} color={NOAH.salvia} style={{ marginLeft: 'auto' }} />
           </div>
         )}
         {reg?.sesiones_fuerza_semana > 0 && (
