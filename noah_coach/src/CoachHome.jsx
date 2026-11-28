@@ -37,11 +37,11 @@ const DEP = [
 
 const esLocal = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.')
 const API = esLocal ? `http://${window.location.hostname}:5000/api` : '/api'
-function authFetch(url) {
+function authFetch(url, options = {}) {
   let token = null
   try { const raw = localStorage.getItem('noah_sesion'); token = raw ? JSON.parse(raw)?.token : null } catch {}
-  const h = { 'Content-Type': 'application/json' }; if (token) h['Authorization'] = `Bearer ${token}`
-  return fetch(url, { headers: h }).then(r => r.json().catch(() => ({}))).catch(() => ({}))
+  const h = { 'Content-Type': 'application/json', ...(options.headers || {}) }; if (token) h['Authorization'] = `Bearer ${token}`
+  return fetch(url, { ...options, headers: h }).then(r => r.json().catch(() => ({}))).catch(() => ({}))
 }
 
 const colHanna = (v) => v == null ? P.ink3 : v >= 65 ? P.green : v >= 45 ? P.amber : P.red
@@ -338,8 +338,7 @@ export default function CoachHome({ onSelect }) {
     if (recalc === 'run') return
     setRecalc('run')
     authFetch(`${API}/recalcular_hanna_todos`, { method: 'POST' })
-      .then(r => r.json())
-      .then(() => { setRecalc('done'); setTimeout(() => window.location.reload(), 600) })
+      .then(() => { setRecalc('done'); setTimeout(() => window.location.reload(), 800) })
       .catch(() => setRecalc('idle'))
   }
 
