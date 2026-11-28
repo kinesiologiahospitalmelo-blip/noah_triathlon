@@ -5208,6 +5208,31 @@ def recalcular_hanna(atleta_id):
         return error(str(e) + '\n' + traceback.format_exc()[-300:])
 
 
+@app.route('/api/recalcular_hanna_todos', methods=['POST'])
+@requiere_login
+def recalcular_hanna_todos():
+    """Recalcula HANNA LIFE para TODOS los atletas activos (una sola acción).
+    Para backfillear el historial de todos tras un cambio de lógica."""
+    conn = get_conn()
+    try:
+        from noah_hanna_life import calcular_y_guardar_hanna_life
+        ids = [r[0] for r in conn.execute("SELECT id FROM atletas WHERE activo=1").fetchall()]
+        total, detalle = 0, {}
+        for aid in ids:
+            try:
+                n = calcular_y_guardar_hanna_life(conn, aid, recalcular_todo=True)
+                detalle[aid] = n; total += n
+            except Exception as ex:
+                detalle[aid] = f'error: {ex}'
+        conn.close()
+        return ok({'atletas': len(ids), 'recalculados': total, 'detalle': detalle})
+    except Exception as e:
+        try: conn.close()
+        except Exception: pass
+        import traceback
+        return error(str(e) + '\n' + traceback.format_exc()[-300:])
+
+
 @app.route('/api/atletas/<int:atleta_id>/alertas', methods=['GET'])
 @requiere_login
 def get_alertas_atleta(atleta_id):

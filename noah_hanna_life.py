@@ -323,15 +323,28 @@ def calcular_estado_autonomico(
                 elif slope < -0.5:
                     s = max(0.0, s - min(10.0, abs(slope) * 3))
 
-        # Mezcla con norma absoluta edad/sexo (Nunan 2010): el HRV bajo para su
-        # edad no se infla por percentil; el sano no se subestima.
-        s_abs_hrv = _score_absoluto_hrv(hrv_val, norma)
-        s_personal = s
-        s = _blend(s_personal, s_abs_hrv)
+        if hrv_es_estimado:
+            # HRV ESTIMADO (sin reloj de noche): poco confiable y a veces clavado
+            # bajo. NO lo anclamos a la norma absoluta (hundiría el EA) y le bajamos
+            # el peso. El body battery entra como señal sustituta (abajo).
+            scores['hrv'] = round(s, 1)
+            scores['hrv_abs'] = None
+            pesos_efectivos['hrv'] = 0.18
+        else:
+            # HRV REAL: mezcla con norma absoluta edad/sexo (ELSA-Brasil / Nunan).
+            s_abs_hrv = _score_absoluto_hrv(hrv_val, norma)
+            s = _blend(s, s_abs_hrv)
+            scores['hrv'] = round(s, 1)
+            scores['hrv_abs'] = round(s_abs_hrv, 1) if s_abs_hrv is not None else None
+            pesos_efectivos['hrv'] = 0.40
 
-        scores['hrv'] = round(s, 1)
-        scores['hrv_abs'] = round(s_abs_hrv, 1) if s_abs_hrv is not None else None
-        pesos_efectivos['hrv'] = 0.40
+    # ── Body Battery como SUSTITUTO del HRV cuando el HRV es estimado ──────────
+    # Garmin arma el body battery de forma más robusta que nuestro HRV estimado;
+    # solo entra al cálculo cuando NO hay HRV de reloj (así nunca hay doble conteo
+    # con un HRV real).
+    if hrv_es_estimado and body_battery is not None and 0 <= body_battery <= 100:
+        scores['body'] = round(float(body_battery), 1)
+        pesos_efectivos['body'] = 0.25
 
     # ── FC reposo (peso base 20%) ─────────────────────────────────────────────
     if fc_hoy and fc_hoy > 30:
@@ -433,7 +446,7 @@ def calcular_estado_autonomico(
     # Pero sirve de CONTROL: si el cuerpo (EA) y el body battery discrepan mucho,
     # algo no cierra (dato raro o lógica a revisar) → aviso para coach/programador.
     bb_alerta = None
-    if body_battery is not None and 0 <= body_battery <= 100:
+    if body_battery is not None and 0 <= body_battery <= 100 and not hrv_es_estimado:
         bb_gap = ea - float(body_battery)
         if abs(bb_gap) >= 30:
             bb_alerta = {
